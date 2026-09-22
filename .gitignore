@@ -1,0 +1,15 @@
+/docs/
+.env
+.env.*
+.idea/
+__pycache__/
+*.pyc
+.state/
+.DS_Store
+target/
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+test-results/
+playwright-report/
