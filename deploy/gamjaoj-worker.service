@@ -1,0 +1,18 @@
+[Unit]
+Description=GamjaOJ isolated Java judge coordinator
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/gamjaoj-worker/current
+EnvironmentFile=%h/gamjaoj-worker/worker.env
+ExecStart=/usr/bin/python3 -m runner.worker --state-dir %h/gamjaoj-worker/state
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=150
+UMask=0077
+MemoryMax=256M
+CPUQuota=50%
+
+[Install]
+WantedBy=default.target

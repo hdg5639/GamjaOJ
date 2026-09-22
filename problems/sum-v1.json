@@ -1,0 +1,13 @@
+{
+  "version": "sum-v1",
+  "title": "두 정수의 합",
+  "statement": "공백으로 구분된 두 정수 A, B의 합을 출력한다. -1000000000 ≤ A, B ≤ 1000000000.",
+  "output_policy": "TOKEN_EXACT",
+  "tests": [
+    {"id": "sample", "input": "1 2\n", "output": "3\n"},
+    {"id": "zero", "input": "0 0\n", "output": "0\n"},
+    {"id": "positive-boundary", "input": "1000000000 1000000000\n", "output": "2000000000\n"},
+    {"id": "negative-boundary", "input": "-1000000000 -1000000000\n", "output": "-2000000000\n"},
+    {"id": "cancel", "input": "-1000000000 1000000000\n", "output": "0\n"}
+  ]
+}
