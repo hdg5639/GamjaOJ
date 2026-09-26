@@ -1,0 +1,16 @@
+import java.util.*;
+public class Main {
+    static String input(Random r, int n, int w, boolean tiny) {
+        StringBuilder s = new StringBuilder().append(n).append(' ').append(w).append('\n');
+        for (int i=0;i<n;i++) s.append(1+r.nextInt(tiny?3:1000)).append(' ').append(1+r.nextInt(tiny?3:10000)).append('\n');
+        return s.toString();
+    }
+    static String json(String s) { return "\""+s.replace("\\","\\\\").replace("\"","\\\"").replace("\n","\\n")+"\""; }
+    public static void main(String[] args) {
+        Random r = new Random(new Scanner(System.in).nextLong());
+        // Different N guarantees four distinct strings, including tiny and maximum-size cases.
+        String[] a = {input(r,1,1+r.nextInt(8),true),input(r,3,1+r.nextInt(8),true),
+                      input(r,4,1+r.nextInt(8),true),input(r,100,1000,false)};
+        System.out.println("["+json(a[0])+","+json(a[1])+","+json(a[2])+","+json(a[3])+"]");
+    }
+}

@@ -50,7 +50,7 @@ COMPILE_COMMAND = PROFILE['compileCommand']
 class CompileCache:
     """Worker-local, bounded memory only; never cache verdicts or failed builds.
 
-    Generated version UUIDs and experimental draft UUIDs isolate private jobs. Public problems and
+    Generated version UUIDs, experimental drafts and hybrid validation branch UUIDs isolate jobs. Public problems and
     ordinary custom runs without that scope deliberately receive no cache entry.
     Two worker slots share the cache under a process-local reentrant lock.
     """
@@ -61,7 +61,7 @@ class CompileCache:
 
     def key(self, version, image, source):
         identifier = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
-        if not re.fullmatch(r"(?:generated-" + identifier + r"-r[0-9]+|experimental-check-" + identifier + r")", version):
+        if not re.fullmatch(r"(?:generated-" + identifier + r"-r[0-9]+|(?:experimental|hybrid)-check-" + identifier + r")", version):
             return None
         return (version, image, tuple(next((p['compileCommand'] for p in LANGUAGES.values() if p['image'] == image), COMPILE_COMMAND)), hashlib.sha256(source).hexdigest())
 

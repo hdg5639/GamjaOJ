@@ -1,0 +1,17 @@
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+public class Main {
+    static boolean valid() throws Exception {
+        ByteArrayOutputStream out=new ByteArrayOutputStream();int b;
+        while((b=System.in.read())!=-1){if(out.size()>=4096)return false;out.write(b);}
+        String s=new String(out.toByteArray(),StandardCharsets.UTF_8).trim();if(s.isEmpty())return false;
+        String[]t=s.split("(?U)\\s+");for(String x:t)if(!x.matches("[+-]?[0-9]+"))return false;
+        if(t.length<4)return false;int n=Integer.parseInt(t[0]),m=Integer.parseInt(t[1]),start=Integer.parseInt(t[2]),end=Integer.parseInt(t[3]);
+        if(n<1||n>100||m<0||m>Math.min(200,n*(n-1)/2)||start<1||start>n||end<1||end>n||t.length!=4+2*m)return false;
+        Set<Integer>seen=new HashSet<>();for(int i=0;i<m;i++){int u=Integer.parseInt(t[4+2*i]),v=Integer.parseInt(t[5+2*i]);
+            if(u<1||v<1||u>n||v>n||u==v||!seen.add(Math.min(u,v)*101+Math.max(u,v)))return false;}
+        return true;
+    }
+    public static void main(String[] args){boolean ok=false;try{ok=valid();}catch(Exception ignored){}System.out.println(ok?"VALID":"INVALID");}
+}

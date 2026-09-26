@@ -39,6 +39,7 @@ class GenerationSpecDrafts {
             return saved;
         }
         if(jdbc.sql("SELECT count(*) FROM generation_job WHERE id=?").param(id).query(Integer.class).single()>0)throw new AccountException(409,"이미 사용된 요청 키예요.");
+        if(HybridAdmission.active(jdbc,owner))throw new AccountException(409,"진행 중인 규칙 고정 출제를 먼저 마쳐 주세요.");
         if(active(owner)||jdbc.sql("SELECT count(*) FROM generation_job WHERE owner_id=? AND status IN ('QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING')").param(owner).query(Integer.class).single()>0)
             throw new AccountException(409,"진행 중인 출제 작업을 먼저 마쳐 주세요.");
         String model=settings.value("CODEX_GENERATION_MODEL","gpt-5.6-sol"),effort=settings.value("CODEX_GENERATION_REASONING","medium");
@@ -84,7 +85,7 @@ class GenerationSpecDrafts {
         if(!row[1].equals("GENERATING")||jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE id=? AND lease_until>CURRENT_TIMESTAMP").param(id).query(Integer.class).single()!=1)
             throw new AccountException(409,"초안 작업의 유효 시간이 지났어요.");
         String state="DRAFT_READY",failure=null,spec=null;
-        if(error!=null){state="FAILED";failure=Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH").contains(error)?error:"CODEX_DRAFT_FAILED";}
+        if(error!=null){state="FAILED";failure=Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH","CODEX_QUOTA_EXHAUSTED").contains(error)?error:"CODEX_DRAFT_FAILED";}
         else {
             try {validate(artifacts);if(oracle!=null&&!oracle.isNull())throw new IllegalArgumentException();spec=JudgeJson.canonical(artifacts);}
             catch(IllegalArgumentException e){state="FAILED";failure="INVALID_SPEC_DRAFT";}
@@ -113,7 +114,7 @@ class GenerationSpecDrafts {
         if(previous!=null){if(previous.equals(audit))return;throw new AccountException(409,"이미 저장된 코드 결과와 달라요.");}
         if(jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE id=? AND status='BUILD_GENERATING' AND lease_until>CURRENT_TIMESTAMP").param(id).query(Integer.class).single()!=1)
             throw new AccountException(409,"코드 작성 작업의 유효 시간이 지났어요.");
-        String failure=error==null?null:Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH").contains(error)?error:"CODEX_IMPLEMENTATION_FAILED";
+        String failure=error==null?null:Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH","CODEX_QUOTA_EXHAUSTED").contains(error)?error:"CODEX_IMPLEMENTATION_FAILED";
         if(failure==null)try{GenerationJobs.validateArtifacts(artifacts,oracle);}catch(AccountException invalid){failure="INVALID_IMPLEMENTATION";}
         jdbc.sql("UPDATE generation_spec_draft SET build_completion_json=?,status=?,error_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
                 .param(audit).param(failure==null?"CHECKING":"BUILD_FAILED").param(failure).param(id).update();
@@ -142,7 +143,7 @@ class GenerationSpecDrafts {
         String previous=jdbc.sql("SELECT review_completion_json FROM generation_spec_draft WHERE id=?").param(id).query(String.class).optional().orElse(null);
         if(previous!=null){if(previous.equals(audit))return;throw new AccountException(409,"이미 저장된 검토 결과와 달라요.");}
         if(jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE id=? AND status='REVIEW_GENERATING' AND lease_until>CURRENT_TIMESTAMP").param(id).query(Integer.class).single()!=1)throw new AccountException(409,"검토 작업의 유효 시간이 지났어요.");
-        String failure=error==null?null:Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH").contains(error)?error:"CODEX_REVIEW_FAILED";
+        String failure=error==null?null:Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH","CODEX_QUOTA_EXHAUSTED").contains(error)?error:"CODEX_REVIEW_FAILED";
         if(failure==null)try{ExperimentalReview.validate(artifacts);if(oracle!=null&&!oracle.isNull())throw new IllegalArgumentException();}catch(IllegalArgumentException invalid){failure="INVALID_REVIEW";}
         jdbc.sql("UPDATE generation_spec_draft SET review_completion_json=?,error_code=?,status='REVIEW_FAILED',updated_at=CURRENT_TIMESTAMP WHERE id=?").param(audit).param(failure).param(id).update();
         if(failure!=null)return;
@@ -168,7 +169,7 @@ class GenerationSpecDrafts {
         String previous=jdbc.sql("SELECT final_completion_json FROM generation_spec_draft WHERE id=?").param(id).query(String.class).optional().orElse(null);
         if(previous!=null){if(previous.equals(audit))return;throw new AccountException(409,"이미 저장된 검토 결과와 달라요.");}
         if(jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE id=? AND status='FINAL_GENERATING' AND lease_until>CURRENT_TIMESTAMP").param(id).query(Integer.class).single()!=1)throw new AccountException(409,"검토 작업의 유효 시간이 지났어요.");
-        String failure=error==null?null:Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH").contains(error)?error:"CODEX_FINAL_FAILED";
+        String failure=error==null?null:Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH","CODEX_QUOTA_EXHAUSTED").contains(error)?error:"CODEX_FINAL_FAILED";
         if(failure==null)try{ExperimentalPublication.validate(artifacts,oracle);}catch(IllegalArgumentException invalid){failure="INVALID_FINAL_PLAN";}
         jdbc.sql("UPDATE generation_spec_draft SET final_completion_json=?,error_code=?,status='FINAL_FAILED',updated_at=CURRENT_TIMESTAMP WHERE id=?").param(audit).param(failure).param(id).update();
         if(failure!=null)return;

@@ -1,0 +1,26 @@
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+public class Main {
+    static boolean valid() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int b;
+        while ((b=System.in.read())!=-1) { if(out.size()>=4096)return false; out.write(b); }
+        String s=new String(out.toByteArray(),StandardCharsets.UTF_8).trim();
+        if(s.isEmpty())return false;
+        String[] t=s.split("(?U)\\s+");
+        for(String v:t)if(!v.matches("[+-]?[0-9]+"))return false;
+        if(t.length<2)return false;
+        int n=Integer.parseInt(t[0]), w=Integer.parseInt(t[1]);
+        if(n<1||n>100||w<1||w>1000||t.length!=2+2*n)return false;
+        for(int i=0;i<n;i++) {
+            int c=Integer.parseInt(t[2+2*i]),v=Integer.parseInt(t[3+2*i]);
+            if(c<1||c>1000||v<1||v>10000)return false;
+        }
+        return true;
+    }
+    public static void main(String[] args) {
+        boolean ok=false;
+        try {ok=valid();}catch(Exception ignored){}
+        System.out.println(ok?"VALID":"INVALID");
+    }
+}

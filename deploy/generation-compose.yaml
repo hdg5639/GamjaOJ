@@ -14,6 +14,8 @@ services:
     tmpfs:
       - /tmp:size=128m,mode=1777,nosuid,nodev
     env_file: ./worker.env
+    environment:
+      GENERATION_HYBRID_ENABLED: ${GENERATION_HYBRID_ENABLED:-false}
     volumes:
       - ./auth:/auth
       - ./state:/state

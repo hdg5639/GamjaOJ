@@ -55,6 +55,25 @@ class CompileCacheTests(unittest.TestCase):
     version = "generated-12345678-1234-1234-1234-123456789abc-r0"
     draft_version = "experimental-check-12345678-1234-1234-1234-123456789abc"
 
+    hybrid_version = "hybrid-check-12345678-1234-1234-1234-123456789abc"
+
+    def test_hybrid_scope_separates_branch_source_runtime_and_other_paths(self):
+        cache = CompileCache()
+        key = cache.key(self.hybrid_version, "image-a", b"source")
+        self.assertIsNotNone(key)
+        result = {"stdout": b"classes", "stderr": b"", "exit_code": 0, "limit": None, "oom_killed": False}
+        cache.put(key, result)
+        self.assertEqual(result, cache.get(key))
+        for version, image, source in [(self.hybrid_version.replace("12345678", "87654321"), "image-a", b"source"),
+                                      (self.draft_version, "image-a", b"source"),
+                                      (self.hybrid_version, "image-b", b"source"),
+                                      (self.hybrid_version, "image-a", b"different")]:
+            self.assertIsNone(cache.get(cache.key(version, image, source)))
+        for version in ("hybrid-check-", self.hybrid_version + "-extra", "sum-v1"):
+            self.assertIsNone(cache.key(version, "image-a", b"source"))
+        with patch("runner.judge.COMPILE_COMMAND", ["changed-flags"]):
+            self.assertIsNone(cache.get(cache.key(self.hybrid_version, "image-a", b"source")))
+
     def test_experimental_draft_scope_and_modified_code(self):
         cache = CompileCache()
         key = cache.key(self.draft_version, "image-a", b"source")
@@ -185,6 +204,9 @@ class DockerTests(unittest.TestCase):
 
     def test_experimental_cached_compile_still_executes_new_inputs_and_fresh_sandboxes(self):
         self.check_cached_compile(CompileCacheTests.draft_version)
+
+    def test_hybrid_cached_compile_keeps_new_inputs_and_fresh_sandboxes(self):
+        self.check_cached_compile(CompileCacheTests.hybrid_version)
 
     def check_cached_compile(self, version):
         self.problem["version"] = version

@@ -1,0 +1,15 @@
+import java.util.*;
+public class Main {
+    static String input(Random r,int n,int maxEdges) {
+        ArrayList<int[]> pairs=new ArrayList<>();
+        for(int u=1;u<=n;u++)for(int v=u+1;v<=n;v++)pairs.add(new int[]{u,v});
+        Collections.shuffle(pairs,r);int m=Math.min(maxEdges,pairs.size());
+        StringBuilder s=new StringBuilder().append(n).append(' ').append(m).append(' ').append(1+r.nextInt(n)).append(' ').append(1+r.nextInt(n)).append('\n');
+        for(int i=0;i<m;i++){int[]e=pairs.get(i);s.append(e[0]).append(' ').append(e[1]).append(' ').append(1+r.nextInt(1000000000)).append('\n');}return s.toString();
+    }
+    static String json(String s){return "\""+s.replace("\n","\\n")+"\"";}
+    public static void main(String[] args){Random r=new Random(new Scanner(System.in).nextLong());
+        String[]a={input(r,1,0),input(r,3,r.nextInt(4)),input(r,4,r.nextInt(7)),input(r,100,200)};
+        System.out.println("["+json(a[0])+","+json(a[1])+","+json(a[2])+","+json(a[3])+"]");
+    }
+}

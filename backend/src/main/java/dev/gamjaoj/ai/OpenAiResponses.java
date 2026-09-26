@@ -56,6 +56,13 @@ public final class OpenAiResponses {
 
     public Result generate(String model, String effort, String instructions, String input, String schemaName,
                            JsonNode schema, int maxOutputTokens) {
+        return generate(model,effort,instructions,input,schemaName,schema,maxOutputTokens,Duration.ofSeconds(90));
+    }
+
+    public Result generate(String model,String effort,String instructions,String input,String schemaName,
+                           JsonNode schema,int maxOutputTokens,Duration timeout) {
+        if(timeout==null||timeout.isNegative()||timeout.isZero()||timeout.compareTo(Duration.ofSeconds(90))>0)
+            throw new IllegalArgumentException("Invalid provider deadline");
         if (model == null || model.isBlank() || maxOutputTokens < 1 || maxOutputTokens > 32768
                 || schema == null || !schema.isObject() || instructions == null || input == null
                 || schemaName == null || !schemaName.matches("[A-Za-z0-9_-]{1,64}")) {
@@ -66,7 +73,7 @@ public final class OpenAiResponses {
         body.putObject("reasoning").put("effort", effort);
         body.putObject("text").putObject("format").put("type", "json_schema")
                 .put("name", schemaName).put("strict", true).set("schema", schema);
-        HttpRequest request = HttpRequest.newBuilder(endpoint).timeout(Duration.ofSeconds(90))
+        HttpRequest request = HttpRequest.newBuilder(endpoint).timeout(timeout)
                 .header("Authorization", "Bearer " + apiKey).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
         HttpResponse<String> response;

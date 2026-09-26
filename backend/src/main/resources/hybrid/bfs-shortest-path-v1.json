@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "1",
+  "domain": {
+    "entities": "vertices and undirected edges",
+    "types": "simple unweighted undirected graph",
+    "relationships": "vertices numbered 1 through N; no self-loops or repeated unordered edges"
+  },
+  "input": {
+    "format": "N M S T on the first line, then M lines of u v; each edge connects u and v in both directions",
+    "indexing": "1-based vertex indices",
+    "caseCount": "one"
+  },
+  "state": {
+    "initial": "at vertex S with distance 0",
+    "mutable": "current vertex and number of traversed edges"
+  },
+  "actions": [
+    {
+      "id": "traverse",
+      "preconditions": "an undirected edge connects the current vertex and the next vertex",
+      "transition": "move to the adjacent vertex and add 1 to the distance",
+      "reuse": "vertices and edges may be revisited; every traversal costs 1",
+      "resources": "all edge costs are exactly 1; no other resource restriction"
+    }
+  ],
+  "goal": {
+    "kind": "MINIMIZE",
+    "definition": "number of edges in a walk from S to T"
+  },
+  "termination": "reach T; output -1 if no path exists",
+  "output": {
+    "format": "one integer and newline",
+    "ties": "print the minimum distance only, not a path",
+    "empty": "S equals T: output 0, even when there are no edges",
+    "impossible": "output -1 when T is unreachable from S",
+    "numericRange": "-1 or 0..N-1"
+  },
+  "limits": {
+    "maxInputSize": "1 <= N <= 100; 0 <= M <= min(200, N*(N-1)/2)",
+    "executionConstraints": "1 <= S,T,u,v <= N; u != v; unordered edge pairs are unique"
+  },
+  "obligations": {
+    "smallDomain": "N <= 4; compare all-pairs shortest paths independently",
+    "boundaryCases": [
+      "S equals T",
+      "unreachable target",
+      "cycles and multiple paths",
+      "reverse traversal of an edge"
+    ],
+    "invalidCases": [
+      "self-loop",
+      "duplicate undirected edge",
+      "wrong edge count",
+      "vertex outside 1..N"
+    ],
+    "stress": "N=100 chain and N=100 M=200 graph",
+    "mutants": [
+      "edges treated as directed",
+      "unreachable distance incorrectly returned as zero"
+    ]
+  }
+}

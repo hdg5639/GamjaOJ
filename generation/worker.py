@@ -1,5 +1,6 @@
 """Single Codex authoring worker. Requires an isolated container/account and ChatGPT auth.
-No API-key fallback; model-generated Java is returned as data, never executed here.
+No API key in this process; the backend may reroute quota-limited hybrid author work to its API lane.
+Model-generated Java is returned as data, never executed here.
 """
 import argparse
 import copy
@@ -14,6 +15,7 @@ import time
 import urllib.request
 import urllib.error
 import uuid
+from datetime import datetime, timezone
 
 PROMPT_PROFILE = 'sequence-sum-compact-v1'
 
@@ -70,6 +72,29 @@ def context_spec(spec, oracle=False):
         for key in ("referenceStrategy","oracleStrategy"):
             result.get("definition",{}).pop(key,None)
     return result
+
+
+QUOTA_MARKERS = ('usage limit', 'usage_limit', 'rate limit', 'rate_limit', 'quota', 'too many requests', '429')
+
+
+def quota_exhausted(events):
+    """True only when a structured Codex error event reports quota/rate limiting.
+
+    Provider text is inspected locally and never forwarded; ordinary output is ignored.
+    """
+    for line in bytes(events).splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict) or event.get('type') not in ('error', 'turn.failed'):
+            continue
+        error = event.get('error')
+        text = json.dumps([event.get('message'), error.get('message') if isinstance(error, dict) else error,
+                           event.get('code'), error.get('code') if isinstance(error, dict) else None]).lower()
+        if any(marker in text for marker in QUOTA_MARKERS):
+            return True
+    return False
 
 
 class GenerationAdapter:
@@ -311,6 +336,19 @@ class CodexCli(GenerationAdapter):
                        + json.dumps(assignment['repair']['previous'], ensure_ascii=False))
         if assignment.get('feedback'):
             prompt += '\nPrevious validation failed at: ' + assignment['feedback']
+        if assignment['spec'].get('phase') == 'HYBRID_V1':
+            spec = assignment['spec']
+            if spec.get('role') not in ('CONTRACT', 'CORE') or oracle:
+                raise RuntimeError('INVALID_CODEX_ARTIFACT')
+            # Final structured output only: no partial-event handoff, no workspace sharing.
+            contract.write_text(json.dumps(assignment['outputSchema']))
+            prompt = spec['instructions'] + '\nTask data:\n' + json.dumps(spec['input'], ensure_ascii=False)
+        timeout = 480
+        if assignment['spec'].get('phase') == 'HYBRID_V1':
+            deadline = datetime.fromisoformat(assignment['deadlineAt'].replace('Z', '+00:00'))
+            timeout = min(120, (deadline - datetime.now(timezone.utc)).total_seconds())
+            if timeout <= 0:
+                raise RuntimeError('HYBRID_DEADLINE_EXCEEDED')
         command = [self.binary, 'exec', '--ignore-user-config', '--ignore-rules', '--ephemeral',
                    '--skip-git-repo-check', '--sandbox', 'read-only', '-c', 'features.shell_tool=false',
                    '-c', 'model_reasoning_effort=' + json.dumps(assignment['effort']),
@@ -329,7 +367,7 @@ class CodexCli(GenerationAdapter):
                 with selectors.DefaultSelector() as selector:
                     selector.register(process.stdout, selectors.EVENT_READ)
                     while selector.get_map():
-                        if time.monotonic() - started > 480:
+                        if time.monotonic() - started > timeout:
                             raise RuntimeError('CODEX_TIMEOUT')
                         for key, _ in selector.select(timeout=.2):
                             chunk = os.read(key.fileobj.fileno(), 8192)
@@ -339,7 +377,7 @@ class CodexCli(GenerationAdapter):
                             if len(events) > 4 * 1024 * 1024:
                                 raise RuntimeError('CODEX_OUTPUT_LIMIT')
                 if process.wait(timeout=5) != 0:
-                    raise RuntimeError('CODEX_FAILED_CHECK_MODEL_OR_AUTH')
+                    raise RuntimeError('CODEX_QUOTA_EXHAUSTED' if quota_exhausted(events) else 'CODEX_FAILED_CHECK_MODEL_OR_AUTH')
             finally:
                 if process.poll() is None:
                     os.killpg(process.pid, signal.SIGKILL)
@@ -358,6 +396,18 @@ class CodexCli(GenerationAdapter):
         return value, usage
 
     def produce(self, assignment, directory):
+        if assignment['spec'].get('phase') == 'HYBRID_V1':
+            role = assignment['spec'].get('role')
+            if role not in ('CONTRACT', 'CORE'):
+                raise RuntimeError('INVALID_CODEX_ARTIFACT')
+            started = time.monotonic()
+            payload, usage = self.context(assignment, directory / role.lower())
+            atomic(directory / 'hybrid-usage.json', usage)
+            return {'payload': payload, 'error': None, 'usage': {
+                'executor': 'CODEX_CLI', 'billingMode': 'CHATGPT_MANAGED',
+                'cliVersion': self.cli_version, 'providerUsage': usage,
+                'promptProfile': 'hybrid-' + role.lower() + '-v1',
+                'elapsedSeconds': round(time.monotonic() - started, 3)}}
         if assignment['spec'].get('phase')=='EXPERIMENTAL_FINAL_PLAN':
             started=time.monotonic()
             artifacts,author_usage=self.context(assignment,directory/'plan')
@@ -451,6 +501,71 @@ class Api:
             return json.loads(data)
 
 
+def hybrid_completion(assignment, result):
+    envelope = assignment['spec']['assignment']
+    return {**{key: envelope[key] for key in ('branchId', 'revision', 'role', 'token',
+            'inputHash', 'contractHash', 'publicHash')},
+            **{key: result[key] for key in ('payload', 'usage', 'error')}}
+
+
+def hybrid_once(api, adapter, state):
+    """Adapter entry for admitted work; main() selects it only with --hybrid.
+
+    Use a separate state directory. An interrupted invocation is never retried implicitly:
+    report unknown usage against its original envelope and let the server fence it.
+    """
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (state / 'worker.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return _hybrid_once(api, adapter, state)
+
+
+def _hybrid_once(api, adapter, state):
+    for saved_assignment in sorted(state.glob('*/assignment.json')):
+        directory = saved_assignment.parent
+        pending = directory / 'completion.json'
+        if (directory / 'completion.delivered').exists() or (directory / 'completion.rejected').exists():
+            continue
+        if not pending.exists():
+            assignment = json.loads(saved_assignment.read_text())
+            usage_path = directory / 'hybrid-usage.json'
+            result = {'payload': None, 'error': 'INTERRUPTED_USAGE_UNKNOWN', 'usage': {
+                'executor': 'CODEX_CLI', 'billingMode': 'CHATGPT_MANAGED',
+                'providerUsage': json.loads(usage_path.read_text()) if usage_path.exists() else None}}
+            atomic(pending, {'body': hybrid_completion(assignment, result)})
+        try:
+            api.post('/hybrid/result', json.loads(pending.read_text())['body'])
+        except urllib.error.HTTPError as error:
+            if error.code not in (400, 404, 409):
+                raise
+            pending.rename(directory / 'completion.rejected')
+        else:
+            pending.rename(directory / 'completion.delivered')
+    assignment = api.post('/hybrid/claim', {})
+    if assignment is None:
+        return False
+    directory = state / str(uuid.UUID(assignment['token']))
+    directory.mkdir(mode=0o700)
+    atomic(directory / 'assignment.json', assignment)
+    try:
+        if assignment.get('pipelineVersion') != 'HYBRID_V1' or assignment['spec'].get('phase') != 'HYBRID_V1':
+            raise RuntimeError('INVALID_CODEX_ARTIFACT')
+        result = adapter.produce(assignment, directory)
+    except Exception as error:
+        allowed = {'NEEDS_CHATGPT_AUTH', 'CODEX_TIMEOUT', 'CODEX_OUTPUT_LIMIT',
+                   'CODEX_FAILED_CHECK_MODEL_OR_AUTH', 'INVALID_CODEX_ARTIFACT',
+                   'CODEX_VERSION_MISMATCH', 'HYBRID_DEADLINE_EXCEEDED', 'CODEX_QUOTA_EXHAUSTED'}
+        usage_path = directory / 'hybrid-usage.json'
+        result = {'payload': None, 'error': str(error) if str(error) in allowed else 'CODEX_WORKER_FAILURE',
+                  'usage': {'executor': 'CODEX_CLI', 'billingMode': 'CHATGPT_MANAGED',
+                            'providerUsage': json.loads(usage_path.read_text()) if usage_path.exists() else None}}
+    body = hybrid_completion(assignment, result)
+    atomic(directory / 'completion.json', {'body': body})
+    api.post('/hybrid/result', body)
+    (directory / 'completion.json').rename(directory / 'completion.delivered')
+    return True
+
+
 def once(api, adapter, state):
     # Persist model results before delivery; response loss never causes another model call.
     for pending in sorted(state.glob('*/completion.json')):
@@ -473,7 +588,7 @@ def once(api, adapter, state):
         result = adapter.produce(assignment, directory)
     except Exception as error:
         # Whitelist internal error names; never serialize subprocess/provider text or credential paths.
-        allowed = {'NEEDS_CHATGPT_AUTH', 'CODEX_TIMEOUT', 'CODEX_OUTPUT_LIMIT', 'CODEX_FAILED_CHECK_MODEL_OR_AUTH', 'INVALID_CODEX_ARTIFACT', 'CODEX_VERSION_MISMATCH'}
+        allowed = {'NEEDS_CHATGPT_AUTH', 'CODEX_TIMEOUT', 'CODEX_OUTPUT_LIMIT', 'CODEX_FAILED_CHECK_MODEL_OR_AUTH', 'INVALID_CODEX_ARTIFACT', 'CODEX_VERSION_MISMATCH', 'CODEX_QUOTA_EXHAUSTED'}
         usage = {'executor': 'CODEX_CLI', 'billingMode': 'CHATGPT_MANAGED', 'cliVersion': getattr(adapter, 'cli_version', None)}
         for role in ('author', 'oracle'):
             path = directory / (role + '-usage.json')
@@ -491,6 +606,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state', type=Path, required=True)
     parser.add_argument('--once', action='store_true')
+    parser.add_argument('--hybrid', action='store_true', help='Poll only admitted hybrid work; uses separate durable state')
     args = parser.parse_args()
     os.umask(0o077)
     args.state.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -499,7 +615,14 @@ def main():
     with (args.state / 'worker.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         while True:
-            worked = once(api, adapter, args.state)
+            if args.hybrid:
+                worked = hybrid_once(api, adapter, args.state / 'hybrid')
+            elif os.environ.get('GENERATION_HYBRID_ENABLED', 'false').lower() == 'true':
+                # One process/lock and one invocation at a time, with separate durable result stores.
+                # Prioritize the short admitted deadline; preserve the legacy queue when hybrid is idle.
+                worked = hybrid_once(api, adapter, args.state / 'hybrid') or once(api, adapter, args.state)
+            else:
+                worked = once(api, adapter, args.state)
             if args.once:
                 return
             if not worked:

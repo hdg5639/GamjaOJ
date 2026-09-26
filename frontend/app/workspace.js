@@ -306,7 +306,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       selectedVersion={version} locked={busy || !!pending} onChoose={chooseProblem} /></div>
     <div className="training-view" hidden={screen !== 'training'}>{screen === 'training' && <AiBudget api={api} />}{loaded&&<FollowupPanel api={api} onOpen={openTraining} onGeneration={()=>setScreen('generation')} locked={busy||!!pending}/>}
     {loaded && <SessionPanel user={user} problem={problem} sessions={sessions} onChange={updateSessions} activity={activity} api={api} />}</div>
-    <div className="training-view" hidden={screen !== 'generation'}>{screen === 'generation' && <AiOperations api={api} initialMode={generationMode} onOpen={async generatedVersion => {
+    <div className="training-view" hidden={screen !== 'generation'}>{screen === 'generation' && <AiOperations api={api} userId={user.id} initialMode={generationMode} onOpen={async generatedVersion => {
       if (busy || pending) throw new Error('진행 중인 제출을 먼저 마쳐 주세요.');
       const items=await api('/api/problems');setProblems(items);chooseProblem(generatedVersion);
     }} />}</div>
