@@ -27,8 +27,10 @@ class ResponsesHybridProvider implements HybridApiProvider {
 @Component
 class HybridApiWorker {
     private final HybridExecution execution;private final HybridApiProvider provider;private final AiSettings config;
-    private final AtomicBoolean running=new AtomicBoolean(),authorRunning=new AtomicBoolean();
-    private final ExecutorService executor=Executors.newSingleThreadExecutor(r->{var t=new Thread(r,"hybrid-api");t.setDaemon(true);return t;});
+    private final AtomicBoolean authorRunning=new AtomicBoolean();
+    private final java.util.concurrent.atomic.AtomicInteger ordinary=new java.util.concurrent.atomic.AtomicInteger();
+    // Ordinary lane runs up to HYBRID_MAX_ACTIVE calls; the dispatcher enforces the same bound in the ledger.
+    private final ExecutorService executor=Executors.newFixedThreadPool(4,r->{var t=new Thread(r,"hybrid-api");t.setDaemon(true);return t;});
     // Codex-quota fallback lane: replaces the concurrent Codex author, one call at a time.
     private final ExecutorService author=Executors.newSingleThreadExecutor(r->{var t=new Thread(r,"hybrid-api-author");t.setDaemon(true);return t;});
     HybridApiWorker(HybridExecution execution,HybridApiProvider provider,AiSettings config){this.execution=execution;this.provider=provider;this.config=config;}
@@ -38,7 +40,13 @@ class HybridApiWorker {
     void tick(){execution.recover();wake();}
     void wake() {
         if(!Boolean.parseBoolean(config.value("HYBRID_API_WORKER_ENABLED","false")))return;
-        submit(executor,running,this::runOnce);submit(author,authorRunning,this::runAuthorOnce);
+        while(true) {
+            int current=ordinary.get();if(current>=execution.maxActive())break;
+            if(!ordinary.compareAndSet(current,current+1))continue;
+            try{executor.submit(()->{try{while(runOnce()){ /* Reader may become eligible on writer completion. */ }}finally{ordinary.decrementAndGet();}});}
+            catch(RejectedExecutionException closed){ordinary.decrementAndGet();break;}
+        }
+        submit(author,authorRunning,this::runAuthorOnce);
     }
     private void submit(ExecutorService lane,AtomicBoolean flag,java.util.function.BooleanSupplier step) {
         if(!flag.compareAndSet(false,true))return;

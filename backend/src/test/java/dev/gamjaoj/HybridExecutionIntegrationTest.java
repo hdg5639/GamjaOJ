@@ -230,6 +230,21 @@ class HybridExecutionIntegrationTest {
         execution.finish(contract.attemptId(),result(fixtures.contract()),null);
         assertThat(execution.claimCodex().spec().path("role").asText()).isEqualTo("CORE");
     }
+    @Test void boundedConcurrencyAdmitsDifferentOwnersButOneActiveRequestPerOwner() {
+        overrides.put("HYBRID_MAX_ACTIVE","2");
+        jdbc.sql("INSERT INTO app_user(id,username,password_hash,nickname) VALUES (?,'third','unused','third')").param(UUID.randomUUID()).update();
+        admit();
+        assertThatThrownBy(this::admit).isInstanceOf(AccountException.class).hasMessageContaining("진행 중인 출제");
+        execution.admit("other",UUID.randomUUID(),"second problem",false);
+        assertThatThrownBy(()->execution.admit("third",UUID.randomUUID(),"third problem",false)).isInstanceOf(AccountException.class).hasMessageContaining("다른 회원");
+        assertThat(count("hybrid_generation")).isEqualTo(2);
+        // Both generations' contracts are designed, then two ordinary API calls may run at once, not three.
+        for(int i=0;i<2;i++)execution.completeCodex(completion(execution.claimCodex(),fixtures.contract()));
+        var first=execution.claimApi();var second=execution.claimApi();
+        assertThat(first).isNotNull();assertThat(second).isNotNull();assertThat(execution.claimApi()).isNull();
+        assertThat(first.request().assignment().generationId()).isNotEqualTo(second.request().assignment().generationId());
+        overrides.put("HYBRID_MAX_ACTIVE","1");assertThat(execution.claimApi()).isNull();
+    }
     @Test void protectedCodexRoutesBindEnvelopeAndRejectApiRoleSpoofing() throws Exception {
         UUID id=admit();String token="Bearer fixture-generation-worker-token-12345678";
         mvc.perform(post("/internal/generation/hybrid/claim")).andExpect(status().isUnauthorized());

@@ -29,7 +29,7 @@ class HybridAdmission {
     record Options(boolean enabled,String message,List<Profile> profiles) {}
     Options options(String user) {
         boolean enabled=Boolean.parseBoolean(settings.value("HYBRID_PUBLIC_ADMISSION_ENABLED","false"))
-                &&Arrays.stream(settings.value("HYBRID_ALLOWED_USERS","").split(",")).map(String::trim).anyMatch(user::equals)
+                &&Arrays.stream(settings.value("HYBRID_ALLOWED_USERS","").split(",")).map(String::trim).anyMatch(entry->entry.equals("*")||entry.equals(user))
                 &&Boolean.parseBoolean(settings.value("HYBRID_ADMISSION_ENABLED","false"))
                 &&Boolean.parseBoolean(settings.value("HYBRID_CONTENT_REVIEW_ENABLED","false"))
                 &&Boolean.parseBoolean(settings.value("HYBRID_API_WORKER_ENABLED","false"))
