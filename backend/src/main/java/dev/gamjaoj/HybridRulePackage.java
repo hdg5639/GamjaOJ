@@ -27,11 +27,16 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
         if(n==null||!n.isTextual()||n.asText().isBlank()||n.asText().getBytes(StandardCharsets.UTF_8).length>max)throw new HybridArtifacts.Invalid("RULE_PACKAGE_FIELD");
         return n.asText();
     }
+    private static String raw(JsonNode n,int max) {
+        if(n==null||!n.isTextual()||n.asText().getBytes(StandardCharsets.UTF_8).length>max)throw new HybridArtifacts.Invalid("RULE_PACKAGE_FIELD");
+        return n.asText();
+    }
     private static List<HybridFiniteProfile.Case> cases(JsonNode n,String prefix,int min,int max,int bytes,boolean answers) {
         if(n==null||!n.isArray()||n.size()<min||n.size()>max)throw new HybridArtifacts.Invalid("RULE_PACKAGE_CASES");
         var out=new ArrayList<HybridFiniteProfile.Case>();var seen=new HashSet<String>();
         for(var c:n) {
-            String input=text(c.path("input"),bytes);if(!seen.add(input))throw new HybridArtifacts.Invalid("RULE_PACKAGE_DUPLICATE_INPUT");
+            // Invalid inputs may legitimately be empty or whitespace (for example an empty string).
+            String input=answers?text(c.path("input"),bytes):raw(c.path("input"),bytes);if(!seen.add(input))throw new HybridArtifacts.Invalid("RULE_PACKAGE_DUPLICATE_INPUT");
             out.add(new HybridFiniteProfile.Case(prefix+out.size(),input,answers?text(c.path("output"),4096):"INVALID\n"));
         }
         return List.copyOf(out);

@@ -24,7 +24,7 @@ class HybridRuleOnboarding {
     static final String PIPELINE="RULE_ONBOARDING_V1";
     private static final Set<String> ACTIVE=Set.of("QUEUED","AUTHORING","AUTHORED","ORACLE","QUALIFYING");
     record View(UUID id,String status,String error,String request,OffsetDateTime createdAt,OffsetDateTime deadlineAt,
-                String versionId,String label,BigDecimal spentUsd,Map<String,String> checks) {}
+                String versionId,String label,BigDecimal spentUsd,Map<String,String> checks,String failedCheck) {}
     record Call(UUID attemptId,UUID onboarding,String role,AiSettings.Model model,String instructions,String input,
                 JsonNode schema,OffsetDateTime deadlineAt) {}
     private final JdbcClient jdbc;private final AiSettings config;private final AiTasks ledger;private final Submissions submissions;
@@ -91,8 +91,12 @@ class HybridRuleOnboarding {
                     String catalog=r.getString("catalog_json");
                     return new View(id,r.getString("status"),r.getString("error_code"),JudgeJson.parse(r.getString("request_json")).path("request").asText(),
                             r.getObject("created_at",OffsetDateTime.class),r.getObject("deadline_at",OffsetDateTime.class),r.getString("version_id"),
-                            catalog==null?null:JudgeJson.parse(catalog).path("label").asText(),spent(id),checks);
+                            catalog==null?null:JudgeJson.parse(catalog).path("label").asText(),spent(id),checks,failedCheck(r.getString("answers_json")));
                 }).optional().orElseThrow(()->new AccountException(404,"규칙 등록 요청을 찾을 수 없어요."));
+    }
+    private static String failedCheck(String answers) {
+        if(answers==null)return null;var f=JudgeJson.parse(answers).path("failure");
+        return f.isMissingNode()?null:f.path("role").asText()+(f.has("test")?" · "+f.path("test").asText()+" "+f.path("testVerdict").asText():"");
     }
     private BigDecimal spent(UUID id) {
         return jdbc.sql("SELECT COALESCE(SUM(COALESCE(a.actual_usd,a.reserved_usd)),0) FROM hybrid_rule_onboarding_call c JOIN ai_attempt a ON a.id=c.attempt_id WHERE c.onboarding_id=?")
@@ -122,7 +126,8 @@ class HybridRuleOnboarding {
             +" reference: an efficient correct Java 8 public class Main solution. authorNotes: algorithm and correctness, complexity, edge cases."
             +" mutants: exactly two plausible wrong Java 8 solutions with different realistic mistakes; each must compile, terminate normally and print a well-formed answer, yet be wrong on at least one tiny input."
             +" tinyInputs: 8 to 24 distinct valid inputs from a small domain where exhaustive brute force is trivial, covering edge cases; describe that domain in oracleDomain.inputDomain and the brute-force method in oracleDomain.enumeration."
-            +" invalidInputs: 3 to 10 inputs violating the format or constraints. stressInputs: 1 to 3 valid literal inputs of at most 16384 bytes each that stress edge cases and value ranges."
+            +" Every tinyInput, stressInput and largeGenerator output must satisfy every constraint exactly, so the validator prints VALID for each; recheck counts, ranges and token layout against the contract."
+            +" invalidInputs: 3 to 10 inputs violating the format or constraints (an empty input is allowed). stressInputs: 1 to 3 valid literal inputs of at most 16384 bytes each that stress edge cases and value ranges."
             +" largeGenerator: Java 8 public class Main that reads a signed long seed and prints exactly ONE valid maximum-size input (at most 8 MB), deterministic for the seed, built with a StringBuilder or PrintWriter, that makes slowSolution exceed 5 seconds."
             +" slowSolution: a correct but asymptotically slower Java 8 public class Main (for example direct simulation) that is exact on tiny inputs but cannot finish largeGenerator inputs within 5 seconds."
             +" The validator and every solution must read large inputs quickly (BufferedInputStream or StreamTokenizer style parsing, not Scanner)."
@@ -233,11 +238,12 @@ class HybridRuleOnboarding {
             throw new HybridArtifacts.Invalid("INVALID_RULE_SOURCE");
         return n.asText();
     }
-    private static List<String> inputs(JsonNode n,int min,int max,int bytes,String code) {
+    private static List<String> inputs(JsonNode n,int min,int max,int bytes,String code){return inputs(n,min,max,bytes,code,false);}
+    private static List<String> inputs(JsonNode n,int min,int max,int bytes,String code,boolean blank) {
         if(!n.isArray()||n.size()<min||n.size()>max)throw new HybridArtifacts.Invalid(code);
         var out=new ArrayList<String>();var seen=new HashSet<String>();
         for(var v:n) {
-            if(!v.isTextual()||v.asText().isBlank()||v.asText().getBytes(StandardCharsets.UTF_8).length>bytes||!seen.add(v.asText()))throw new HybridArtifacts.Invalid(code);
+            if(!v.isTextual()||(!blank&&v.asText().isBlank())||v.asText().getBytes(StandardCharsets.UTF_8).length>bytes||!seen.add(v.asText()))throw new HybridArtifacts.Invalid(code);
             out.add(v.asText());
         }
         return out;
@@ -251,7 +257,7 @@ class HybridRuleOnboarding {
         if(a.path("mutants").size()!=2)throw new HybridArtifacts.Invalid("RULE_PACKAGE_MUTANTS");
         for(var m:a.path("mutants"))source(m.path("source"));
         inputs(a.path("tinyInputs"),HybridRulePackage.MIN_TINY,HybridRulePackage.MAX_TINY,1024,"RULE_TINY_INPUTS");
-        inputs(a.path("invalidInputs"),2,HybridRulePackage.MAX_INVALID,1024,"RULE_INVALID_INPUTS");
+        inputs(a.path("invalidInputs"),2,HybridRulePackage.MAX_INVALID,1024,"RULE_INVALID_INPUTS",true);
         inputs(a.path("stressInputs"),1,HybridRulePackage.MAX_STRESS,16384,"RULE_STRESS_INPUTS");
         // The same display/guidance limits the stored package enforces, checked before any Runner work.
         HybridRulePackage.metadata(a.path("catalog"),a.path("guidance"),a.path("oracleDomain").path("inputDomain"),a.path("oracleDomain").path("enumeration"));
@@ -352,7 +358,7 @@ class HybridRuleOnboarding {
                 if(r[4]==null||!JudgeJson.hash(r[4]).equals(r[5]))throw new IllegalArgumentException("RUNNER_REPORT_FENCE");
                 done.put(r[0],new Check(r[3],JudgeJson.parse(r[4])));
             }
-            var tiny=inputs(a.path("tinyInputs"),0,99,1<<20,"RULE_TINY_INPUTS");var invalid=inputs(a.path("invalidInputs"),0,99,1<<20,"RULE_INVALID_INPUTS");
+            var tiny=inputs(a.path("tinyInputs"),0,99,1<<20,"RULE_TINY_INPUTS");var invalid=inputs(a.path("invalidInputs"),0,99,1<<20,"RULE_INVALID_INPUTS",true);
             var stress=inputs(a.path("stressInputs"),0,99,1<<20,"RULE_STRESS_INPUTS");
             String validator=a.path("validator").asText(),reference=a.path("reference").asText(),generator=a.path("generator").asText();
             var mutants=List.of(a.path("mutants").get(0).path("source").asText(),a.path("mutants").get(1).path("source").asText());
@@ -434,13 +440,25 @@ class HybridRuleOnboarding {
                 for(var t:done.get(r).report().path("tests"))if(!t.path("wall_ms").canConvertToLong()||t.path("wall_ms").asLong()<0||t.path("wall_ms").asLong()>4000)throw new IllegalArgumentException("STRESS_RESOURCE_MARGIN");
             }
             activate(id,(UUID)o.get()[0],a,answers,witnesses,stressAnswers,seeds);
-        } catch(HybridArtifacts.Invalid|IllegalArgumentException|IllegalStateException failure) {
-            String code=failure.getMessage()!=null&&failure.getMessage().matches("[A-Z][A-Z0-9_]{0,79}")?failure.getMessage():"QUALIFICATION_FAILED";
+        } catch(HybridArtifacts.Invalid|IllegalArgumentException|IllegalStateException problem) {
+            String code=problem.getMessage()!=null&&problem.getMessage().matches("[A-Z][A-Z0-9_]{0,79}")?problem.getMessage():"QUALIFICATION_FAILED";
+            var detail=failure.get();failure.remove();
+            if(detail!=null) {
+                var saved=jdbc.sql("SELECT answers_json FROM hybrid_rule_onboarding WHERE id=?").param(id).query(String.class).optional().orElse(null);
+                var merged=saved==null?JudgeJson.JSON.createObjectNode():(ObjectNode)JudgeJson.parse(saved);merged.set("failure",detail);
+                jdbc.sql("UPDATE hybrid_rule_onboarding SET answers_json=? WHERE id=?").param(JudgeJson.canonical(merged)).param(id).update();
+            }
             stop(id,code.equals("DUPLICATE_RULE_CONTRACT")?"FAILED":"HELD",code);
         }
     }
-    private static void expect(Map<String,Check> done,String role,String verdict,String error) {
-        if(!verdict.equals(done.get(role).verdict()))throw new IllegalArgumentException(error.matches("[A-Z][A-Z0-9_]{0,79}")?error:"QUALIFICATION_FAILED");
+    /** Records which check and test failed, for diagnosis only; the held package is never repaired. */
+    private final ThreadLocal<ObjectNode> failure=new ThreadLocal<>();
+    private void expect(Map<String,Check> done,String role,String verdict,String error) {
+        var c=done.get(role);if(verdict.equals(c.verdict()))return;
+        var f=JudgeJson.JSON.createObjectNode().put("role",role).put("verdict",c.verdict());
+        for(var t:c.report().path("tests"))if(!t.path("verdict").asText().equals(verdict)){f.put("test",t.path("id").asText()).put("testVerdict",t.path("verdict").asText());break;}
+        failure.set(f);
+        throw new IllegalArgumentException(error.matches("[A-Z][A-Z0-9_]{0,79}")?error:"QUALIFICATION_FAILED");
     }
     private void activate(UUID id,UUID owner,JsonNode a,List<String> answers,List<Integer> witnesses,List<String> stressAnswers,List<String> seeds) {
         var p=JudgeJson.JSON.createObjectNode();p.set("contract",a.path("contract"));p.set("rules",a.path("rules"));p.set("catalog",a.path("catalog"));
