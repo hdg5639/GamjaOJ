@@ -39,6 +39,11 @@ class HybridAdmission {
         catch(AccountException unavailable){enabled=false;}
         return new Options(enabled,enabled?"검증을 통과한 문제만 게시합니다. 실패한 요청은 자동으로 다시 생성하지 않습니다.":"아직 이 계정에서는 실험 출제를 시작할 수 없어요. 기존 출제 방식은 계속 이용할 수 있습니다.",profiles());
     }
+    /** Whether this user may admit the given registered rule version now (flags, allowlist, registry). */
+    boolean available(String user,String versionId) {
+        var o=options(user);return o.enabled()&&o.profiles().stream().anyMatch(p->p.id().equals(versionId));
+    }
+    List<Profile> selectable(String user){var o=options(user);return o.enabled()?o.profiles():List.of();}
     static boolean active(JdbcClient jdbc,UUID owner) {
         return jdbc.sql("SELECT count(*) FROM hybrid_generation WHERE owner_id=? AND EXISTS (SELECT 1 FROM hybrid_api_reservation r WHERE r.generation_id=hybrid_generation.id) AND deadline_at>CURRENT_TIMESTAMP AND (status IN ('QUEUED','DESIGNING','BUILDING','VALIDATING','REVIEWING') OR (status='HELD' AND error_code IN ('VALIDATION_ADAPTER_NOT_CONNECTED','CONTENT_REVIEW_REQUIRED')))")
                 .param(owner).query(Integer.class).single()>0;

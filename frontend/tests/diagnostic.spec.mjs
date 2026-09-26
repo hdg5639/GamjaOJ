@@ -31,7 +31,7 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
       orderCalls++;const body=req.postDataJSON();expect(body.desired).toEqual(['round-2','plan']);
       plans=body.desired.map(id=>plans.find(p=>p.id===id));if(orderCalls===1)return route.abort();data=plans;
     }
-    if(path==='/api/diagnostic-plans/options')data={reviewHash:'a'.repeat(64),observation:evaluations[0].interpretation.observations[0],corrections:evaluations[0].corrections||[],problems:width===1440?[{version:'normal',title:'일반 문제',statement:'입력을 읽어 합계를 출력합니다.'}]:[]};
+    if(path==='/api/diagnostic-plans/options')data={reviewHash:'a'.repeat(64),observation:evaluations[0].interpretation.observations[0],corrections:evaluations[0].corrections||[],problems:width===1440?[{version:'normal',title:'일반 문제',statement:'입력을 읽어 합계를 출력합니다.'}]:[],rules:width===1440?[{id:'bfs-shortest-path-v1',label:'BFS · 무방향 그래프 최단 거리',description:'최소 이동 횟수',rules:['양방향'],verifiedReference:true}]:[]};
     if(path==='/api/diagnostic-plans'){
       if(req.method()==='POST'){
         planKeys.push(req.headers()['idempotency-key']);expect(req.postDataJSON().goal).toBe('설명에 맞게 입력 읽기');
@@ -41,7 +41,8 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
       }else data=plans;
     }
     if(path==='/api/diagnostic-plans/plan/generate'){
-      generationCalls++;plans=[{...plans[0],generationId:'generation',generationStatus:'PUBLISHED',generatedVersion:'normal'}];
+      generationCalls++;expect(req.postDataJSON()?.ruleVersionId).toBe(width===1440?'bfs-shortest-path-v1':undefined);
+      plans=[{...plans[0],generationId:'generation',generationStatus:'PUBLISHED',generatedVersion:'normal'}];
       if(generationCalls===1)return route.abort();data=plans[0];
     }
     if(path==='/api/diagnostic-plans/plan/next-round'){
@@ -147,8 +148,12 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
     await page.getByRole('button',{name:'같은 목표 저장 다시 확인'}).click();
     await page.getByLabel('직접 고를 연습 문제').selectOption('normal');
     await page.screenshot({path:`/tmp/gamja-diagnostic-plan-${width}.png`,fullPage:true});
-    await page.getByRole('button',{name:'이 목표로 맞춤 문제 생성 요청'}).click();
-    await page.getByRole('button',{name:'이 목표로 맞춤 문제 생성 요청'}).click();
+    const generateName=width===1440?'선택한 규칙으로 문제 생성':'이 목표로 맞춤 문제 생성 요청';
+    if(width===1440){await expect(page.getByRole('button',{name:generateName})).toBeDisabled();await page.getByLabel('검증된 규칙으로 바로 만들기').selectOption('bfs-shortest-path-v1');
+      await expect(page.getByText('검증된 정답 코드를 다시 사용합니다',{exact:false})).toBeVisible();}
+    else await expect(page.getByLabel('검증된 규칙으로 바로 만들기')).toHaveCount(0);
+    await page.getByRole('button',{name:generateName}).click();
+    await page.getByRole('button',{name:generateName}).click();
     await expect(page.getByRole('button',{name:'생성·검증 화면으로'})).toBeVisible();
     await page.getByRole('button',{name:'생성된 문제로 훈련 시작'}).click();
     expect(generationCalls).toBe(2);

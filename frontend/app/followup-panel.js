@@ -4,7 +4,7 @@ const labels={HELD:'문제 검토 중 · 확인 보류',READY_TO_PRACTICE:'다�
 export default function FollowupPanel({api,onOpen,onGeneration,locked}) {
   const [items,setItems]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState('');
   async function refresh(){setItems(await api('/api/practice-followups'));}
-  const waiting=items.some(item=>['ACTIVE','WAITING_JUDGE'].includes(item.status)||['QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING','BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING'].includes(item.generationStatus));
+  const waiting=items.some(item=>['ACTIVE','WAITING_JUDGE'].includes(item.status)||['QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING','DESIGNING','BUILDING','REVIEWING','BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING'].includes(item.generationStatus));
   useEffect(()=>{let stopped=false;
     async function load(){try{const value=await api('/api/practice-followups');if(!stopped)setItems(value);}catch(e){if(!stopped)setError(e.message);}}
     load();window.addEventListener('focus',load);window.addEventListener('gamjaoj-training-changed',load);window.addEventListener('gamjaoj-followup-created',load);

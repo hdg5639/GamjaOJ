@@ -12,7 +12,8 @@ class DiagnosticPlanController {
     DiagnosticPlanController(DiagnosticPlans plans){this.plans=plans;}
     record Confirm(@NotNull UUID evaluationId,@NotNull @Min(0) Integer observationIndex,@NotBlank @Size(min=64,max=64) String reviewHash,@NotBlank @Size(max=120) String goal) {}
     record Reflection(@NotNull Boolean usedHelp) {}
-    @PostMapping("/{id}/generate") DiagnosticPlans.Plan generate(Principal user,@PathVariable UUID id){return plans.generate(user.getName(),id);}
+    record Generate(@Size(max=80) String ruleVersionId) {}
+    @PostMapping("/{id}/generate") DiagnosticPlans.Plan generate(Principal user,@PathVariable UUID id,@Valid @RequestBody(required=false) Generate body){return plans.generate(user.getName(),id,body==null?null:body.ruleVersionId());}
     @PostMapping("/{id}/reflect") DiagnosticPlans.Plan reflect(Principal user,@PathVariable UUID id,@Valid @RequestBody Reflection body){return plans.reflect(user.getName(),id,body.usedHelp());}
     record NextRound(@NotBlank @Size(min=64,max=64) String reviewHash) {}
     @PostMapping("/{id}/next-round") DiagnosticPlans.Plan nextRound(Principal user,@PathVariable UUID id,@Valid @RequestBody NextRound body){return plans.nextRound(user.getName(),id,body.reviewHash());}

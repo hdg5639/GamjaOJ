@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:hybridadmission;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.username=sa","spring.datasource.password=","gamjaoj.invite-code=test",
+        "spring.datasource.username=sa","spring.datasource.password=","gamjaoj.invite-code=test","gamjaoj.submissions-enabled=true",
         "HYBRID_CONTENT_REVIEW_ENABLED=true","HYBRID_VALIDATION_PROFILE=hybrid-zero-one-items-v3",
         "AI_HYBRID_REVIEW_MODEL=fixture-review","AI_HYBRID_REVIEW_REASONING=low",
         "AI_HYBRID_REVIEW_INPUT_USD_PER_M=1","AI_HYBRID_REVIEW_CACHED_USD_PER_M=0.1",
@@ -42,6 +42,7 @@ class HybridAdmissionIntegrationTest {
     @Autowired HybridPublication publication;@Autowired HybridRunnerChecks checks;@Autowired JudgeQueue queue;
     @Autowired JdbcClient jdbc;@Autowired ConfigurableEnvironment env;@Autowired MockMvc mvc;
     @Autowired GenerationJobs legacy;@Autowired GenerationSpecDrafts drafts;@Autowired HybridRuleRegistry registry;
+    @Autowired PracticeFollowups followups;@Autowired Submissions submissions;
     @MockitoBean HybridApiWorker worker;@MockitoBean HybridApiProvider provider;
     final HybridGenerationIntegrationTest f=new HybridGenerationIntegrationTest();
     final HybridRunnerIntegrationTest runner=new HybridRunnerIntegrationTest();
@@ -49,6 +50,8 @@ class HybridAdmissionIntegrationTest {
     static final String BODY="{\"profileId\":\"zero-one-items-v1\",\"shared\":false,\"publishOnSuccess\":true}";
     @BeforeEach void setup(){
         env.getPropertySources().addFirst(new MapPropertySource("admission-test",overrides));
+        jdbc.sql("DELETE FROM practice_followup").update();jdbc.sql("DELETE FROM ai_task").update();
+        jdbc.sql("DELETE FROM judge_job WHERE submission_id IN (SELECT id FROM submission WHERE hybrid_branch_id IS NULL)").update();
         runner.jdbc=jdbc;runner.checks=checks;runner.hybrid=jobs;runner.queue=queue;runner.env=env;runner.setup();
         jdbc.sql("DELETE FROM ai_attempt").update();jdbc.sql("DELETE FROM ai_task").update();
         jdbc.sql("UPDATE hybrid_rule_version SET status='ACTIVE',status_reason=NULL").update();registry.sync();
@@ -189,6 +192,27 @@ class HybridAdmissionIntegrationTest {
         UUID next=UUID.randomUUID();mvc.perform(postRequest(next,BODY.replace(HybridAdmission.PROFILE,profile.id()))).andExpect(jsonPath("$.referenceReused").value(false))
                 .andExpect(jsonPath("$.branches.CORE").value("QUEUED"));
         assertThat(execution.claimCodex().spec().path("role").asText()).isEqualTo("CORE");
+    }
+    @Test void ruleFollowupGeneratesFromRegisteredRuleWithoutCodexOrFreeFormDraft() throws Exception {
+        var profile=HybridProfiles.byId("bfs-shortest-path-v1");
+        String source=finish(admitAndAuthor(profile.id()),profile);
+        overrides.put("HYBRID_REFERENCE_REUSE_ENABLED","true");
+        UUID owner=submissions.owner("owner",false);
+        var submitted=submissions.submit("owner",UUID.randomUUID(),new SubmissionController.Request(source,"class Main {}"));
+        jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='WA',result_json='{}',result_sha256=?,finished_at=CURRENT_TIMESTAMP WHERE submission_id=?").param(JudgeJson.hash("{}")).param(submitted.id()).update();
+        UUID analysis=UUID.randomUUID();
+        jdbc.sql("INSERT INTO ai_task(id,user_id,submission_id,kind,cache_key,settings_json,input_json,status,result_json) VALUES (?,?,?,'ANALYSIS',?,'{}','{}','COMPLETED',?)")
+                .param(analysis).param(owner).param(submitted.id()).param(JudgeJson.hash(analysis.toString())).param(AiIntegrationTest.feedback().toString()).update();
+        var options=followups.options("owner",analysis);
+        assertThat(options.focuses()).extracting(PracticeFollowups.Focus::id).containsExactly("same-rules");assertThat(options.type()).contains("BFS");
+        var goal=followups.confirm("owner",analysis,0,"same-rules");assertThat(goal.candidates()).isEmpty();
+        var requested=followups.generate("owner",goal.id());
+        assertThat(requested.generationStatus()).isEqualTo("BUILDING");assertThat(followups.generate("owner",goal.id()).generationStatus()).isEqualTo("BUILDING");
+        assertThat(jobs.view("owner",goal.id()).referenceReused()).isTrue();assertThat(execution.claimCodex()).isNull();
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isZero();
+        String derived=finish(goal.id(),profile);
+        assertThat(followups.detail("owner",goal.id()).generationStatus()).isEqualTo("PUBLISHED");
+        assertThat(followups.detail("owner",goal.id()).candidates()).extracting(PracticeFollowups.Candidate::version).containsExactly(derived);
     }
     @Test void readEndpointsNeverDispatchAndLegacyModesCannotCreateAlongsideAdmittedWork() throws Exception {
         for(int i=0;i<3;i++){mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(status().isOk());mvc.perform(get("/api/generation/hybrid").with(user("owner"))).andExpect(status().isOk());}
