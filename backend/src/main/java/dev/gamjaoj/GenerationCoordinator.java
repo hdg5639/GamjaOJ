@@ -4,7 +4,9 @@ import org.springframework.stereotype.Component;
 @Component
 class GenerationCoordinator {
     private final GenerationJobs jobs;
-    GenerationCoordinator(GenerationJobs jobs) { this.jobs=jobs; }
+    private final HybridGeneration hybrid;
+    private final HybridRunnerChecks checks;private final HybridPublication publication;
+    GenerationCoordinator(GenerationJobs jobs,HybridGeneration hybrid,HybridRunnerChecks checks,HybridPublication publication) { this.jobs=jobs;this.hybrid=hybrid;this.checks=checks;this.publication=publication; }
     @Scheduled(fixedDelayString="${AI_POLL_MS:5000}",initialDelayString="${AI_POLL_MS:5000}")
-    void tick() { jobs.advance(); }
+    void tick() { hybrid.expirePending();checks.advance();publication.advance();jobs.advance(); }
 }

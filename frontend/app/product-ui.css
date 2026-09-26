@@ -333,3 +333,17 @@ input,select,textarea { border-color:#ccd9d3; }
  .signed-in .app-main .workspace[data-sidebar-collapsed="false"] .sidebar-heading .nav-section-label { display:block; }
  .sidebar-heading { margin-bottom:4px; }
 }
+
+/* Fixed-contract generation keeps scope and consent next to durable progress. */
+.hybrid-scope { margin: 1.25rem 0; padding-block: 1rem; border-block: 1px solid var(--line); }
+.hybrid-scope h4 { margin: 0 0 .65rem; font-size: 1rem; }
+.hybrid-scope ul { padding-left: 1.25rem; line-height: 1.7; }
+.hybrid-scope li + li { margin-top: .35rem; }
+.hybrid-consent { border: 0; padding: 0; margin: .5rem 0; min-width: 0; }
+.hybrid-consent legend { font-weight: 650; margin-bottom: .75rem; }
+.hybrid-consent .check-row { align-items: flex-start; }
+.hybrid-consent input { flex: 0 0 auto; margin-top: .2rem; }
+.hybrid-stages { list-style: none; padding: 0; margin: .75rem 0 1rem; }
+.hybrid-stages li { display: flex; justify-content: space-between; gap: 1rem; padding: .45rem 0; border-bottom: 1px solid var(--line); }
+.hybrid-stages strong { font-size: .85rem; white-space: nowrap; }
+.hybrid-generation .notice button { margin-top: .5rem; }

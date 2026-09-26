@@ -140,7 +140,7 @@ public class AiTasks {
             jdbc.sql("UPDATE ai_task SET status='UNKNOWN',error_code='INTERRUPTED_USAGE_UNKNOWN' WHERE id=? AND status='RUNNING'").param(row[1]).update();
         }
         if (!config.enabled() || config.key().isBlank()) return null;
-        if (jdbc.sql("SELECT count(*) FROM ai_attempt WHERE status='RUNNING'").query(Integer.class).single()>0) return null;
+        if (jdbc.sql("SELECT count(*) FROM ai_attempt WHERE status IN ('RUNNING','HYBRID_RUNNING')").query(Integer.class).single()>0) return null;
         var next=jdbc.sql("SELECT id,settings_json,input_json FROM ai_task WHERE status IN ('QUEUED','HELD_DISABLED','HELD_BUDGET') AND NOT EXISTS (SELECT 1 FROM submission s JOIN problem_version p ON p.id=s.problem_version WHERE s.id=ai_task.submission_id AND p.review_hold=true) AND NOT EXISTS (SELECT 1 FROM generation_job g WHERE g.theme_task_id=ai_task.id AND g.error_code='STRUCTURE_EVIDENCE_REVOKED') AND NOT EXISTS (SELECT 1 FROM diagnostic_evaluation e JOIN diagnostic_session d ON d.id=e.session_id WHERE e.ai_task_id=ai_task.id AND e.exposure_revision<>d.exposure_revision) AND (diagnostic_session_id IS NULL OR (NOT EXISTS (SELECT 1 FROM diagnostic_session d WHERE d.user_id=ai_task.user_id AND d.status<>'COMPLETED') AND NOT EXISTS (SELECT 1 FROM diagnostic_item i JOIN problem_version p ON p.id=i.problem_version WHERE i.session_id=ai_task.diagnostic_session_id AND p.review_hold=true))) ORDER BY created_at,id LIMIT 1 FOR UPDATE")
                 .query((r,n)->new Object[]{r.getObject("id",UUID.class),settings(r.getString("settings_json")),r.getString("input_json")}).optional();
         if (next.isEmpty()) return null;

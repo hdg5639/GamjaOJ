@@ -48,6 +48,7 @@ public class GenerationJobs {
                 throw new AccountException(409,"같은 요청 키의 연습 조건이 달라요. 기존 생성 기록을 확인해 주세요.");
             return saved;
         }
+        if(HybridAdmission.active(jdbc,owner))throw new AccountException(409,"진행 중인 규칙 고정 출제를 먼저 마쳐 주세요.");
         if(drafts.active(owner))throw new AccountException(409,"진행 중인 출제 초안을 먼저 마쳐 주세요.");
         if(jdbc.sql("SELECT count(*) FROM generation_job WHERE owner_id=? AND status IN ('QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING')").param(owner).query(Integer.class).single()>0)
             throw new AccountException(409,"진행 중인 생성 작업을 먼저 마쳐 주세요.");

@@ -35,6 +35,21 @@ class OpenAiResponsesTest {
         return new OpenAiResponses("test-secret", URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/responses"));
     }
     @AfterEach void stop() { if (server != null) server.stop(0); }
+    @Test void remainingDeadlineTimesOutWithoutRetryOrInventedUsage() throws Exception {
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/responses",exchange->{
+            calls.incrementAndGet();
+            try {Thread.sleep(300);} catch(InterruptedException e){Thread.currentThread().interrupt();}
+            exchange.close();
+        });
+        server.start();
+        var api=new OpenAiResponses("fixture",URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/responses"));
+        assertThatThrownBy(()->api.generate("fixture","low","instructions","input","artifact",JSON.createObjectNode(),32,java.time.Duration.ofMillis(50)))
+                .isInstanceOfSatisfying(OpenAiResponses.Failure.class,e->{
+                    assertThat(e.code()).isEqualTo("TRANSPORT_USAGE_UNKNOWN");assertThat(e.usage()).isNull();
+                });
+        assertThat(calls.get()).isLessThanOrEqualTo(1);
+    }
     OpenAiResponses.Result generate(OpenAiResponses api) throws Exception {
         return api.generate("configured-model", "Return a structured artifact", "test input", "artifact",
                 JSON.readTree("{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"}},\"required\":[\"title\"],\"additionalProperties\":false}"), 1024);

@@ -51,7 +51,14 @@ chmod 600 worker.env
 export GENERATION_IMAGE="gamjaoj-generation:$release"
 docker build --network none -f "releases/$release/deploy/generation.Dockerfile" -t "$GENERATION_IMAGE" "releases/$release"
 cp "releases/$release/deploy/generation-compose.yaml" compose.yaml
-printf 'GENERATION_IMAGE=%s\n' "$GENERATION_IMAGE" > .env
+python3 - "$GENERATION_IMAGE" <<'PYENV'
+from pathlib import Path
+import sys
+path=Path('.env')
+old=path.read_text().splitlines() if path.exists() else []
+kept=[line for line in old if not line.startswith('GENERATION_IMAGE=')]
+path.write_text('\n'.join(kept+['GENERATION_IMAGE='+sys.argv[1]])+'\n')
+PYENV
 docker compose -f compose.yaml run --rm --no-deps --entrypoint /usr/local/bin/codex worker --version </dev/null
 docker compose -f compose.yaml up -d
 ln -s "releases/$release" "current-$release"

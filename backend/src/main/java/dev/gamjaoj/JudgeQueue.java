@@ -13,7 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class JudgeQueue {
     private final JdbcClient jdbc;
-    public JudgeQueue(JdbcClient jdbc) { this.jdbc = jdbc; }
+    private final org.springframework.context.ApplicationEventPublisher events;
+    public JudgeQueue(JdbcClient jdbc,org.springframework.context.ApplicationEventPublisher events) { this.jdbc = jdbc;this.events=events; }
     record Job(UUID submissionId, String status, int attempt, UUID token, UUID workerId,
                OffsetDateTime leaseUntil, String verdict, String resultJson, String resultSha256, String executionMode) {}
     public record Assignment(UUID submissionId, int attempt, UUID token, String source,
@@ -43,7 +44,7 @@ public class JudgeQueue {
         var resumed = jdbc.sql("SELECT submission_id FROM judge_job WHERE status='RUNNING' AND worker_id=? AND lease_until>? ORDER BY created_at LIMIT 1")
                 .param(worker).param(now).query(UUID.class).optional();
         if (resumed.isPresent()) return Optional.of(assignment(job(resumed.get())));
-        var next = jdbc.sql("SELECT submission_id FROM judge_job WHERE status='QUEUED' OR (status='RUNNING' AND lease_until<=? AND attempt<3) ORDER BY priority,created_at,submission_id LIMIT 1 FOR UPDATE SKIP LOCKED")
+        var next = jdbc.sql("SELECT submission_id FROM judge_job WHERE (status='QUEUED' OR (status='RUNNING' AND lease_until<=? AND attempt<3)) AND EXISTS (SELECT 1 FROM submission s WHERE s.id=judge_job.submission_id AND (s.hybrid_branch_id IS NULL OR EXISTS (SELECT 1 FROM hybrid_branch b JOIN hybrid_generation g ON g.id=b.generation_id WHERE b.id=s.hybrid_branch_id AND b.status='RUNNING' AND b.revision=g.revision AND g.status='VALIDATING' AND g.deadline_at>CURRENT_TIMESTAMP))) ORDER BY priority,created_at,submission_id LIMIT 1 FOR UPDATE SKIP LOCKED")
                 .param(now).query(UUID.class).optional();
         if (next.isEmpty()) return Optional.empty();
         Job old = job(next.get());
@@ -96,6 +97,8 @@ public class JudgeQueue {
                 .param(report.path("verdict").asText()).param(json).param(hash).param(now).param(id).update();
         jdbc.sql("UPDATE judge_attempt SET status='COMPLETED',result_json=?,finished_at=? WHERE submission_id=? AND token=?")
                 .param(json).param(now).param(id).param(token).update();
+        if(jdbc.sql("SELECT count(*) FROM submission WHERE id=? AND hybrid_branch_id IS NOT NULL").param(id).query(Integer.class).single()>0)
+            events.publishEvent(new HybridExecution.Wakeup());
     }
 
     private void validate(Assignment expected, JsonNode report) {

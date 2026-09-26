@@ -34,7 +34,7 @@ public class Submissions {
         UUID owner = owner(username, false);
         boolean canSubmit = enabled || jdbc.sql("SELECT count(*) FROM execution_grant WHERE user_id = ?")
                 .param(owner).query(Integer.class).single() > 0;
-        return jdbc.sql("SELECT p.*,g.template_id,g.focus,d.spec_json,COALESCE(progress.submissions,0) AS my_submissions,COALESCE(progress.accepted,0) AS my_accepted,COALESCE(progress.pending,0) AS my_pending FROM problem_version p LEFT JOIN (SELECT s.problem_version,COUNT(*) AS submissions,SUM(CASE WHEN j.status='FINISHED' AND j.verdict='AC' THEN 1 ELSE 0 END) AS accepted,SUM(CASE WHEN j.status<>'FINISHED' THEN 1 ELSE 0 END) AS pending FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.user_id=? AND s.run_input IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.diagnostic_item_id IS NULL GROUP BY s.problem_version) progress ON progress.problem_version=p.id LEFT JOIN generation_job g ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) LEFT JOIN generation_spec_draft d ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE p.ready=true AND p.diagnostic_only=false AND (p.owner_id IS NULL OR p.owner_id=? OR (p.shared=true AND p.review_hold=false)) ORDER BY p.id").param(owner).param(owner)
+        return jdbc.sql("SELECT p.*,g.template_id,g.focus,d.spec_json,COALESCE(progress.submissions,0) AS my_submissions,COALESCE(progress.accepted,0) AS my_accepted,COALESCE(progress.pending,0) AS my_pending FROM problem_version p LEFT JOIN (SELECT s.problem_version,COUNT(*) AS submissions,SUM(CASE WHEN j.status='FINISHED' AND j.verdict='AC' THEN 1 ELSE 0 END) AS accepted,SUM(CASE WHEN j.status<>'FINISHED' THEN 1 ELSE 0 END) AS pending FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.user_id=? AND s.run_input IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL AND s.diagnostic_item_id IS NULL GROUP BY s.problem_version) progress ON progress.problem_version=p.id LEFT JOIN generation_job g ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) LEFT JOIN generation_spec_draft d ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE p.ready=true AND p.diagnostic_only=false AND (p.owner_id IS NULL OR p.owner_id=? OR (p.shared=true AND p.review_hold=false)) ORDER BY p.id").param(owner).param(owner)
                 .query((row, index) -> {
                     JsonNode data = JudgeJson.parse(row.getString("package_json"));
                     var metadata=ProblemCatalogMetadata.read(row);
@@ -80,7 +80,7 @@ public class Submissions {
         if (jdbc.sql("SELECT count(*) FROM problem_version WHERE id = ? AND ready = true AND review_hold=false AND (owner_id IS NULL OR owner_id=? OR shared=true)")
                 .param(request.problemVersion()).param(user).query(Integer.class).single() == 0)
             throw new AccountException(404, "제출할 수 있는 문제 버전이 아니에요.");
-        if (jdbc.sql("SELECT count(*) FROM submission s JOIN judge_job j ON s.id=j.submission_id WHERE s.user_id=? AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND j.status <> 'FINISHED'")
+        if (jdbc.sql("SELECT count(*) FROM submission s JOIN judge_job j ON s.id=j.submission_id WHERE s.user_id=? AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL AND j.status <> 'FINISHED'")
                 .param(user).query(Integer.class).single() >= 3)
             throw new AccountException(429, "진행 중인 채점이 끝나면 다시 제출해 주세요.");
         boolean diagnosticProblem=jdbc.sql("SELECT diagnostic_only FROM problem_version WHERE id=?").param(request.problemVersion()).query(Boolean.class).single();
@@ -121,7 +121,7 @@ public class Submissions {
         if(page<0||page>100000)throw new AccountException(400,"잘못된 페이지예요.");
         UUID user=owner(username,false);
         String filter=problemVersion==null?"":" AND problem_version=?";
-        var query=jdbc.sql("SELECT id FROM submission WHERE generation_job_id IS NULL AND spec_draft_id IS NULL AND user_id=? AND run_input IS NULL"+filter+" ORDER BY created_at DESC,id DESC LIMIT 50 OFFSET ?").param(user);
+        var query=jdbc.sql("SELECT id FROM submission WHERE generation_job_id IS NULL AND spec_draft_id IS NULL AND hybrid_branch_id IS NULL AND user_id=? AND run_input IS NULL"+filter+" ORDER BY created_at DESC,id DESC LIMIT 50 OFFSET ?").param(user);
         if(problemVersion!=null)query=query.param(problemVersion);
         return query.param(page*50).query(UUID.class).list().stream().map(id->find(user,id,false)).toList();
     }
@@ -134,7 +134,7 @@ public class Submissions {
         return view;
     }
     private View find(UUID user, UUID id, boolean includeSource) {
-        return jdbc.sql("SELECT s.*,p.review_hold,j.status,j.verdict,j.result_json,j.finished_at FROM submission s JOIN problem_version p ON p.id=s.problem_version JOIN judge_job j ON s.id=j.submission_id WHERE s.id=? AND s.user_id=? AND s.spec_draft_id IS NULL")
+        return jdbc.sql("SELECT s.*,p.review_hold,j.status,j.verdict,j.result_json,j.finished_at FROM submission s JOIN problem_version p ON p.id=s.problem_version JOIN judge_job j ON s.id=j.submission_id WHERE s.id=? AND s.user_id=? AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL")
                 .param(id).param(user).query((row, index) -> {
                     String verdict = row.getString("verdict"), result = row.getString("result_json");
                     String compile = "CE".equals(verdict) && result != null
