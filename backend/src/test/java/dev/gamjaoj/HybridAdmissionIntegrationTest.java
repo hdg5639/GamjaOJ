@@ -41,7 +41,7 @@ class HybridAdmissionIntegrationTest {
     @Autowired HybridAdmission admission;@Autowired HybridExecution execution;@Autowired HybridGeneration jobs;
     @Autowired HybridPublication publication;@Autowired HybridRunnerChecks checks;@Autowired JudgeQueue queue;
     @Autowired JdbcClient jdbc;@Autowired ConfigurableEnvironment env;@Autowired MockMvc mvc;
-    @Autowired GenerationJobs legacy;@Autowired GenerationSpecDrafts drafts;
+    @Autowired GenerationJobs legacy;@Autowired GenerationSpecDrafts drafts;@Autowired HybridRuleRegistry registry;
     @MockitoBean HybridApiWorker worker;@MockitoBean HybridApiProvider provider;
     final HybridGenerationIntegrationTest f=new HybridGenerationIntegrationTest();
     final HybridRunnerIntegrationTest runner=new HybridRunnerIntegrationTest();
@@ -51,6 +51,7 @@ class HybridAdmissionIntegrationTest {
         env.getPropertySources().addFirst(new MapPropertySource("admission-test",overrides));
         runner.jdbc=jdbc;runner.checks=checks;runner.hybrid=jobs;runner.queue=queue;runner.env=env;runner.setup();
         jdbc.sql("DELETE FROM ai_attempt").update();jdbc.sql("DELETE FROM ai_task").update();
+        jdbc.sql("UPDATE hybrid_rule_version SET status='ACTIVE',status_reason=NULL").update();registry.sync();
         jdbc.sql("INSERT INTO app_user(id,username,password_hash,nickname) VALUES (?,'other','unused','other')").param(UUID.randomUUID()).update();
     }
     @AfterEach void reset(){env.getPropertySources().remove("admission-test");verifyNoInteractions(provider);}
@@ -87,18 +88,9 @@ class HybridAdmissionIntegrationTest {
         var core=execution.claimCodex();assertThat(core.spec().path("role").asText()).isEqualTo("CORE");
         assertThat(core.spec().path("input").path("contract")).isEqualTo(HybridFiniteProfile.contract());
     }
-    @ParameterizedTest @org.junit.jupiter.params.provider.CsvSource({"false,zero-one-items-v1","true,zero-one-items-v1","true,bfs-shortest-path-v1","true,dijkstra-shortest-path-v1"}) void publicRequestRunsToPublishedProblemWithPinnedProfileAndPrivateReader(boolean functional,String profileId) throws Exception {
-        var profile=HybridProfiles.byId(profileId);boolean bfs=profile.bfs(),weighted=profile.weighted();
-        overrides.put("HYBRID_FUNCTIONAL_ENABLED",Boolean.toString(functional));
-        UUID id=UUID.randomUUID();mvc.perform(postRequest(id,BODY.replace(HybridAdmission.PROFILE,profileId))).andExpect(status().isOk());
-        assertThat(jobs.view("owner",id).profileId()).isEqualTo(profileId);
-        var core=execution.claimCodex();var reduced=f.core();reduced.remove(List.of("generator","inputValidator"));
-        assertThat(core.outputSchema().path("properties").has("generator")).isFalse();
-        assertThat(core.spec().path("input").has("serverSupport")).isFalse();
-        var completion=f.result(JudgeJson.JSON.convertValue(core.spec().path("assignment"),HybridGeneration.Assignment.class),reduced);
-        execution.completeCodex(completion);execution.completeCodex(completion);
-        var saved=JudgeJson.parse(jdbc.sql("SELECT a.payload_json FROM hybrid_artifact a JOIN hybrid_branch b ON b.id=a.branch_id WHERE b.generation_id=? AND b.role='CORE'").param(id).query(String.class).single());
-        assertThat(saved.path("generator")).isEqualTo(core.spec().path("assignment").path("input").path("serverSupport").path("generator"));
+    /** Drives writer, reader, all Runner checks and final review to publication; returns the version. */
+    String finish(UUID id,HybridProfiles.Definition profile) {
+        boolean bfs=profile.bfs(),weighted=profile.weighted();
         var writer=execution.claimApi();var prose=weighted?HybridDijkstraProfileTest.prose():bfs?HybridBfsProfileTest.prose():f.presentation();prose.remove(List.of("semantics","ruleExplanations"));
         assertThat(writer.request().schema().path("properties").has("ruleExplanations")).isFalse();
         execution.finish(writer.attemptId(),result(prose),null);execution.finish(writer.attemptId(),result(prose),null);
@@ -114,12 +106,89 @@ class HybridAdmissionIntegrationTest {
         }
         checks.advance();publication.advance();var work=execution.claimApi();assertThat(work).isNotNull();
         var accepted=new HybridPublicationIntegrationTest().accepted(work);execution.finish(work.attemptId(),result(accepted),null);
-        String version=jobs.view("owner",id).publishedVersionId();assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");assertThat(runner.jobs()).isEqualTo(15);
+        assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");
+        overrides.remove("HYBRID_VALIDATION_PROFILE");overrides.remove("HYBRID_PUBLIC_ADMISSION_ENABLED");
+        return jobs.view("owner",id).publishedVersionId();
+    }
+    @ParameterizedTest @org.junit.jupiter.params.provider.CsvSource({"false,zero-one-items-v1","true,zero-one-items-v1","true,bfs-shortest-path-v1","true,dijkstra-shortest-path-v1"}) void publicRequestRunsToPublishedProblemWithPinnedProfileAndPrivateReader(boolean functional,String profileId) throws Exception {
+        var profile=HybridProfiles.byId(profileId);boolean bfs=profile.bfs(),weighted=profile.weighted();
+        overrides.put("HYBRID_FUNCTIONAL_ENABLED",Boolean.toString(functional));
+        UUID id=UUID.randomUUID();mvc.perform(postRequest(id,BODY.replace(HybridAdmission.PROFILE,profileId))).andExpect(status().isOk());
+        assertThat(jobs.view("owner",id).profileId()).isEqualTo(profileId);
+        var core=execution.claimCodex();var reduced=f.core();reduced.remove(List.of("generator","inputValidator"));
+        assertThat(core.outputSchema().path("properties").has("generator")).isFalse();
+        assertThat(core.spec().path("input").has("serverSupport")).isFalse();
+        var completion=f.result(JudgeJson.JSON.convertValue(core.spec().path("assignment"),HybridGeneration.Assignment.class),reduced);
+        execution.completeCodex(completion);execution.completeCodex(completion);
+        var saved=JudgeJson.parse(jdbc.sql("SELECT a.payload_json FROM hybrid_artifact a JOIN hybrid_branch b ON b.id=a.branch_id WHERE b.generation_id=? AND b.role='CORE'").param(id).query(String.class).single());
+        assertThat(saved.path("generator")).isEqualTo(core.spec().path("assignment").path("input").path("serverSupport").path("generator"));
+        String version=finish(id,profile);assertThat(runner.jobs()).isEqualTo(15);
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_artifact WHERE rule_version_id=? AND status='QUALIFIED' AND source_version_id=?").param(profileId).param(version).query(Integer.class).single()).isEqualTo(1);
         mvc.perform(get("/api/generation/hybrid/"+id).with(user("owner"))).andExpect(jsonPath("$.publishedVersionId").value(version));
         String own=mvc.perform(get("/api/problems").with(user("owner"))).andReturn().getResponse().getContentAsString();assertThat(own).contains(version).contains(profile.category()).contains(profile.tags().split(",")[0]);
         String others=mvc.perform(get("/api/problems").with(user("other"))).andReturn().getResponse().getContentAsString();assertThat(others).doesNotContain(version);
         jdbc.sql("UPDATE problem_version SET review_hold=true WHERE id=?").param(version).update();
         mvc.perform(get("/api/generation/hybrid").with(user("owner"))).andExpect(jsonPath("$[0].problemHeld").value(true));
+    }
+    UUID admitAndAuthor(String profileId) throws Exception {
+        UUID id=UUID.randomUUID();mvc.perform(postRequest(id,BODY.replace(HybridAdmission.PROFILE,profileId))).andExpect(status().isOk());
+        var core=execution.claimCodex();var reduced=f.core();reduced.remove(List.of("generator","inputValidator"));
+        execution.completeCodex(f.result(JudgeJson.JSON.convertValue(core.spec().path("assignment"),HybridGeneration.Assignment.class),reduced));
+        return id;
+    }
+    @Test void registryCatalogIsDataBackedAndRetiredOrDriftedVersionsAreNotSelectable() throws Exception {
+        mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(jsonPath("$.profiles.length()").value(3))
+                .andExpect(jsonPath("$.profiles[0].id").value("zero-one-items-v1")).andExpect(jsonPath("$.profiles[2].label").value("다익스트라 · 가중치 최단 거리"))
+                .andExpect(jsonPath("$.profiles[2].verifiedReference").value(false));
+        assertThat(jdbc.sql("SELECT profile_sha256 FROM hybrid_rule_version WHERE id='bfs-shortest-path-v1'").query(String.class).single()).isEqualTo(HybridBfsProfile.hash());
+        jdbc.sql("UPDATE hybrid_rule_version SET status='RETIRED' WHERE id='bfs-shortest-path-v1'").update();
+        mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(jsonPath("$.profiles.length()").value(2));
+        mvc.perform(postRequest(UUID.randomUUID(),BODY.replace(HybridAdmission.PROFILE,"bfs-shortest-path-v1"))).andExpect(status().isBadRequest());
+        jdbc.sql("UPDATE hybrid_rule_version SET profile_sha256=? WHERE id='dijkstra-shortest-path-v1'").param("0".repeat(64)).update();registry.sync();
+        assertThat(jdbc.sql("SELECT status FROM hybrid_rule_version WHERE id='dijkstra-shortest-path-v1'").query(String.class).single()).isEqualTo("QUARANTINED");
+        mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(jsonPath("$.profiles.length()").value(1));
+        mvc.perform(postRequest(UUID.randomUUID(),BODY.replace(HybridAdmission.PROFILE,"dijkstra-shortest-path-v1"))).andExpect(status().isBadRequest());
+        assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt").query(Integer.class).single()).isZero();
+        jdbc.sql("UPDATE hybrid_rule_version SET profile_sha256=?,status='ACTIVE' WHERE id='dijkstra-shortest-path-v1'").param(HybridDijkstraProfile.hash()).update();
+    }
+    @Test void verifiedReferenceIsReusedWithoutCodexAndEveryGateStillRuns() throws Exception {
+        var profile=HybridProfiles.byId("bfs-shortest-path-v1");
+        String source=finish(admitAndAuthor(profile.id()),profile);
+        overrides.put("HYBRID_REFERENCE_REUSE_ENABLED","true");
+        mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(jsonPath("$.profiles[1].verifiedReference").value(true))
+                .andExpect(jsonPath("$.profiles[0].verifiedReference").value(false));
+        UUID id=UUID.randomUUID();
+        mvc.perform(postRequest(id,BODY.replace(HybridAdmission.PROFILE,profile.id()))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.branches.CORE").value("SUCCEEDED")).andExpect(jsonPath("$.referenceReused").value(true));
+        assertThat(execution.claimCodex()).isNull();
+        var usage=JudgeJson.parse(jdbc.sql("SELECT completion_json FROM hybrid_branch WHERE generation_id=? AND role='CORE'").param(id).query(String.class).single()).path("usage");
+        assertThat(usage.path("executor").asText()).isEqualTo("REGISTRY_ARTIFACT_V1");
+        String derived=finish(id,profile);assertThat(runner.jobs()).isEqualTo(30);assertThat(derived).isNotEqualTo(source);
+        // A derived instance does not re-qualify the same implementation.
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_artifact").query(Integer.class).single()).isEqualTo(1);
+    }
+    @Test void heldSourceStopsReuseAndRevocationBeforePublicationHolds() throws Exception {
+        var profile=HybridProfiles.byId("dijkstra-shortest-path-v1");
+        String source=finish(admitAndAuthor(profile.id()),profile);
+        overrides.put("HYBRID_REFERENCE_REUSE_ENABLED","true");
+        UUID id=UUID.randomUUID();mvc.perform(postRequest(id,BODY.replace(HybridAdmission.PROFILE,profile.id()))).andExpect(jsonPath("$.referenceReused").value(true));
+        jdbc.sql("UPDATE problem_version SET review_hold=true WHERE id=?").param(source).update();
+        var writer=execution.claimApi();var prose=HybridDijkstraProfileTest.prose();prose.remove(List.of("semantics","ruleExplanations"));
+        execution.finish(writer.attemptId(),result(prose),null);
+        var reader=execution.claimApi();execution.finish(reader.attemptId(),result(HybridDijkstraProfileTest.reader()),null);
+        overrides.put("HYBRID_VALIDATION_PROFILE","");overrides.put("HYBRID_PUBLIC_ADMISSION_ENABLED","false");
+        for(int stage=0;stage<9;stage++) {
+            checks.advance();Optional<JudgeQueue.Assignment> next;
+            while((next=queue.claim(UUID.randomUUID())).isPresent()){var a=next.get();String role=runner.role(a);runner.complete(a,role.equals("package-generator")?"OK":role.startsWith("mutant-")?"WA":"AC",role.equals("package-generator")?HybridDijkstraProfileTest.generated():"");}
+        }
+        checks.advance();publication.advance();var work=execution.claimApi();
+        execution.finish(work.attemptId(),result(new HybridPublicationIntegrationTest().accepted(work)),null);
+        assertThat(jobs.view("owner",id).status()).isEqualTo("HELD");assertThat(jobs.view("owner",id).error()).isEqualTo("REFERENCE_ARTIFACT_REVOKED");
+        overrides.remove("HYBRID_VALIDATION_PROFILE");overrides.remove("HYBRID_PUBLIC_ADMISSION_ENABLED");
+        mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(jsonPath("$.profiles[2].verifiedReference").value(false));
+        UUID next=UUID.randomUUID();mvc.perform(postRequest(next,BODY.replace(HybridAdmission.PROFILE,profile.id()))).andExpect(jsonPath("$.referenceReused").value(false))
+                .andExpect(jsonPath("$.branches.CORE").value("QUEUED"));
+        assertThat(execution.claimCodex().spec().path("role").asText()).isEqualTo("CORE");
     }
     @Test void readEndpointsNeverDispatchAndLegacyModesCannotCreateAlongsideAdmittedWork() throws Exception {
         for(int i=0;i<3;i++){mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(status().isOk());mvc.perform(get("/api/generation/hybrid").with(user("owner"))).andExpect(status().isOk());}

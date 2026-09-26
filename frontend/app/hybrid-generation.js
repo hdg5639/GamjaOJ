@@ -40,6 +40,11 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
     return()=>{live.current=false;revision.current++;};
   },[storageKey]);
   useEffect(()=>{onActive(running||!!pending);},[running,!!pending,onActive]);
+  // The catalog is data-backed: fall back to the first selectable rule when the current one is gone.
+  useEffect(()=>{
+    const list=options?.profiles;if(!list?.length||pendingRef.current)return;
+    if(!list.some(item=>item.id===profileId)){setProfileId(list[0].id);setConsent(false);}
+  },[options]);
   useEffect(()=>{
     if(!visible&&!running)return;
     const timer=setInterval(()=>{if(!busyRef.current)refresh();},5000);return()=>clearInterval(timer);
@@ -75,7 +80,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
       {optionsError&&<p className="notice error" role="alert">출제 가능 여부를 불러오지 못했어요. {optionsError} <button className="secondary" onClick={loadOptions}>출제 가능 여부 다시 확인</button></p>}
       {!options&&!optionsError&&<p role="status">지원 규칙을 불러오고 있어요…</p>}
       {options?.profiles?.length>0&&<label className="field">문제 유형<select value={profileId} disabled={busy||!!pending||running||otherActive||!options.enabled} onChange={e=>{setProfileId(e.target.value);setConsent(false);}}>{options.profiles.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
-      {profile&&<div className="hybrid-scope"><h4>{profile.label}</h4><p>{profile.description}</p><ul>{profile.rules.map(rule=><li key={rule}>{rule}</li>)}</ul></div>}
+      {profile&&<div className="hybrid-scope"><h4>{profile.label}</h4><p>{profile.description}</p><ul>{profile.rules.map(rule=><li key={rule}>{rule}</li>)}</ul>{profile.verifiedReference&&<p className="draft-help">이 규칙은 검증을 통과한 정답 코드를 다시 사용해 코드 작성 단계를 생략합니다. 본문·힌트·해설과 실행 검증·최종 검토는 새로 진행합니다.</p>}</div>}
       {options&&!options.enabled&&<p className="notice">{options.message}</p>}
       <form onSubmit={create}>
         <fieldset className="hybrid-consent" disabled={busy||!!pending||!options?.enabled}>
@@ -101,7 +106,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
         <summary><strong>{profileLabel(job.profileId)}</strong><span className="generation-status">{job.problemHeld?'게시 후 검토 보류':job.status==='HELD'&&handoffs.includes(job.error)?'다음 단계 준비 중':states[job.status]||'진행 상태 확인 필요'}</span></summary>
         <div className="generation-job-body">
           <p className="draft-help">{new Date(job.acceptedAt).toLocaleString('ko-KR')} · {job.shared?'다른 회원에게 공개':'나만 보기'}</p>
-          <ol className="hybrid-stages" aria-label="출제 단계">{stages.map(([key,label])=><li key={key}><span>{label}</span><strong>{branchStates[job.branches?.[key]]||'대기'}</strong></li>)}</ol>
+          <ol className="hybrid-stages" aria-label="출제 단계">{stages.map(([key,label])=><li key={key}><span>{label}</span><strong>{key==='CORE'&&job.referenceReused&&job.branches?.[key]==='SUCCEEDED'?'검증된 코드 재사용':branchStates[job.branches?.[key]]||'대기'}</strong></li>)}</ol>
           {active(job)&&<><p className="draft-help">처리 기한: {new Date(job.deadlineAt).toLocaleTimeString('ko-KR')}. 취소하면 이후 작업과 게시를 중단합니다. 이미 시작한 호출은 비용이 발생할 수 있어요.</p><button className="secondary" disabled={busy} onClick={()=>action(job,true)}>이 요청 취소</button></>}
           {job.status==='PUBLISHED'&&<button className="primary" disabled={busy||job.problemHeld||!job.publishedVersionId} onClick={()=>action(job,false)}>이 문제 풀기</button>}
           {job.status==='DEADLINE_EXCEEDED'&&<p>처리 기한 내에 마치지 못해 게시하지 않았어요. 이전 요청은 자동으로 다시 실행되지 않습니다.</p>}

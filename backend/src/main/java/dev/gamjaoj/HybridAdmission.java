@@ -12,24 +12,21 @@ class HybridAdmission {
     static final String PROFILE="zero-one-items-v1";
     private final JdbcClient jdbc;private final HybridExecution execution;private final HybridGeneration jobs;
     private final AiSettings settings;private final Submissions submissions;private final GenerationSpecDrafts drafts;
-    HybridAdmission(JdbcClient jdbc,HybridExecution execution,HybridGeneration jobs,AiSettings settings,Submissions submissions,GenerationSpecDrafts drafts) {
-        this.jdbc=jdbc;this.execution=execution;this.jobs=jobs;this.settings=settings;this.submissions=submissions;this.drafts=drafts;
+    private final HybridRuleRegistry registry;
+    HybridAdmission(JdbcClient jdbc,HybridExecution execution,HybridGeneration jobs,AiSettings settings,Submissions submissions,GenerationSpecDrafts drafts,HybridRuleRegistry registry) {
+        this.jdbc=jdbc;this.execution=execution;this.jobs=jobs;this.settings=settings;this.submissions=submissions;this.drafts=drafts;this.registry=registry;
     }
-    record Profile(String id,String label,String description,List<String> rules) {}
+    /** verifiedReference: a previously published implementation of these exact rules can be reused. */
+    record Profile(String id,String label,String description,List<String> rules,boolean verifiedReference) {}
+    private boolean reuseEnabled(){return Boolean.parseBoolean(settings.value("HYBRID_REFERENCE_REUSE_ENABLED","false"));}
+    private List<Profile> profiles() {
+        return registry.selectable().stream().map(v->{
+            var rules=new ArrayList<String>();v.catalog().path("rules").forEach(r->rules.add(r.asText()));
+            return new Profile(v.id(),v.label(),v.catalog().path("description").asText(),List.copyOf(rules),
+                    reuseEnabled()&&registry.qualifiedReference(v.id()).isPresent());
+        }).toList();
+    }
     record Options(boolean enabled,String message,List<Profile> profiles) {}
-    private static final Profile SUPPORTED=new Profile(PROFILE,"0/1 배낭 · 물건 선택",
-            "규칙은 고정하고 새 본문·코드·힌트·해설과 테스트를 만듭니다. 새로운 알고리즘 규칙을 만드는 방식은 아닙니다.",
-            List.of("각 물건은 최대 한 번 선택하며, 총 비용이 한도를 넘지 않도록 가치의 합을 최대화합니다.",
-                    "물건 1~100개 · 한도 1~1,000 · 비용 1~1,000 · 가치 1~10,000",
-                    "선택할 수 있는 물건이 없으면 0을 출력합니다. 같은 최댓값의 조합은 구분하지 않습니다."));
-    private static final Profile BFS=new Profile(HybridBfsProfile.ID,"BFS · 무방향 그래프 최단 거리",
-            "가중치 없는 그래프에서 두 정점 사이의 최소 이동 횟수를 구합니다. 기본 BFS 연습 유형이며 난이도 등급은 검토 전입니다.",
-            List.of("간선은 양방향이며 하나를 이동할 때마다 거리가 1 증가합니다.","정점 1~100개 · 간선 최대 200개 · 자기 루프와 중복 간선 없음",
-                    "출발점과 도착점이 같으면 0, 경로가 없으면 -1을 출력합니다."));
-    private static final Profile DIJKSTRA=new Profile(HybridDijkstraProfile.ID,"다익스트라 · 가중치 최단 거리",
-            "이동 비용이 다른 양방향 그래프에서 최소 비용을 구합니다. 난이도 등급은 검토 전입니다.",
-            List.of("간선은 양방향이며 비용은 1~1,000,000,000입니다.","정점 1~100개 · 간선 최대 200개 · 자기 루프와 중복 간선 없음",
-                    "출발점과 도착점이 같으면 0, 경로가 없으면 -1입니다. 거리의 합은 32비트 정수 범위를 넘을 수 있습니다."));
     Options options(String user) {
         boolean enabled=Boolean.parseBoolean(settings.value("HYBRID_PUBLIC_ADMISSION_ENABLED","false"))
                 &&Arrays.stream(settings.value("HYBRID_ALLOWED_USERS","").split(",")).map(String::trim).anyMatch(user::equals)
@@ -40,7 +37,7 @@ class HybridAdmission {
                 &&HybridFiniteProfile.PACKAGE_POLICY.equals(settings.value("HYBRID_VALIDATION_PROFILE",""));
         if(enabled)try {for(var role:List.of(HybridGeneration.Role.PRESENTATION,HybridGeneration.Role.READER,HybridGeneration.Role.CONTENT_REVIEW))HybridModels.slot(settings,role);}
         catch(AccountException unavailable){enabled=false;}
-        return new Options(enabled,enabled?"검증을 통과한 문제만 게시합니다. 실패한 요청은 자동으로 다시 생성하지 않습니다.":"아직 이 계정에서는 실험 출제를 시작할 수 없어요. 기존 출제 방식은 계속 이용할 수 있습니다.",List.of(SUPPORTED,BFS,DIJKSTRA));
+        return new Options(enabled,enabled?"검증을 통과한 문제만 게시합니다. 실패한 요청은 자동으로 다시 생성하지 않습니다.":"아직 이 계정에서는 실험 출제를 시작할 수 없어요. 기존 출제 방식은 계속 이용할 수 있습니다.",profiles());
     }
     static boolean active(JdbcClient jdbc,UUID owner) {
         return jdbc.sql("SELECT count(*) FROM hybrid_generation WHERE owner_id=? AND EXISTS (SELECT 1 FROM hybrid_api_reservation r WHERE r.generation_id=hybrid_generation.id) AND deadline_at>CURRENT_TIMESTAMP AND (status IN ('QUEUED','DESIGNING','BUILDING','VALIDATING','REVIEWING') OR (status='HELD' AND error_code IN ('VALIDATION_ADAPTER_NOT_CONNECTED','CONTENT_REVIEW_REQUIRED')))")
@@ -50,7 +47,7 @@ class HybridAdmission {
     HybridGeneration.Progress create(String user,UUID id,JsonNode request) {
         try {
             HybridArtifacts.fields(request,"profileId","shared","publishOnSuccess");
-            HybridArtifacts.require(request.path("profileId").isTextual()&&HybridProfiles.all().stream().anyMatch(p->p.id().equals(request.path("profileId").asText())),"UNSUPPORTED_PROFILE");
+            HybridArtifacts.require(request.path("profileId").isTextual()&&registry.resolve(request.path("profileId").asText()).isPresent(),"UNSUPPORTED_PROFILE");
             HybridArtifacts.require(request.path("shared").isBoolean()&&request.path("publishOnSuccess").isBoolean()&&request.path("publishOnSuccess").asBoolean(),"EXPLICIT_PUBLICATION_REQUIRED");
         }catch(HybridArtifacts.Invalid invalid){throw new AccountException(400,"지원되는 규칙과 검증 후 게시 여부를 선택해 주세요. 자유 요청은 직접 요청하기를 이용해 주세요.");}
         jdbc.sql("SELECT id FROM ai_budget_lock WHERE id=1 FOR UPDATE").query(Integer.class).single();
@@ -65,15 +62,28 @@ class HybridAdmission {
         if(drafts.active(owner)||jdbc.sql("SELECT count(*) FROM generation_job WHERE owner_id=? AND status IN ('QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING')").param(owner).query(Integer.class).single()>0)
             throw new AccountException(409,"진행 중인 출제를 먼저 마쳐 주세요.");
         execution.admit(user,id,canonical,shared);
-        var selected=HybridProfiles.byId(request.path("profileId").asText());
+        String versionId=request.path("profileId").asText();
+        var selected=registry.resolve(versionId).orElseThrow(()->new AccountException(409,"선택한 규칙을 지금은 사용할 수 없어요. 목록을 새로 확인해 주세요."));
         var contract=selected.contract();
-        jdbc.sql("INSERT INTO hybrid_public_request(generation_id,profile_id,profile_hash,contract_sha256,handoff_mode) VALUES (?,?,?,?,'SERVER_FIXED_CONTRACT_V1')")
-                .param(id).param(selected.id()).param(selected.hash()).param(JudgeJson.hash(JudgeJson.canonical(contract))).update();
+        jdbc.sql("INSERT INTO hybrid_public_request(generation_id,profile_id,profile_hash,contract_sha256,handoff_mode,rule_version_id) VALUES (?,?,?,?,'SERVER_FIXED_CONTRACT_V1',?)")
+                .param(id).param(selected.id()).param(selected.hash()).param(JudgeJson.hash(JudgeJson.canonical(contract))).param(versionId).update();
         // The selected semantics are already complete. Freeze server data through the same DAG acceptance.
         // There is no model call that merely copies this contract, and no claim of novel semantics.
         var a=jobs.claim(id,HybridGeneration.Role.CONTRACT);
         jobs.complete(new HybridGeneration.Completion(a.branchId(),a.revision(),a.role(),a.token(),a.inputHash(),a.contractHash(),a.publicHash(),contract,
                 JudgeJson.JSON.createObjectNode().put("executor","SERVER_FIXED_CONTRACT_V1").put("billingMode","NONE"),null));
+        // A verified implementation of the same rule version replaces the author call. Story, reader,
+        // every Runner check and final review still run for this instance.
+        var reference=reuseEnabled()?registry.qualifiedReference(versionId):Optional.<HybridRuleRegistry.Reference>empty();
+        if(reference.isPresent()) {
+            var core=jobs.claim(id,HybridGeneration.Role.CORE);
+            if(core!=null) {
+                jdbc.sql("UPDATE hybrid_public_request SET reference_artifact_id=? WHERE generation_id=?").param(reference.get().id()).param(id).update();
+                jobs.complete(new HybridGeneration.Completion(core.branchId(),core.revision(),core.role(),core.token(),core.inputHash(),core.contractHash(),core.publicHash(),
+                        reference.get().payload(),JudgeJson.JSON.createObjectNode().put("executor",HybridRuleRegistry.REUSED_EXECUTOR)
+                                .put("billingMode","NONE").put("artifactId",reference.get().id().toString()),null));
+            }
+        }
         return jobs.view(user,id);
     }
     List<HybridGeneration.Progress> list(String user) {

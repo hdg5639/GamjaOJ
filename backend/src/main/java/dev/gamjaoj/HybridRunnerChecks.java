@@ -247,7 +247,7 @@ class HybridRunnerChecks {
         JsonNode packageEvidence=packagePolicy?advancePackage(s,data,evidence,profile):null;
         if(packagePolicy&&packageEvidence==null)return;
         var report=JudgeJson.JSON.createObjectNode().put("policy",policy).put("publishable",false)
-                .put("manifestHash",s.hash).put("oracleDomainVerified",true).put("oracleDomainVerificationScope","only the 16 server-enumerated inputs")
+                .put("manifestHash",s.hash).put("oracleDomainVerified",true).put("oracleDomainVerificationScope","only the "+profile.coverage().path("cases").asInt()+" server-enumerated inputs")
                 .put("invalidInputsChecked",profile.invalid().size());
         report.set("finiteCoverage",profile.coverage());
         report.put("profileHash",HybridProfiles.byPolicy(policy).hash());

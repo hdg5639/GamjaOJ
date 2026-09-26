@@ -13,7 +13,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 class HybridPublication {
     private final JdbcClient jdbc;private final HybridRunnerChecks checks;private final ApplicationEventPublisher events;
-    HybridPublication(JdbcClient jdbc,HybridRunnerChecks checks,ApplicationEventPublisher events){this.jdbc=jdbc;this.checks=checks;this.events=events;}
+    private final HybridRuleRegistry registry;
+    HybridPublication(JdbcClient jdbc,HybridRunnerChecks checks,ApplicationEventPublisher events,HybridRuleRegistry registry){this.jdbc=jdbc;this.checks=checks;this.events=events;this.registry=registry;}
+    /** A reused implementation must still be qualified at the publication fence, not only at admission. */
+    private void requireReferenceQualified(UUID id,int revision) {
+        var completion=jdbc.sql("SELECT completion_json FROM hybrid_branch WHERE generation_id=? AND revision=? AND role='CORE' AND status='SUCCEEDED'")
+                .param(id).param(revision).query(String.class).optional();
+        if(completion.isEmpty()||!HybridRuleRegistry.REUSED_EXECUTOR.equals(JudgeJson.parse(completion.get()).path("usage").path("executor").asText()))return;
+        var artifact=jdbc.sql("SELECT reference_artifact_id FROM hybrid_public_request WHERE generation_id=?").param(id).query(UUID.class).optional();
+        HybridArtifacts.require(artifact.isPresent()&&registry.stillQualified(artifact.get()),"REFERENCE_ARTIFACT_REVOKED");
+    }
     private static String hash(JsonNode n){return JudgeJson.hash(JudgeJson.canonical(n));}
     private record State(UUID id,UUID owner,int revision,boolean shared,String contract,String publicHash,UUID validation) {}
     private JsonNode input(State s) {
@@ -84,12 +93,18 @@ class HybridPublication {
                 String version="hybrid-check-"+s.validation;
                 // The budget/generation locks serialize cancellation, provider completion and publication.
                 HybridArtifacts.require(OffsetDateTime.now(ZoneOffset.UTC).isBefore(jdbc.sql("SELECT deadline_at FROM hybrid_generation WHERE id=?").param(id).query(OffsetDateTime.class).single()),"PUBLICATION_DEADLINE");
+                requireReferenceQualified(id,s.revision);
                 jdbc.sql("UPDATE problem_version SET ready=true,shared=? WHERE id=? AND ready=false").param(s.shared).param(version).update();
-                if(jdbc.sql("SELECT count(*) FROM hybrid_public_request WHERE generation_id=?").param(id).query(Integer.class).single()==1) {
+                var ruleVersion=jdbc.sql("SELECT rule_version_id FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).optional();
+                if(ruleVersion.isPresent()) {
                     var profile=HybridProfiles.byPolicy(jdbc.sql("SELECT policy FROM hybrid_validation_profile WHERE branch_id=?").param(s.validation).query(String.class).single());
-                    jdbc.sql("UPDATE problem_version SET catalog_category=?,catalog_tags=? WHERE id=?").param(profile.category()).param(profile.tags()).param(version).update();
+                    var catalog=registry.version(ruleVersion.get()).filter(v->v.catalog().has("category"));
+                    jdbc.sql("UPDATE problem_version SET catalog_category=?,catalog_tags=? WHERE id=?")
+                            .param(catalog.map(HybridRuleRegistry.Version::category).orElse(profile.category()))
+                            .param(catalog.map(HybridRuleRegistry.Version::tags).orElse(profile.tags())).param(version).update();
                 }
                 jdbc.sql("UPDATE hybrid_generation SET status='PUBLISHED',error_code=NULL,published_version_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").param(version).param(id).update();
+                registry.qualify(id);
             } catch(HybridArtifacts.Invalid|IllegalArgumentException|IllegalStateException|org.springframework.dao.IncorrectResultSizeDataAccessException invalid) {
                 jdbc.sql("UPDATE hybrid_generation SET status='HELD',error_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
                         .param(invalid.getMessage()!=null&&invalid.getMessage().matches("[A-Z][A-Z0-9_]{0,79}")?invalid.getMessage():"INVALID_PUBLICATION_EVIDENCE").param(id).update();

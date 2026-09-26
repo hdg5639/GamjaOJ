@@ -156,3 +156,14 @@ test('Dijkstra choice resets consent and survives an uncertain request and reloa
   expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);
   expect(writes[0].body).toEqual({profileId:dijkstra.id,shared:false,publishOnSuccess:true});
 });
+test('registry catalog selects the first available rule and labels reused verified code',async({page})=>{
+  const reused={...makeJob('0f0e0d0c-0b0a-4908-8706-050403020100','BUILDING'),profileId:'dijkstra-shortest-path-v1',referenceReused:true};
+  reused.branches={...reused.branches,CORE:'SUCCEEDED'};
+  await fixture(page,async(route,path)=>{
+    if(path==='/api/generation/hybrid/options'){await route.fulfill({json:{...options,profiles:[{id:'dijkstra-shortest-path-v1',label:'다익스트라 · 가중치 최단 거리',description:'최소 비용',rules:['양방향'],verifiedReference:true}]}});return true;}
+    if(path==='/api/generation/hybrid'){await route.fulfill({json:[reused]});return true;}
+  });
+  await expect(page.getByRole('heading',{name:'다익스트라 · 가중치 최단 거리',level:4})).toBeVisible();
+  await expect(page.getByText('검증을 통과한 정답 코드를 다시 사용해 코드 작성 단계를 생략합니다',{exact:false})).toBeVisible();
+  await expect(page.getByText('검증된 코드 재사용',{exact:true})).toBeVisible();
+});
