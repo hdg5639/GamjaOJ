@@ -4,7 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 
 const labels={QUEUED:'대기',AUTHORING:'규칙·코드 작성 중',AUTHORED:'독립 검증 코드 준비',ORACLE:'독립 검증 코드 작성 중',QUALIFYING:'실행 검증 중',ACTIVE:'등록 완료',HELD:'검증 보류',FAILED:'등록 실패',CANCELLED:'취소됨',DEADLINE_EXCEEDED:'처리 기한 초과'};
 const running=['QUEUED','AUTHORING','AUTHORED','ORACLE','QUALIFYING'];
-const reasons={REFERENCE_ORACLE_DISAGREEMENT:'정답 코드와 독립 검증 코드의 결과가 달랐어요.',MUTANT_SURVIVED:'일부러 틀리게 만든 코드를 작은 입력으로 걸러내지 못했어요.',DUPLICATE_RULE_CONTRACT:'이미 등록된 규칙과 같아요.',ONBOARDING_BUDGET_CAP:'이 요청의 예산 한도를 넘었어요.',MONTHLY_BUDGET_EXHAUSTED:'이번 달 AI 예산이 부족해요.',STRESS_RESOURCE_MARGIN:'최대 입력에서 실행 시간 기준을 넘었어요.',ONBOARDING_DEADLINE_EXCEEDED:'처리 기한 안에 마치지 못했어요.'};
+const reasons={REFERENCE_ORACLE_DISAGREEMENT:'정답 코드와 독립 검증 코드의 결과가 달랐어요.',MUTANT_SURVIVED:'일부러 틀리게 만든 코드를 작은 입력으로 걸러내지 못했어요.',DUPLICATE_RULE_CONTRACT:'이미 등록된 규칙과 같아요.',ONBOARDING_BUDGET_CAP:'이 요청의 예산 한도를 넘었어요.',MONTHLY_BUDGET_EXHAUSTED:'이번 달 AI 예산이 부족해요.',STRESS_RESOURCE_MARGIN:'최대 입력에서 실행 시간 기준을 넘었어요.',LARGE_TESTS_NOT_DISCRIMINATING:'대형 입력이 느린 풀이와 효율적인 풀이를 구분하지 못했어요.',SLOW_SOLUTION_INCORRECT:'비교용 느린 풀이가 작은 입력에서 틀렸어요.',DOMAIN_VALIDATOR_REJECTED:'작성된 입력 일부가 입력 조건 검사를 통과하지 못했어요.',ONBOARDING_DEADLINE_EXCEEDED:'처리 기한 안에 마치지 못했어요.'};
 
 export default function RuleOnboarding({api,onRegistered}) {
   const [enabled,setEnabled]=useState(null),[items,setItems]=useState([]),[rules,setRules]=useState([]);
@@ -50,7 +50,7 @@ export default function RuleOnboarding({api,onRegistered}) {
     {items.length>0&&<ul className="rule-onboarding-list">{items.map(item=><li key={item.id}>
       <p><strong>{labels[item.status]||item.status}</strong> · {item.label||item.request.slice(0,60)}</p>
       {item.status==='QUALIFYING'&&<p className="draft-help">실행 검증 {Object.values(item.checks||{}).filter(v=>['AC','OK','WA'].includes(v)).length}건 완료</p>}
-      {['HELD','FAILED','DEADLINE_EXCEEDED'].includes(item.status)&&<p className="draft-help">{reasons[item.error]||'검증 조건을 충족하지 못해 등록하지 않았어요.'} 사용한 AI 비용: ${Number(item.spentUsd||0).toFixed(3)}</p>}
+      {['HELD','FAILED','DEADLINE_EXCEEDED'].includes(item.status)&&<p className="draft-help">{reasons[item.error]||'검증 조건을 충족하지 못해 등록하지 않았어요.'}{item.failedCheck?` (실패한 검사: ${item.failedCheck})`:''} 사용한 AI 비용: ${Number(item.spentUsd||0).toFixed(3)}</p>}
       {running.includes(item.status)&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/onboarding/${item.id}/cancel`,{method:'POST'})}>이 등록 취소</button>}
     </li>)}</ul>}
     {rules.length>0&&<><h4>내가 등록한 규칙</h4><ul className="rule-onboarding-list">{rules.map(rule=><li key={rule.id}>

@@ -89,8 +89,9 @@ def main():
                     ("valid-parentheses-v1", "AC", parens),
                     ("valid-parentheses-v1", "WA", parens.replace("if (depth < 0)", "if (false)"))]
             public = call("/api/problems")[1]
-            assert [item["version"] for item in public] == ["sum-v1", "total-v1", "valid-parentheses-v1"]
-            assert all(set(item) == {"version", "title", "statement", "sampleInput", "sampleOutput", "sourceLimitBytes", "submissionsEnabled"} for item in public)
+            # The catalog now also lists shared member problems; base problems must remain and no private field may leak.
+            assert {"sum-v1", "total-v1", "valid-parentheses-v1"} <= {item["version"] for item in public}
+            assert not any(key in item for item in public for key in ("tests", "package", "generated", "reference", "teaching"))
         for version, verdict, source in jobs:
             if not opened:
                 digest = hashlib.sha256(source.encode()).hexdigest()
@@ -170,7 +171,7 @@ def main():
                 verify_environment(job)
                 print(f"PASS: custom {verdict}, input/output preserved, one completion on the dedicated Runner host", flush=True)
             assert len(call("/api/submissions")[1]) == 4
-            assert len(call("/api/runs")[1]) == len(cases)
+            assert call("/api/runs")[1] == []  # Custom-run history listing is intentionally not exposed.
         Path('.state').mkdir(exist_ok=True)
         Path('.state/runner-environment-live.json').write_text(json.dumps(environment_evidence,indent=2))
         print(f"PASS: {len(environment_evidence)} saved attempt environments match actual Runner build and limits",flush=True)

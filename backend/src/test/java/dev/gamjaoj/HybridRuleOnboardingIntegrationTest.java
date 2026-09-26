@@ -63,7 +63,7 @@ class HybridRuleOnboardingIntegrationTest {
     String batchOf(List<String> outs){var b=new StringBuilder();for(String o:outs)b.append(o.getBytes(java.nio.charset.StandardCharsets.UTF_8).length).append('\n').append(o);return b.toString();}
     String role(JudgeQueue.Assignment a){return jdbc.sql("SELECT role FROM hybrid_execution_check WHERE submission_id=?").param(a.submissionId()).query(String.class).single();}
     /** Fake Runner: correct programs agree; mutant-a differs on case 4, mutant-b on case 0. */
-    String slowVerdict="TLE";
+    String slowVerdict="TLE",validVerdict="AC";
     int drain(boolean disagree,boolean survivor) {
         int n=0;Optional<JudgeQueue.Assignment> next;
         while((next=queue.claim(UUID.randomUUID())).isPresent()) {
@@ -77,6 +77,7 @@ class HybridRuleOnboardingIntegrationTest {
                 case "q-mutant-b-batch"->{verdict="OK";var r=new ArrayList<>(answers);r.set(0,"7\n");stdout=batchOf(r);}
                 case "q-mutant-a","q-mutant-b"->verdict="WA";
                 case "q-slow"->verdict=slowVerdict;
+                case "q-valid"->verdict=validVerdict;
                 default->{if(role.startsWith("q-stress-run-")){verdict="OK";stdout=HybridFiniteProfile.stress().get(Integer.parseInt(role.substring(13))).output();}}
             }
             boolean timedOut=role.equals("q-slow")&&verdict.equals("TLE");
@@ -136,6 +137,12 @@ class HybridRuleOnboardingIntegrationTest {
         assertThat(drain(false,false)).isZero();
         UUID next=request();worker.runOnce();worker.runOnce();drain(false,true);onboarding.advance();
         assertThat(view(next).error()).isEqualTo("MUTANT_SURVIVED");assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_version WHERE engine='PACKAGE_V1'").query(Integer.class).single()).isZero();
+    }
+    @Test void emptyInvalidInputIsAcceptedAndFailedCheckIsReported() throws Exception {
+        var a=author();((com.fasterxml.jackson.databind.node.ArrayNode)a.path("invalidInputs")).add("");provide(a);validVerdict="WA";
+        UUID id=request();worker.runOnce();worker.runOnce();assertThat(view(id).status()).isEqualTo("QUALIFYING");
+        drain(false,false);onboarding.advance();
+        assertThat(view(id).error()).isEqualTo("DOMAIN_VALIDATOR_REJECTED");assertThat(view(id).failedCheck()).isEqualTo("q-valid · tiny-0 WA");
     }
     @Test void largeTestsMustMakeTheSlowSolutionTimeOut() throws Exception {
         provide(author());slowVerdict="AC";UUID id=request();worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
