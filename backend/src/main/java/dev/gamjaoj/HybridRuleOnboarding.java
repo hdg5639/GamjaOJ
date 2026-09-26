@@ -112,6 +112,7 @@ class HybridRuleOnboarding {
             +" Design ONE exact, self-contained algorithmic rule implied by the request for Java 8 standard input/output judging: one test case per input and exactly one deterministic correct output compared token by token."
             +" Choose bounds so an efficient Java 8 solution runs well under one second and every input fits in 16 KB. If the request is infeasible (interactive, floating-point, several valid outputs, randomized), choose the closest feasible deterministic formulation and state that in catalog.description."
             +" contract: complete semantic contract; the public fields alone must fully determine every answer (input format, indexing, output, ties, empty and impossible cases, numeric ranges and limits)."
+            +" Every contract action id is lowercase kebab-case matching ^[a-z][a-z0-9-]{0,39}$ (for example range-sum), unique, and reused verbatim as the matching rules id. Every text field is non-empty and under 4000 characters; write a short explicit value such as 'not applicable' instead of leaving one empty."
             +" rules: exactly one Korean normative explanation per contract action, using the same action ids."
             +" catalog: Korean label (at most 40 characters), Korean description, category, 1 to 6 Korean tags without commas, 1 to 5 short Korean rule bullets."
             +" generator: Java 8 public class Main that reads a signed long seed and prints a JSON array of exactly four distinct valid inputs (each at most 4096 bytes), mixing boundary and random cases."
@@ -134,8 +135,11 @@ class HybridRuleOnboarding {
     private static ObjectNode arr(JsonNode items,int min,int max) {
         var a=JudgeJson.JSON.createObjectNode().put("type","array").put("minItems",min).put("maxItems",max);a.set("items",items);return a;
     }
+    private static ObjectNode ruleId(){return str().put("pattern","^[a-z][a-z0-9-]{0,39}$");}
     static JsonNode authorSchema() {
-        return obj("contract",HybridModels.schema(HybridGeneration.Role.CONTRACT),"rules",arr(obj("id",str(),"text",str()),1,16),
+        var contract=(ObjectNode)HybridModels.schema(HybridGeneration.Role.CONTRACT).deepCopy();
+        ((ObjectNode)contract.path("properties").path("actions").path("items").path("properties")).set("id",ruleId());
+        return obj("contract",contract,"rules",arr(obj("id",ruleId(),"text",str()),1,16),
                 "catalog",obj("label",str(),"description",str(),"category",str(),"tags",arr(str(),1,6),"rules",arr(str(),1,5)),
                 "generator",str(),"validator",str(),"reference",str(),"authorNotes",obj("algorithm",str(),"complexity",str(),"edgeCases",str()),
                 "mutants",arr(obj("idea",str(),"source",str()),2,2),"tinyInputs",arr(str(),8,24),"invalidInputs",arr(str(),3,10),
@@ -201,6 +205,9 @@ class HybridRuleOnboarding {
         if(error!=null||result==null||result.value()==null){stop(id,"HELD",error==null?"PROVIDER_FAILED":error);return;}
         try {
             if(role.equals("AUTHOR")) {
+                // Keep the exact candidate even when rejected, for diagnosis; it is never used unless accepted.
+                String candidate=JudgeJson.canonical(HybridArtifacts.bounded(result.value()));
+                jdbc.sql("UPDATE hybrid_rule_onboarding SET author_json=?,author_sha256=? WHERE id=?").param(candidate).param(JudgeJson.hash(candidate)).param(id).update();
                 var author=validateAuthor(result.value());String raw=JudgeJson.canonical(author);
                 jdbc.sql("UPDATE hybrid_rule_onboarding SET author_json=?,author_sha256=?,status='AUTHORED',updated_at=? WHERE id=?")
                         .param(raw).param(JudgeJson.hash(raw)).param(now()).param(id).update();

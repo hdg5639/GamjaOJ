@@ -115,6 +115,15 @@ class HybridRuleOnboardingIntegrationTest {
         UUID again=request();worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
         assertThat(view(again).status()).isEqualTo("FAILED");assertThat(view(again).error()).isEqualTo("DUPLICATE_RULE_CONTRACT");
     }
+    @Test void authorSchemaPinsKebabCaseActionIdsAndRejectedCandidateIsKeptForDiagnosis() throws Exception {
+        var schema=HybridRuleOnboarding.authorSchema();
+        assertThat(schema.path("properties").path("contract").path("properties").path("actions").path("items").path("properties").path("id").path("pattern").asText()).isEqualTo("^[a-z][a-z0-9-]{0,39}$");
+        assertThat(schema.path("properties").path("rules").path("items").path("properties").path("id").path("pattern").asText()).isEqualTo("^[a-z][a-z0-9-]{0,39}$");
+        var bad=author();((ObjectNode)bad.path("contract").path("actions").get(0)).put("id","Range_Sum");provide(bad);UUID id=request();worker.runOnce();
+        assertThat(view(id).error()).isEqualTo("INVALID_RULE_ID");
+        assertThat(jdbc.sql("SELECT author_json FROM hybrid_rule_onboarding WHERE id=?").param(id).query(String.class).single()).contains("Range_Sum");
+        assertThat(drain(false,false)).isZero();
+    }
     @Test void disagreementOrSurvivingMutantHoldsWithoutActivation() throws Exception {
         provide(author());UUID id=request();worker.runOnce();worker.runOnce();drain(true,false);onboarding.advance();
         assertThat(view(id).status()).isEqualTo("HELD");assertThat(view(id).error()).isEqualTo("REFERENCE_ORACLE_DISAGREEMENT");
