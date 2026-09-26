@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+python3 scripts/export-runner-contract.py
 (cd frontend && npm ci --ignore-scripts && npm run build)
 docker run --rm --cpus 2 --memory 1g \
   -v "$PWD:/workspace" -v gamjaoj-maven-cache:/root/.m2 -w /workspace/backend \

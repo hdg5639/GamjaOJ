@@ -1,0 +1,20 @@
+{
+  "bankId": "core-b-v1",
+  "sourceBankId": "core-a-v2",
+  "sourceArtifactSha256": "d289849c9d08d3b168e4b30d0ec34408450a310b210deb1a1ee40e09f67d2cdb",
+  "artifactSha256": "a5a6d61d25ffd21a9b6e77daa7a9b411ae04c89ba218c61ebca786efe55a234a",
+  "decision": "APPROVED_LIMITED_PILOT",
+  "reviewerType": "AI_ASSISTED_CONTENT_REVIEW",
+  "reviewDate": "2026-09-26",
+  "checks": [
+    "Eight distinct tasks matched by narrow category/difficulty",
+    "Statements, samples, fixed oracle outputs and constraint boundaries inspected",
+    "Reference, two wrong-solution families and unchanged A solutions tested separately",
+    "Private bank and reviewed source/target hash correspondence required"
+  ],
+  "limitations": [
+    "No human educator review or learner difficulty calibration",
+    "A/B tasks are not psychometrically equated; score differences do not prove improvement",
+    "External familiarity remains a learner self-report; B graph pair has dependent observations"
+  ]
+}

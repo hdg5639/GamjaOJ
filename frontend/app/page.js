@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Workspace from './workspace';
+import AppHeader from './auto-header';
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers);
@@ -22,6 +23,8 @@ async function api(path, options = {}) {
 }
 
 export default function Home() {
+  const [sidebarCollapsed,setSidebarCollapsed]=useState(true);
+
   const [user, setUser] = useState(null);
   const [settings, setSettings] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -87,31 +90,41 @@ export default function Home() {
     finally { setBusy(false); }
   }
 
-  return <div className={`shell ${user ? 'signed-in' : ''}`}>
-    <header><a href="/" className="brand"><span className="potato" aria-hidden="true">●</span> GamjaOJ</a>
-      <span className="header-note">우리들의 알고리즘 연습장</span>
+  useEffect(()=>{
+    let collapsed=true;
+    try { const saved=localStorage.getItem(`gamjaoj-sidebar-${user?.id}`);if(saved!==null)collapsed=saved==='collapsed'; } catch {}
+    setSidebarCollapsed(collapsed);
+  },[user?.id]);
+  function toggleSidebar(){
+    const next=!sidebarCollapsed;setSidebarCollapsed(next);
+    try{localStorage.setItem(`gamjaoj-sidebar-${user.id}`,next?'collapsed':'expanded');}catch{}
+  }
+
+  return <div className={`shell ${user ? 'signed-in' : ''}`} data-sidebar-collapsed={sidebarCollapsed}>
+    <a className="skip-link" href="#main-content">본문으로 이동</a>
+    <AppHeader key={user?.id || 'anonymous'}><a href="/" className="brand"><span className="potato" aria-hidden="true">●</span> GamjaOJ</a>
+      <span className="header-note">문제를 풀고, 나의 다음 단계를 찾다.</span>
       {user && <nav className="account-nav" aria-label="계정 메뉴"><span className="user-name">{user.nickname}님</span>
         <button className="secondary" onClick={() => setSettings(value => !value)}>{settings ? '문제 풀기' : '내 설정'}</button>
         <button className="secondary" onClick={logout} disabled={busy}>로그아웃</button></nav>}
-    </header>
-    <main hidden={!!user && !settings} className={user ? 'settings-page' : 'login-page'}>
+    </AppHeader>
+    <main id={user && !settings ? undefined : "main-content"} tabIndex={-1} hidden={!!user && !settings} className={user ? 'settings-page' : 'login-page'}>
       <section className="intro" hidden={!!user}>
-        <span className="eyebrow">SMALL STEPS, EVERY DAY</span>
+        <span className="eyebrow">알고리즘 연습장</span>
         <h1>한 문제씩,<br/>내 것으로.</h1>
         <p>막혔던 개념도, 스스로 풀어낸 순간도.<br/>각자의 속도로 연습하고 함께 성장해요.</p>
-        <div className="note"><span aria-hidden="true">↗</span><div><strong>나만의 연습 기록</strong><p>계정을 나누고, 내 목표부터 시작해요.</p></div></div>
+        <div className="intro-path" aria-label="학습 흐름"><span>01 <strong>탐색</strong></span><span>02 <strong>풀이</strong></span><span>03 <strong>다음 훈련</strong></span></div><p className="intro-detail">함께 만든 문제, 선택 진단, 나에게 맞는 연습.<br/>Java · C++ · Python으로 한 곳에서 이어가세요.</p>
       </section>
       <section className="card" aria-label={user ? '내 계정' : '계정 시작하기'}>
         {loading ? <p role="status">내 연습장을 불러오고 있어요…</p> : user ? <>
-          <span className="eyebrow">MY SPACE</span>
-          <h2>{user.nickname}님, 반가워요.</h2>
+          <h1 className="workspace-title">내 설정</h1>
           <p className="muted">@{user.username} · 오늘은 어떤 개념을 연습할까요?</p>
           <form key={user.id + user.nickname + user.trainingGoal} onSubmit={save}>
             <label>닉네임<input name="nickname" defaultValue={user.nickname} maxLength={24} required autoComplete="nickname" /></label>
             <label>연습하고 싶은 목표<textarea name="trainingGoal" defaultValue={user.trainingGoal} maxLength={120} rows={3} placeholder="예: DFS 방문 상태 복원, DP 점화식 세우기" /></label>
             <button className="primary" disabled={busy}>{busy ? '저장 중…' : '내 설정 저장'}</button>
           </form>
-          <div className="empty"><strong>오늘의 목표를 정해 보세요.</strong><p>아래에서 문제를 풀고 내 제출 기록을 확인할 수 있어요.</p></div>
+
         </> : <>
           <div className="tabs" role="group" aria-label="로그인 또는 가입">
             <button aria-pressed={mode === 'login'} disabled={busy} className={mode === 'login' ? 'selected' : ''} onClick={() => { setMode('login'); setError(''); setMessage(''); }}>로그인</button>
@@ -135,7 +148,10 @@ export default function Home() {
         {message && <p role="status" className="notice success">{message}</p>}
       </section>
     </main>
-    {user && <div hidden={settings}><Workspace key={user.id} user={user} api={api} /></div>}
+    {user && <main id={settings ? undefined : "main-content"} tabIndex={-1} className="app-main" hidden={settings}>
+      {error && <p role="alert" className="notice error">{error}</p>}
+      <Workspace key={user.id} user={user} api={api} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={toggleSidebar} />
+    </main>}
     <footer>GamjaOJ <span>잘하는 것보다, 어제보다 한 걸음.</span></footer>
   </div>;
 }

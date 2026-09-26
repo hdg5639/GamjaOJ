@@ -1,0 +1,77 @@
+{
+  "JAVA": {
+    "language": "JAVA",
+    "label": "Java 8",
+    "sourceFile": "Main.java",
+    "image": "eclipse-temurin@sha256:d57e5d0e3e5dd4cabb74feccfdb36249a58c76a3354a33ee8737813df93b7e0d",
+    "policy": "java8-judge-v1",
+    "runPolicy": "java8-run-v1",
+    "testWallSeconds": 5,
+    "memoryMb": 384,
+    "compileMemoryMb": 384,
+    "compileWallSeconds": 30,
+    "compileCommand": [
+      "/bin/sh",
+      "-c",
+      "javac -J-Xmx128m -J-XX:ActiveProcessorCount=1 -proc:none -encoding UTF-8 -d /classes /work/Main.java >&2 && tar -C /classes -cf - ."
+    ],
+    "testCommand": [
+      "java",
+      "-Xms16m",
+      "-Xmx128m",
+      "-XX:ActiveProcessorCount=1",
+      "-XX:+UseSerialGC",
+      "-XX:+ExitOnOutOfMemoryError",
+      "-XX:-UsePerfData",
+      "-cp",
+      "/work",
+      "Main"
+    ],
+    "artifact": "class"
+  },
+  "CPP": {
+    "language": "CPP",
+    "label": "C++17 \u00b7 GCC 13",
+    "sourceFile": "Main.cpp",
+    "image": "gcc@sha256:16ae525998c94df36a116c191524256b1d46e72d7a0e9aaf6c153455e40eb5b8",
+    "policy": "cpp17-judge-v1",
+    "runPolicy": "cpp17-run-v1",
+    "testWallSeconds": 3,
+    "memoryMb": 256,
+    "compileMemoryMb": 512,
+    "compileWallSeconds": 30,
+    "compileCommand": [
+      "/bin/sh",
+      "-c",
+      "g++ -std=c++17 -O2 -pipe -o /classes/main /work/Main.cpp >&2 && tar -C /classes -cf - main"
+    ],
+    "testCommand": [
+      "/work/main"
+    ],
+    "artifact": "binary"
+  },
+  "PYTHON": {
+    "language": "PYTHON",
+    "label": "Python 3.12",
+    "sourceFile": "Main.py",
+    "image": "python@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e",
+    "policy": "python312-judge-v1",
+    "runPolicy": "python312-run-v1",
+    "testWallSeconds": 8,
+    "memoryMb": 256,
+    "compileMemoryMb": 256,
+    "compileWallSeconds": 30,
+    "compileCommand": [
+      "/bin/sh",
+      "-c",
+      "python3 -I -c \"compile(open('/work/Main.py', encoding='utf-8').read(), 'Main.py', 'exec')\" >&2 && tar -C /work -cf - Main.py"
+    ],
+    "testCommand": [
+      "python3",
+      "-I",
+      "-B",
+      "/work/Main.py"
+    ],
+    "artifact": "python"
+  }
+}

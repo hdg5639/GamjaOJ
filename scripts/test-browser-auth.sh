@@ -17,4 +17,6 @@ REMOTE
 trap cleanup EXIT
 mkdir -p .state
 cd frontend
-npx playwright test tests/auth.spec.mjs tests/drafts.spec.mjs --workers=1 --reporter=line
+test_files=(tests/auth.spec.mjs)
+if [ "${GAMJAOJ_BROWSER_AUTH_ONLY:-0}" != 1 ]; then test_files+=(tests/drafts.spec.mjs); fi
+npx playwright test "${test_files[@]}" --workers=1 --reporter=line

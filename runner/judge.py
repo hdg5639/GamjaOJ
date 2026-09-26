@@ -1,10 +1,12 @@
 """M0 runner. Never expose this Docker-capable controller as a public endpoint."""
 import argparse
+from collections import OrderedDict
 import fcntl
 import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import selectors
 import subprocess
@@ -12,27 +14,88 @@ import tarfile
 import tempfile
 import time
 import uuid
+import threading
+from contextlib import ExitStack
+from functools import lru_cache
+from runner.telemetry import Timings, workspace
+from runner.docker_control import EngineControl
+from runner.scheduling import execution_lock
+from runner.execution_contract import PROFILE, contract
+
+EXECUTION_CONTRACT = contract()
 
 ROOT = Path(__file__).resolve().parent.parent
 POLICY = "java8-judge-v1"
 RUN_POLICY = "java8-run-v1"
+LANGUAGES = EXECUTION_CONTRACT["languages"]
+
+def image_profile(image):
+    return next((p for p in LANGUAGES.values() if p["image"] == image), LANGUAGES["JAVA"])
 
 def runtime_policies(image):
+    for profile in LANGUAGES.values():
+        if image == profile["image"]:
+            return profile["policy"], profile["runPolicy"]
     if image == (ROOT / "runner/java21-image.txt").read_text().strip():
         return "java21-m0-v2", "java21-run-v1"
     if image == (ROOT / "runner/java-image.txt").read_text().strip():
         return POLICY, RUN_POLICY
     raise ValueError("Unapproved runtime image")
-SOURCE_LIMIT = 65536
-OUTPUT_LIMIT = 65536
-BUILD_LIMIT = 8 * 1024 * 1024
+SOURCE_LIMIT = PROFILE['sourceLimit']
+OUTPUT_LIMIT = PROFILE['outputLimit']
+BUILD_LIMIT = PROFILE['buildLimit']
+COMPILE_COMMAND = PROFILE['compileCommand']
+
+
+class CompileCache:
+    """Worker-local, bounded memory only; never cache verdicts or failed builds.
+
+    Generated version UUIDs and experimental draft UUIDs isolate private jobs. Public problems and
+    ordinary custom runs without that scope deliberately receive no cache entry.
+    Two worker slots share the cache under a process-local reentrant lock.
+    """
+    def __init__(self, max_bytes=32 * 1024 * 1024, max_entries=16, ttl=600):
+        self.entries = OrderedDict()
+        self.lock = threading.RLock()
+        self.max_bytes, self.max_entries, self.ttl = max_bytes, max_entries, ttl
+
+    def key(self, version, image, source):
+        identifier = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
+        if not re.fullmatch(r"(?:generated-" + identifier + r"-r[0-9]+|experimental-check-" + identifier + r")", version):
+            return None
+        return (version, image, tuple(next((p['compileCommand'] for p in LANGUAGES.values() if p['image'] == image), COMPILE_COMMAND)), hashlib.sha256(source).hexdigest())
+
+    def prune(self):
+        now = time.monotonic()
+        for key, (created, _) in list(self.entries.items()):
+            if now - created >= self.ttl:
+                del self.entries[key]
+        while (len(self.entries) > self.max_entries or
+               sum(len(value[1]["stdout"]) + len(value[1]["stderr"]) for value in self.entries.values()) > self.max_bytes):
+            self.entries.popitem(last=False)
+
+    def get(self, key):
+        with self.lock:
+            self.prune()
+            if key not in self.entries:
+                return None
+            self.entries.move_to_end(key)
+            return dict(self.entries[key][1])
+
+    def put(self, key, result):
+        if key is None or result["limit"] or result["exit_code"] or result["oom_killed"]:
+            return
+        with self.lock:
+            self.entries[key] = (time.monotonic(), dict(result))
+            self.entries.move_to_end(key)
+            self.prune()
 
 
 class InfrastructureError(Exception):
     pass
 
 
-def docker(*args):
+def docker_cli(*args):
     try:
         result = subprocess.run(["docker", *args], capture_output=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -40,6 +103,26 @@ def docker(*args):
     if result.returncode:
         raise InfrastructureError(result.stderr.decode(errors="replace")[:2048])
     return result.stdout
+
+
+@lru_cache(maxsize=1)
+def engine_control():
+    # Resolve the same local endpoint as the CLI used for create/start and recovery.
+    endpoint = (os.environ.get("DOCKER_HOST") if not os.environ.get("DOCKER_CONTEXT") else None)
+    endpoint = endpoint or docker_cli("context", "inspect", "--format", "{{.Endpoints.docker.Host}}").decode().strip()
+    return EngineControl(endpoint)
+
+
+def docker(*args):
+    mode = os.environ.get("GAMJAOJ_DOCKER_CONTROL", "cli")
+    if mode not in ("cli", "engine"):
+        raise InfrastructureError("Unsupported Docker control transport")
+    if mode == "engine" and EngineControl.supports(args):
+        try:
+            return engine_control().command(args)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise InfrastructureError("Local Docker control request failed") from exc
+    return docker_cli(*args)
 
 
 def capture(command, stdin, seconds, limit):
@@ -91,30 +174,34 @@ class Runner:
         if "@sha256:" not in image:
             raise ValueError("Runtime image must be pinned by digest")
         self.image = image
+        self.profile = image_profile(image)
         self.state_dir = Path(state_dir or ROOT / ".state")
         self.attempt = str(uuid.UUID(attempt)) if attempt else None
+        self.compile_cache = None
+        self.timings = Timings()
+        self.execution_mode = "EXCLUSIVE"
 
     def sandbox(self, mount, command, stdin=b"", compile_phase=False):
         name = "gamjaoj-sandbox-" + uuid.uuid4().hex
+        settings = self.profile
+        flags = list(PROFILE['sandboxFlags'])
+        memory = str(settings['compileMemoryMb' if compile_phase else 'memoryMb'])+'m'
+        for flag in ('--memory','--memory-swap'):
+            flags[flags.index(flag)+1] = memory
+        seconds = settings['compileWallSeconds' if compile_phase else 'testWallSeconds']
         args = ["create", "--name", name, "--label", "com.gamjaoj.role=sandbox",
-                "--pull", "never", "--network", "none", "--read-only", "--init",
-                "--user", "65534:65534", "--cap-drop", "ALL",
-                "--security-opt", "no-new-privileges=true", "--cpus", "0.5",
-                "--memory", "384m", "--memory-swap", "384m", "--pids-limit", "128",
-                "--ulimit", "nofile=128:128", "--ulimit", "fsize=16777216:16777216",
-                "--ulimit", "core=0:0", "--log-driver", "none",
-                "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777",
-                "--tmpfs", "/classes:rw,noexec,nosuid,nodev,size=32m,mode=1777",
-                "--shm-size", "8m", "--mount",
+                *flags, "--mount",
                 "type=bind,src=" + str(mount) + ",dst=/work,readonly",
-                "--workdir", "/work", "-i", "--entrypoint", "/usr/bin/timeout",
-                self.image, "--signal=KILL", "35s" if compile_phase else "8s", *command]
+                "--workdir", PROFILE['workdir'], "-i", "--entrypoint", PROFILE['entrypoint'],
+                self.image, PROFILE['timeoutSignal'],
+                str(seconds + (5 if compile_phase else 3))+'s', *command]
         if self.attempt:
             args[1:1] = ["--label", "com.gamjaoj.attempt=" + self.attempt]
+        phase = "compile" if compile_phase else "test"
         try:
-            docker(*args)
-            result = capture(["docker", "start", "--attach", "--interactive", name], stdin,
-                             30 if compile_phase else 5,
+            self.timings.call(phase+".container_create", docker, *args)
+            result = self.timings.call(phase+".start_attach_wait", capture,["docker", "start", "--attach", "--interactive", name], stdin,
+                             seconds,
                              BUILD_LIMIT if compile_phase else OUTPUT_LIMIT)
             if result["limit"]:
                 try:
@@ -124,26 +211,41 @@ class Runner:
                     state = json.loads(docker("inspect", "--format", "{{json .State}}", name))
                     if state["Running"]:
                         raise
-            state = json.loads(docker("inspect", "--format", "{{json .State}}", name))
+            state = json.loads(self.timings.call(phase+".container_inspect", docker, "inspect", "--format", "{{json .State}}", name))
             if state["Running"] or state.get("Error"):
                 raise InfrastructureError("Container did not finish cleanly: " + str(state))
             if not result["limit"] and result["client_exit"] != state["ExitCode"]:
                 raise InfrastructureError("Docker attachment lost; exit status is not reliable")
+            # Docker timestamps delimit container lifetime, not pure Java CPU time.
+            self.timings.segments.append(dict(phase=phase+".container_lifetime", startedAt=state.get("StartedAt"), finishedAt=state.get("FinishedAt")))
             result["exit_code"] = state["ExitCode"]
             result["oom_killed"] = state["OOMKilled"]
             return result
         finally:
             # Exact per-attempt name only: never prune or touch another project's containers.
-            docker("rm", "--force", name)
+            self.timings.call(phase+".container_remove", docker, "rm", "--force", name)
 
     def judge(self, source, problem):
+        self.timings = Timings()
         self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        # The lock is host-wide per operator, across checkouts and configured report paths.
-        lock_path = Path.home() / ".local/state/gamjaoj/runner.lock"
-        lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with lock_path.open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            return self._judge(source, problem)
+        # Existing serial Runners use the same exclusive gate. Functional work also
+        # holds one of two host-wide slots; no caller can bypass the physical cap.
+        with ExitStack() as locks:
+            slot = self.timings.call("host_lock_wait", locks.enter_context, execution_lock(self.execution_mode))
+            report = self._judge(source, problem)
+            # Separate from result.json: diagnostics must not alter immutable verdict evidence.
+            performance = self.timings.snapshot() | {
+                "attemptToken": self.attempt, "sourceSha256": report["source_sha256"],
+                "problemSha256": report["problem_sha256"], "runtimeImage": self.image,
+                "requestedTests": len(problem["tests"]), "executedTests": len(report["tests"]),
+                "compileCacheHit": report.get("compile", {}).get("cache_hit"), "verdict": report["verdict"],
+                "dockerControl": os.environ.get("GAMJAOJ_DOCKER_CONTROL", "cli"),
+                "executionMode": self.execution_mode, "functionalSlot": slot}
+            try:
+                (self.state_dir / "runs" / report["run_id"] / "performance.json").write_text(json.dumps(performance))
+            except OSError:
+                pass  # Diagnostic storage failure must not cause a re-execution.
+            return report
 
     def _judge(self, source, problem):
         validate_problem(problem)
@@ -153,25 +255,33 @@ class Runner:
         run_dir = self.state_dir / "runs" / run_id
         run_dir.mkdir(parents=True, mode=0o700)
         problem_bytes = json.dumps(problem, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
-        (run_dir / "Main.java").write_bytes(source)
+        (run_dir / self.profile["sourceFile"]).write_bytes(source)
         (run_dir / "problem.json").write_bytes(problem_bytes)
         custom = problem["output_policy"] == "RUN_ONLY"
-        report = {"run_id": run_id, "policy": (runtime_policies(self.image)[1 if custom else 0] if self.image in [(ROOT / "runner/java-image.txt").read_text().strip(), (ROOT / "runner/java21-image.txt").read_text().strip()] else POLICY), "image": self.image,
+        report = {"run_id": run_id, "policy": (runtime_policies(self.image)[1 if custom else 0] if self.image in [p['image'] for p in LANGUAGES.values()] + [(ROOT / 'runner/java21-image.txt').read_text().strip()] else POLICY), "image": self.image,
                   "source_sha256": hashlib.sha256(source).hexdigest(),
                   "problem_sha256": hashlib.sha256(problem_bytes).hexdigest(),
-                  "problem_version": problem["version"], "verdict": "IE", "tests": []}
+                  "runner_environment": {"contract": EXECUTION_CONTRACT,
+                      "dockerControl": os.environ.get("GAMJAOJ_DOCKER_CONTROL", "cli")},
+                  "language": self.profile["language"], "execution_profile": self.profile,
+                  "problem_version": problem["version"], "execution_mode": self.execution_mode, "verdict": "IE", "tests": []}
         try:
-            docker("image", "inspect", self.image)
-            with tempfile.TemporaryDirectory(prefix="gamjaoj-") as directory:
+            self.timings.call("image_inspect", docker, "image", "inspect", self.image)
+            with workspace(self.timings) as directory:
+                preparation_started = time.monotonic()
                 work = Path(directory)
                 work.chmod(0o755)
-                (work / "Main.java").write_bytes(source)
-                (work / "Main.java").chmod(0o444)
-                result = self.sandbox(work, ["/bin/sh", "-c",
-                    "javac -J-Xmx128m -J-XX:ActiveProcessorCount=1 -proc:none "
-                    "-encoding UTF-8 -d /classes /work/Main.java >&2 "
-                    "&& tar -C /classes -cf - ."], compile_phase=True)
+                (work / self.profile["sourceFile"]).write_bytes(source)
+                (work / self.profile["sourceFile"]).chmod(0o444)
+                self.timings.segments.append(dict(phase="workspace_prepare", elapsedMs=round((time.monotonic()-preparation_started)*1000,3)))
+                cache_key = self.compile_cache.key(problem["version"], self.image, source) if self.compile_cache is not None else None
+                result = self.timings.call("compile_cache_lookup", self.compile_cache.get, cache_key) if cache_key is not None else None
+                cache_hit = result is not None
+                if result is None:
+                    result = self.timings.call("compile_total", self.sandbox, work, self.profile["compileCommand"], compile_phase=True)
                 report["compile"] = evidence(result)
+                report["compile"]["cache_hit"] = cache_hit
+                # wall_ms remains original build evidence, not current request latency.
                 if (result["exit_code"] in (137, 143) and not result["limit"]
                         and not result["oom_killed"]):
                     raise InfrastructureError("Unattributed compiler termination")
@@ -181,12 +291,11 @@ class Runner:
                     classes = work / "compiled"
                     classes.mkdir(mode=0o755)
                     classes.chmod(0o755)  # Worker uses umask 077; sandbox UID still needs traversal.
-                    unpack_classes(result["stdout"], classes)
+                    self.timings.call("artifact_unpack", unpack_classes, result["stdout"], classes, self.profile["artifact"])
+                    if self.compile_cache is not None and not cache_hit:
+                        self.compile_cache.put(cache_key, result)
                     for test in problem["tests"]:
-                        result = self.sandbox(classes, ["java", "-Xms16m", "-Xmx128m",
-                            "-XX:ActiveProcessorCount=1", "-XX:+UseSerialGC",
-                            "-XX:+ExitOnOutOfMemoryError", "-XX:-UsePerfData",
-                            "-cp", "/work", "Main"], test["input"].encode())
+                        result = self.timings.call("test_total", self.sandbox, classes, self.profile['testCommand'], test["input"].encode())
                         verdict = classify(result, None if custom else test["output"].encode())
                         report["tests"].append({"id": test["id"], "verdict": verdict,
                                                 **evidence(result), **({"stdout": result["stdout"][:16384].decode(errors="replace"),
@@ -198,12 +307,13 @@ class Runner:
             report["verdict"] = "IE"
             report["error"] = str(exc)[:2048]
         temporary = run_dir / "result.tmp"
-        temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2))
-        temporary.replace(run_dir / "result.json")
+        with self.timings.measure("report_save"):
+            temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2))
+            temporary.replace(run_dir / "result.json")
         return report
 
 
-def unpack_classes(archive, destination):
+def unpack_classes(archive, destination, artifact="class"):
     total = 0
     count = 0
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as package:
@@ -215,7 +325,7 @@ def unpack_classes(archive, destination):
                 continue
             count += 1
             total += member.size
-            if not member.isfile() or path.suffix != ".class" or count > 4096 or total > BUILD_LIMIT:
+            if not member.isfile() or (path.suffix != ".class" if artifact == "class" else member.name != ("main" if artifact == "binary" else "Main.py")) or count > 4096 or total > BUILD_LIMIT:
                 raise InfrastructureError("Invalid compiler artifact")
             target = destination / path
             target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
@@ -224,7 +334,7 @@ def unpack_classes(archive, destination):
                 parent.chmod(0o755)
                 parent = parent.parent
             target.write_bytes(package.extractfile(member).read())
-            target.chmod(0o444)
+            target.chmod(0o555 if artifact == "binary" else 0o444)
 
 
 def validate_problem(problem):

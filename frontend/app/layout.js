@@ -1,4 +1,5 @@
 import './styles.css';
+import './product-ui.css';
 
 export const metadata = {
   title: 'GamjaOJ · 나의 알고리즘 연습장',

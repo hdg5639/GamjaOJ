@@ -5,8 +5,13 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+import threading
+import re
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from unittest.mock import patch
 
-from runner.judge import InfrastructureError, ROOT, Runner, classify, unpack_classes, validate_problem
+from runner.judge import InfrastructureError, ROOT, Runner, CompileCache, classify, unpack_classes, validate_problem
 
 
 class ContractTests(unittest.TestCase):
@@ -44,6 +49,78 @@ class ContractTests(unittest.TestCase):
                     package.addfile(entry)
                 with self.assertRaises(InfrastructureError):
                     unpack_classes(archive.getvalue(), Path(directory))
+
+
+class CompileCacheTests(unittest.TestCase):
+    version = "generated-12345678-1234-1234-1234-123456789abc-r0"
+    draft_version = "experimental-check-12345678-1234-1234-1234-123456789abc"
+
+    def test_experimental_draft_scope_and_modified_code(self):
+        cache = CompileCache()
+        key = cache.key(self.draft_version, "image-a", b"source")
+        self.assertIsNotNone(key)
+        result = {"stdout": b"classes", "stderr": b"", "exit_code": 0, "limit": None, "oom_killed": False}
+        cache.put(key, result)
+        self.assertEqual(result, cache.get(key))
+        for version, image, source in [(self.draft_version.replace("12345678", "87654321"), "image-a", b"source"),
+                                      (self.version, "image-a", b"source"),
+                                      (self.draft_version, "image-a", b"changed"),
+                                      (self.draft_version, "image-b", b"source")]:
+            self.assertIsNone(cache.get(cache.key(version, image, source)))
+        for version in ("experimental-check-", self.draft_version + "-extra", "sum-v1"):
+            self.assertIsNone(cache.key(version, "image-a", b"source"))
+        with patch("runner.judge.COMPILE_COMMAND", ["changed-flags"]):
+            self.assertIsNone(cache.get(cache.key(self.draft_version, "image-a", b"source")))
+
+    def test_scope_source_image_and_command_separation(self):
+        cache = CompileCache()
+        key = cache.key(self.version, "image-a", b"source")
+        result = {"stdout": b"classes", "stderr": b"", "exit_code": 0, "limit": None, "oom_killed": False}
+        cache.put(key, result)
+        self.assertEqual(result, cache.get(key))
+        self.assertIsNone(cache.key("sum-v1", "image-a", b"source"))
+        for version, image, source in [(self.version.replace("12345678", "87654321"), "image-a", b"source"),
+                                        (self.version[:-1] + "1", "image-a", b"source"),
+                                        (self.version, "image-b", b"source"),
+                                        (self.version, "image-a", b"changed")]:
+            self.assertIsNone(cache.get(cache.key(version, image, source)))
+        with patch("runner.judge.COMPILE_COMMAND", ["changed-flags"]):
+            self.assertIsNone(cache.get(cache.key(self.version, "image-a", b"source")))
+        cache.get(key)["stdout"] = b"mutated"
+        self.assertEqual(b"classes", cache.get(key)["stdout"])
+
+    def test_invalid_artifact_and_compile_failure_are_never_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner = Runner((ROOT / "runner/java-image.txt").read_text().strip(), directory)
+            runner.compile_cache = CompileCache()
+            problem = {"version": self.version, "output_policy": "TOKEN_EXACT",
+                       "tests": [{"id": "one", "input": "", "output": "3"}]}
+            result = {"stdout": b"invalid tar", "stderr": b"", "limit": None,
+                      "exit_code": 0, "client_exit": 0, "oom_killed": False, "wall_ms": 1}
+            for expected, response in [("IE", result), ("CE", result | {"exit_code": 1, "client_exit": 1})]:
+                with patch("runner.judge.docker", return_value=b""), patch.object(runner, "sandbox", return_value=response) as sandbox:
+                    for _ in range(2):
+                        report = runner.judge(b"source", problem)
+                        self.assertEqual(expected, report["verdict"])
+                        self.assertFalse(report["compile"]["cache_hit"])
+                    self.assertEqual(2, sandbox.call_count)
+                    self.assertEqual(0, len(runner.compile_cache.entries))
+
+    def test_limits_expiry_and_failures(self):
+        cache = CompileCache(max_bytes=8, max_entries=2, ttl=10)
+        result = {"stdout": b"1234", "stderr": b"", "exit_code": 0, "limit": None, "oom_killed": False}
+        with patch("runner.judge.time.monotonic", return_value=0):
+            for key in ("a", "b", "c"):
+                cache.put(key, result)
+            self.assertIsNone(cache.get("a"))
+            cache.put("large", result | {"stdout": b"x" * 9})
+            self.assertEqual(0, len(cache.entries))
+            cache.put("valid", result)
+            for change in ({"exit_code": 1}, {"limit": "TIME_LIMIT"}, {"oom_killed": True}):
+                cache.put("failed", result | change)
+                self.assertIsNone(cache.get("failed"))
+        with patch("runner.judge.time.monotonic", return_value=10):
+            self.assertIsNone(cache.get("valid"))
 
 
 @unittest.skipUnless(os.environ.get("GAMJAOJ_DOCKER_TESTS") == "1", "real Docker opt-in")
@@ -88,6 +165,9 @@ class DockerTests(unittest.TestCase):
                   + body + "}}").encode()
         report = self.runner.judge(source, self.problem)
         self.assertEqual(expected, report["verdict"], report)
+        from runner.judge import EXECUTION_CONTRACT
+        self.assertEqual(EXECUTION_CONTRACT,report['runner_environment']['contract'])
+        self.assertEqual(os.environ.get('GAMJAOJ_DOCKER_CONTROL','cli'),report['runner_environment']['dockerControl'])
         run_dir = Path(self.directory.name) / "runs" / report["run_id"]
         self.assertEqual(report, json.loads((run_dir / "result.json").read_text()))
         self.assertEqual(source, (run_dir / "Main.java").read_bytes())
@@ -100,8 +180,85 @@ class DockerTests(unittest.TestCase):
         self.assertEqual("AC", report["verdict"], report)
         self.assertEqual(5, len(report["tests"]))
 
+    def test_cached_compile_still_executes_new_inputs_and_fresh_sandboxes(self):
+        self.check_cached_compile(CompileCacheTests.version)
+
+    def test_experimental_cached_compile_still_executes_new_inputs_and_fresh_sandboxes(self):
+        self.check_cached_compile(CompileCacheTests.draft_version)
+
+    def check_cached_compile(self, version):
+        self.problem["version"] = version
+        self.runner.compile_cache = CompileCache()
+        source = b'public class Main { public static void main(String[] a) throws Exception { java.nio.file.Path p=java.nio.file.Paths.get("/tmp/marker"); if(java.nio.file.Files.exists(p)) throw new RuntimeException(); java.nio.file.Files.write(p,new byte[]{1}); System.out.println(new java.util.Scanner(System.in).nextInt()); }}'
+        self.problem["tests"] = [{"id": "first", "input": "3", "output": "3"}]
+        with patch.object(self.runner, "sandbox", wraps=self.runner.sandbox) as sandbox:
+            first = self.runner.judge(source, self.problem)
+            self.problem["tests"] = [{"id": "second", "input": "4", "output": "4"}, {"id": "third", "input": "5", "output": "5"}]
+            second = self.runner.judge(source, self.problem)
+            self.problem["tests"] = [{"id": "wrong", "input": "6", "output": "7"}]
+            third = self.runner.judge(source, self.problem)
+        self.assertEqual(["AC", "AC", "WA"], [first["verdict"], second["verdict"], third["verdict"]])
+        self.assertEqual([False, True, True], [r["compile"]["cache_hit"] for r in (first, second, third)])
+        self.assertEqual(1, sum(call.kwargs.get("compile_phase", False) for call in sandbox.call_args_list))
+        self.assertEqual(5, sandbox.call_count)  # One compile, every one of the four cases executed.
+        for report, cache_hit in [(first,False),(second,True),(third,True)]:
+            timing=json.loads((Path(self.directory.name)/"runs"/report["run_id"]/"performance.json").read_text())
+            phases=[part["phase"] for part in timing["segments"]]
+            self.assertEqual(cache_hit,timing["compileCacheHit"])
+            self.assertEqual(report["source_sha256"],timing["sourceSha256"])
+            self.assertEqual(len(report["tests"]),phases.count("test.container_create"))
+            self.assertEqual(0 if cache_hit else 1,phases.count("compile.container_create"))
+            self.assertEqual(0 if cache_hit else 1,phases.count("compile_total"))
+            self.assertIn("workspace_cleanup",phases)
+            self.assertIn("report_save",phases)
+            self.assertNotIn("performance",report)
+            self.assertTrue(all(part.get("elapsedMs",0)>=0 for part in timing["segments"]))
+
+        self.assertNotEqual(first["problem_sha256"], second["problem_sha256"])
+
     def test_wa(self):
         self.check('System.out.println(4);', "WA")
+
+    def test_functional_containers_overlap_but_resource_check_waits(self):
+        source = b'public class Main { public static void main(String[] a) throws Exception { Thread.sleep(500); System.out.println(3); }}'
+        self.problem['version'] = CompileCacheTests.version
+        cache = CompileCache()
+        self.runner.compile_cache = cache
+        self.assertEqual('AC', self.runner.judge(source,self.problem)['verdict'])
+        barrier = threading.Barrier(3)
+        release = threading.Event()
+        runners = []
+        for i in range(3):
+            runner = Runner(self.runner.image, Path(self.directory.name)/str(i))
+            runner.compile_cache = cache
+            runner.execution_mode = 'FUNCTIONAL' if i < 2 else 'EXCLUSIVE'
+            runners.append(runner)
+        def functional(runner):
+            original=runner.sandbox
+            def sandbox(*args,**kwargs):
+                barrier.wait(timeout=10)
+                if not release.wait(10): raise AssertionError('test release missing')
+                return original(*args,**kwargs)
+            with patch.object(runner,'sandbox',side_effect=sandbox):
+                return runner.judge(source,self.problem)
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            tasks=[pool.submit(functional,r) for r in runners[:2]]
+            try:
+                barrier.wait(timeout=10)
+                resource=pool.submit(runners[2].judge,source,self.problem)
+            finally:
+                release.set()
+            reports=[task.result(timeout=30) for task in tasks]+[resource.result(timeout=30)]
+        intervals=[]
+        for runner,report in zip(runners,reports):
+            self.assertEqual('AC',report['verdict'],report)
+            self.assertEqual(runner.execution_mode,report['execution_mode'])
+            self.assertTrue(report['compile']['cache_hit'])
+            timing=json.loads((runner.state_dir/'runs'/report['run_id']/'performance.json').read_text())
+            span=next(s for s in timing['segments'] if s['phase']=='test.container_lifetime')
+            intervals.append(tuple(datetime.fromisoformat(re.sub(r'(\.\d{6})\d+',r'\1',span[k]).replace('Z','+00:00')) for k in ('startedAt','finishedAt')))
+        self.assertLess(max(x[0] for x in intervals[:2]),min(x[1] for x in intervals[:2]))
+        self.assertGreaterEqual(intervals[2][0],max(x[1] for x in intervals[:2]))
 
     def test_private_worker_umask_does_not_hide_compiled_artifacts(self):
         previous = os.umask(0o077)
