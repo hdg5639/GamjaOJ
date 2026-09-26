@@ -29,6 +29,10 @@ class HybridExecution {
         try{return JudgeJson.JSON.readValue(value,type);}catch(Exception e){throw new IllegalStateException("Invalid hybrid record",e);}
     }
     private boolean configured(){return config.enabled()&&!config.key().isBlank();}
+    /** Concurrent admitted generations and ordinary API calls; bounded to protect deadlines and budget. */
+    int maxActive() {
+        try{return Math.max(1,Math.min(4,Integer.parseInt(config.value("HYBRID_MAX_ACTIVE","1").trim())));}catch(NumberFormatException e){return 1;}
+    }
     static BigDecimal reserve(HybridGeneration.Role role,AiSettings.Model model) {
         // Future writer/reader inputs are not known at admission. Bound the complete accepted input,
         // instructions, schema and framing, rather than estimating from a shorter current request.
@@ -60,9 +64,13 @@ class HybridExecution {
             throw new AccountException(429,"본문 작성과 독립 검토에 필요한 AI 예산이 부족해요.");
         if(jdbc.sql("SELECT count(*) FROM hybrid_generation WHERE id=?").param(id).query(Integer.class).single()>0)
             throw new AccountException(409,"예약 없이 시작된 출제를 실행 경로로 전환할 수 없어요.");
-        // One active generation; no parallel user admissions hidden behind internal branch concurrency.
-        if(jdbc.sql("SELECT count(*) FROM hybrid_generation g WHERE EXISTS (SELECT 1 FROM hybrid_api_reservation r WHERE r.generation_id=g.id) AND (g.status IN ('QUEUED','DESIGNING','BUILDING','VALIDATING','REVIEWING') OR (g.status='HELD' AND g.error_code IN ('VALIDATION_ADAPTER_NOT_CONNECTED','CONTENT_REVIEW_REQUIRED') AND g.deadline_at>CURRENT_TIMESTAMP))").query(Integer.class).single()>0)
+        // Bounded service-wide admissions (HYBRID_MAX_ACTIVE, default 1) and one active request per owner.
+        String activeWhere="EXISTS (SELECT 1 FROM hybrid_api_reservation r WHERE r.generation_id=g.id) AND (g.status IN ('QUEUED','DESIGNING','BUILDING','VALIDATING','REVIEWING') OR (g.status='HELD' AND g.error_code IN ('VALIDATION_ADAPTER_NOT_CONNECTED','CONTENT_REVIEW_REQUIRED') AND g.deadline_at>CURRENT_TIMESTAMP))";
+        UUID owner=jdbc.sql("SELECT id FROM app_user WHERE username=?").param(user).query(UUID.class).optional().orElse(null);
+        if(owner!=null&&jdbc.sql("SELECT count(*) FROM hybrid_generation g WHERE g.owner_id=? AND "+activeWhere).param(owner).query(Integer.class).single()>0)
             throw new AccountException(429,"진행 중인 출제가 끝난 뒤 다시 요청해 주세요.");
+        if(jdbc.sql("SELECT count(*) FROM hybrid_generation g WHERE "+activeWhere).query(Integer.class).single()>=maxActive())
+            throw new AccountException(429,"다른 회원의 출제가 진행 중이에요. 잠시 후 다시 요청해 주세요.");
         var job=jobs.start(user,id,request,shared);
         jdbc.sql("INSERT INTO hybrid_execution_policy(generation_id,codex_model,codex_effort) VALUES (?,?,?)")
                 .param(id).param(config.value("CODEX_GENERATION_MODEL","gpt-5.6-sol"))
@@ -167,7 +175,8 @@ class HybridExecution {
         lock();recover();if(!configured())return null;
         String roles=authorLane?"('CONTRACT','CORE')":"('PRESENTATION','READER','CONTENT_REVIEW')";
         if(authorLane?jdbc.sql("SELECT count(*) FROM ai_attempt a JOIN hybrid_api_reservation r ON r.attempt_id=a.id WHERE a.status='HYBRID_RUNNING' AND r.role IN "+roles).query(Integer.class).single()>0
-                :jdbc.sql("SELECT count(*) FROM ai_attempt a WHERE a.status='RUNNING' OR (a.status='HYBRID_RUNNING' AND NOT EXISTS (SELECT 1 FROM hybrid_api_reservation r WHERE r.attempt_id=a.id AND r.role IN ('CONTRACT','CORE')))").query(Integer.class).single()>0)return null;
+                :jdbc.sql("SELECT count(*) FROM ai_attempt a WHERE a.status='RUNNING'").query(Integer.class).single()>0
+                ||jdbc.sql("SELECT count(*) FROM ai_attempt a WHERE a.status='HYBRID_RUNNING' AND NOT EXISTS (SELECT 1 FROM hybrid_api_reservation r WHERE r.attempt_id=a.id AND r.role IN ('CONTRACT','CORE'))").query(Integer.class).single()>=maxActive())return null;
         var candidates=jdbc.sql("SELECT r.attempt_id,r.generation_id,r.role,a.settings_json FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id JOIN hybrid_generation g ON g.id=r.generation_id WHERE a.status='HYBRID_RESERVED' AND r.revision=g.revision AND r.role IN "+roles+" AND g.status IN ('QUEUED','BUILDING','DESIGNING','REVIEWING') ORDER BY g.created_at,r.role")
                 .query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getObject(2,UUID.class),HybridGeneration.Role.valueOf(r.getString(3)),parse(r.getString(4),AiSettings.Model.class)}).list();
         for(var row:candidates) {

@@ -250,6 +250,12 @@ class HybridAdmissionIntegrationTest {
         assertThat(after).isZero();assertThat(runner.jobs()).isEqualTo(3);
         assertThat(jdbc.sql("SELECT count(*) FROM problem_version WHERE id LIKE 'hybrid-check-%' AND ready=true").query(Integer.class).single()).isZero();
     }
+    @Test void wildcardAllowlistOpensFixedRulesToEveryMember() throws Exception {
+        mvc.perform(get("/api/generation/hybrid/options").with(user("other"))).andExpect(jsonPath("$.enabled").value(false));
+        overrides.put("HYBRID_ALLOWED_USERS","*");
+        mvc.perform(get("/api/generation/hybrid/options").with(user("other"))).andExpect(jsonPath("$.enabled").value(true));
+        mvc.perform(postRequest(UUID.randomUUID(),BODY).with(user("other"))).andExpect(status().isOk());
+    }
     @Test void readEndpointsNeverDispatchAndLegacyModesCannotCreateAlongsideAdmittedWork() throws Exception {
         for(int i=0;i<3;i++){mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(status().isOk());mvc.perform(get("/api/generation/hybrid").with(user("owner"))).andExpect(status().isOk());}
         assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt").query(Integer.class).single()).isZero();
