@@ -248,6 +248,8 @@ class HybridRuleOnboarding {
         inputs(a.path("tinyInputs"),HybridRulePackage.MIN_TINY,HybridRulePackage.MAX_TINY,1024,"RULE_TINY_INPUTS");
         inputs(a.path("invalidInputs"),2,HybridRulePackage.MAX_INVALID,1024,"RULE_INVALID_INPUTS");
         inputs(a.path("stressInputs"),1,HybridRulePackage.MAX_STRESS,16384,"RULE_STRESS_INPUTS");
+        // The same display/guidance limits the stored package enforces, checked before any Runner work.
+        HybridRulePackage.metadata(a.path("catalog"),a.path("guidance"),a.path("oracleDomain").path("inputDomain"),a.path("oracleDomain").path("enumeration"));
         var actions=new HashSet<String>();a.path("contract").path("actions").forEach(x->actions.add(x.path("id").asText()));
         if(a.path("rules").size()!=actions.size())throw new HybridArtifacts.Invalid("RULE_PACKAGE_RULES");
         for(var r:a.path("rules"))if(!actions.remove(r.path("id").asText()))throw new HybridArtifacts.Invalid("RULE_PACKAGE_RULES");
