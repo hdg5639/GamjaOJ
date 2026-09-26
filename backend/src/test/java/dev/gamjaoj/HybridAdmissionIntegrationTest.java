@@ -54,6 +54,8 @@ class HybridAdmissionIntegrationTest {
         jdbc.sql("DELETE FROM judge_job WHERE submission_id IN (SELECT id FROM submission WHERE hybrid_branch_id IS NULL)").update();
         runner.jdbc=jdbc;runner.checks=checks;runner.hybrid=jobs;runner.queue=queue;runner.env=env;runner.setup();
         jdbc.sql("DELETE FROM ai_attempt").update();jdbc.sql("DELETE FROM ai_task").update();
+        HybridProfiles.unregister("rule-fixture-v1");jdbc.sql("DELETE FROM hybrid_rule_onboarding").update();
+        jdbc.sql("DELETE FROM hybrid_rule_version WHERE engine='PACKAGE_V1'").update();jdbc.sql("DELETE FROM hybrid_rule_family WHERE visibility='MEMBER'").update();
         jdbc.sql("UPDATE hybrid_rule_version SET status='ACTIVE',status_reason=NULL").update();registry.sync();
         jdbc.sql("INSERT INTO app_user(id,username,password_hash,nickname) VALUES (?,'other','unused','other')").param(UUID.randomUUID()).update();
     }
@@ -255,6 +257,55 @@ class HybridAdmissionIntegrationTest {
         overrides.put("HYBRID_ALLOWED_USERS","*");
         mvc.perform(get("/api/generation/hybrid/options").with(user("other"))).andExpect(jsonPath("$.enabled").value(true));
         mvc.perform(postRequest(UUID.randomUUID(),BODY).with(user("other"))).andExpect(status().isOk());
+    }
+    /** A data-only package reusing known-good knapsack artifacts under a distinct contract. */
+    static com.fasterxml.jackson.databind.node.ObjectNode fixturePackage() {
+        var p=JudgeJson.JSON.createObjectNode();
+        var contract=(com.fasterxml.jackson.databind.node.ObjectNode)HybridFiniteProfile.contract();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)contract.path("goal")).put("definition","등록 규칙 테스트: 선택한 물건 가치 합의 최댓값");
+        p.set("contract",contract);var rules=p.putArray("rules");contract.path("actions").forEach(action->rules.addObject().put("id",action.path("id").asText()).put("text","각 물건은 한 번만 고를 수 있고 비용 합이 한도를 넘지 않아야 합니다."));
+        var catalog=p.putObject("catalog").put("label","등록 규칙 · 물건 고르기").put("description","회원이 등록한 테스트 규칙").put("category","동적 계획법");
+        catalog.putArray("tags").add("배낭").add("등록 규칙");catalog.putArray("rules").add("각 물건은 한 번만 선택");
+        var support=HybridCoreSupport.bundle(HybridProfiles.KNAPSACK);
+        p.put("generator",support.path("generator").asText()).put("validator",support.path("inputValidator").asText());
+        var tiny=p.putArray("tiny");for(var c:HybridFiniteProfile.valid())tiny.addObject().put("input",c.input()).put("output",c.output());
+        var invalid=p.putArray("invalid");for(var c:HybridFiniteProfile.invalid())invalid.addObject().put("input",c.input());
+        var stress=p.putArray("stress");for(var c:HybridFiniteProfile.stress())stress.addObject().put("input",c.input()).put("output",c.output());
+        var mutants=p.putArray("mutants");
+        mutants.addObject().put("id","mutant-unbounded").put("source",HybridFiniteProfile.mutant("mutant-unbounded")).put("witness",HybridFiniteProfile.valid().get(4).input());
+        mutants.addObject().put("id","mutant-strict-fit").put("source",HybridFiniteProfile.mutant("mutant-strict-fit")).put("witness",HybridFiniteProfile.valid().get(0).input());
+        p.put("oracleDomain","N <= 4, W <= 8").put("enumeration","all subsets");
+        p.putObject("guidance").put("author","Use 0/1 knapsack DP.").put("teaching","Explain the reverse capacity loop.").put("reader","Enumerate all subsets.");
+        return p;
+    }
+    UUID onboardingRow(UUID owner) {
+        UUID id=UUID.randomUUID();var now=java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
+        jdbc.sql("INSERT INTO hybrid_rule_onboarding(id,owner_id,request_json,request_sha256,status,budget_usd,created_at,deadline_at,updated_at) VALUES (?,?,'{}',?,'ACTIVE',1,?,?,?)")
+                .param(id).param(owner).param("0".repeat(64)).param(now).param(now.plusMinutes(20)).param(now).update();return id;
+    }
+    @Test void registeredDataPackageRunsWithoutProfileCodeAndStaysPrivateUntilShared() throws Exception {
+        overrides.put("HYBRID_FUNCTIONAL_ENABLED","true");overrides.put("HYBRID_PIPELINE_V2_ENABLED","true");overrides.put("HYBRID_ALLOWED_USERS","owner,other");
+        UUID owner=submissions.owner("owner",false);var reference=f.core();reference.remove(List.of("generator","inputValidator"));
+        var d=registry.activate(owner,onboardingRow(owner),"rule-fixture-v1",fixturePackage(),reference);
+        assertThat(d.pkg()).isNotNull();assertThat(HybridProfiles.byPolicy(d.policy())).isEqualTo(d);
+        assertThatThrownBy(()->registry.activate(owner,onboardingRow(owner),"rule-fixture-v2",fixturePackage(),reference)).isInstanceOf(HybridArtifacts.Invalid.class);
+        mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(jsonPath("$.profiles[3].id").value("rule-fixture-v1"))
+                .andExpect(jsonPath("$.profiles[3].label").value("등록 규칙 · 물건 고르기")).andExpect(jsonPath("$.profiles[3].verifiedReference").value(true));
+        mvc.perform(get("/api/generation/hybrid/options").with(user("other"))).andExpect(jsonPath("$.profiles.length()").value(3));
+        mvc.perform(postRequest(UUID.randomUUID(),BODY.replace(HybridAdmission.PROFILE,"rule-fixture-v1")).with(user("other"))).andExpect(status().isBadRequest());
+        UUID id=UUID.randomUUID();
+        mvc.perform(postRequest(id,BODY.replace(HybridAdmission.PROFILE,"rule-fixture-v1"))).andExpect(status().isOk()).andExpect(jsonPath("$.referenceReused").value(true));
+        assertThat(execution.claimCodex()).isNull();
+        String version=finish(id,d);assertThat(runner.jobs()).isEqualTo(15);
+        var catalog=jdbc.sql("SELECT catalog_category,catalog_tags FROM problem_version WHERE id=?").param(version).query((r,n)->r.getString(1)+"|"+r.getString(2)).single();
+        assertThat(catalog).isEqualTo("동적 계획법|배낭,등록 규칙");
+        // The package's own answers were used: generator output is validation-only, never an answer-bearing test.
+        var pack=JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id=?").param(version).query(String.class).single());
+        for(var t:pack.path("tests"))assertThat(t.path("id").asText()).doesNotStartWith("check-");
+        registry.share(owner,"rule-fixture-v1",true);
+        mvc.perform(get("/api/generation/hybrid/options").with(user("other"))).andExpect(jsonPath("$.profiles.length()").value(4));
+        assertThatThrownBy(()->registry.share(submissions.owner("other",false),"rule-fixture-v1",false)).isInstanceOf(AccountException.class);
+        HybridProfiles.unregister("rule-fixture-v1");
     }
     @Test void readEndpointsNeverDispatchAndLegacyModesCannotCreateAlongsideAdmittedWork() throws Exception {
         for(int i=0;i<3;i++){mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(status().isOk());mvc.perform(get("/api/generation/hybrid").with(user("owner"))).andExpect(status().isOk());}

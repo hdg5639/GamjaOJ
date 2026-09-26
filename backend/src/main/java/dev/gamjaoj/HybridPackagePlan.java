@@ -52,13 +52,22 @@ final class HybridPackagePlan {
         var distinct=new HashSet<String>();int i=0;
         for(var value:envelope) {
             if(!value.isTextual()||!distinct.add(value.asText()))throw new IllegalArgumentException("INVALID_GENERATOR_DIVERSITY");
-            add(profile,all,"generated-"+i++,value.asText());
+            // A registered package has no trusted answer engine for fresh generator output: validate it only.
+            if(profile.pkg()!=null)check(all,"check-generated-"+i++,value.asText());else add(profile,all,"generated-"+i++,value.asText());
         }
         i=0;for(String input:profile.random(seed))add(profile,all,"random-"+i++,input);
-        i=0;for(var item:reader.path("adversarialInputs"))add(profile,all,"reader-"+i++,item.path("input").asText());
+        i=0;for(var item:reader.path("adversarialInputs")) {
+            if(profile.pkg()!=null&&!profile.tiny(item.path("input").asText()))check(all,"check-reader-"+i++,item.path("input").asText());
+            else add(profile,all,"reader-"+i++,item.path("input").asText());
+        }
         if(all.size()>20)throw new IllegalArgumentException("FINAL_PACKAGE_TEST_CAP");
         return List.copyOf(all.values());
     }
+    /** Validation-only candidate: checked by the input validator, never used as an answer-bearing test. */
+    private static void check(Map<String,JsonNode> all,String id,String input) {
+        all.putIfAbsent(input,JudgeJson.JSON.createObjectNode().put("id",id).put("input",input).put("output","VALID\n"));
+    }
+    static boolean checkOnly(JsonNode c){return c.path("id").asText().startsWith("check-");}
     private static void add(HybridProfiles.Definition profile,Map<String,JsonNode> all,String id,String input) {
         var answer=profile.answer(input);
         all.putIfAbsent(input,JudgeJson.JSON.createObjectNode().put("id",id).put("input",input).put("output",answer));
@@ -66,9 +75,9 @@ final class HybridPackagePlan {
     static List<JsonNode> tests(List<JsonNode> candidates,String role) {return tests(candidates,role,HybridProfiles.KNAPSACK);}
     static List<JsonNode> tests(List<JsonNode> candidates,String role,HybridProfiles.Definition profile) {
         if(role.equals("batch-valid"))return candidates.stream().map(c->(JsonNode)((ObjectNode)c.deepCopy()).put("output","VALID\n")).toList();
-        if(role.equals("batch-oracle"))return candidates.stream().filter(c->profile.tiny(c.path("input").asText())).toList();
+        if(role.equals("batch-oracle"))return candidates.stream().filter(c->!checkOnly(c)&&profile.tiny(c.path("input").asText())).toList();
         if(!role.equals("batch-reference"))throw new IllegalArgumentException("UNKNOWN_PACKAGE_ROLE");
-        return candidates;
+        return candidates.stream().filter(c->!checkOnly(c)).toList();
     }
     static ObjectNode pack(String version,List<JsonNode> candidates,JsonNode presentation) {return pack(version,candidates,presentation,HybridProfiles.KNAPSACK);}
     static ObjectNode pack(String version,List<JsonNode> candidates,JsonNode presentation,HybridProfiles.Definition profile) {
@@ -91,10 +100,10 @@ final class HybridPackagePlan {
                 .append("\n출력 수의 범위: ").append(sem.path("output").path("numericRange").asText());
         statement.append("\n\n제약\n").append(sem.path("limits").path("maxInputSize").asText()).append('\n').append(sem.path("limits").path("executionConstraints").asText());
         p.put("statement",statement.toString());p.set("semantics",sem.deepCopy());
-        var tests=p.putArray("tests");candidates.forEach(tests::add);
+        var tests=p.putArray("tests");candidates.stream().filter(c->!checkOnly(c)).forEach(tests::add);
         // Mechanically sourced, already checked by both implementations; never guessed by a writer.
         var samples=p.putArray("samples");
-        candidates.stream().filter(c->profile.tiny(c.path("input").asText())).limit(2).forEach(c->{
+        candidates.stream().filter(c->!checkOnly(c)&&profile.tiny(c.path("input").asText())).limit(2).forEach(c->{
             var sample=samples.addObject();sample.set("input",c.path("input"));sample.set("output",c.path("output"));
         });
         return p;

@@ -21,7 +21,7 @@ class HybridRuleRegistry {
     private static final Logger log=LoggerFactory.getLogger(HybridRuleRegistry.class);
     static final String BUILTIN="BUILTIN_V1",REUSED_EXECUTOR="REGISTRY_ARTIFACT_V1";
     record Version(String id,String familyId,String engine,String policy,String profileHash,String contractHash,
-                   String status,JsonNode catalog) {
+                   String status,JsonNode catalog,String packageJson,String visibility,UUID owner,boolean shared) {
         String label(){return catalog.path("label").asText();}
         String category(){return catalog.path("category").asText();}
         String tags(){var out=new ArrayList<String>();catalog.path("tags").forEach(t->out.add(t.asText()));return String.join(",",out);}
@@ -55,12 +55,22 @@ class HybridRuleRegistry {
 
     private static String contractHash(HybridProfiles.Definition d){return JudgeJson.hash(JudgeJson.canonical(d.contract()));}
     private Optional<Version> row(String id) {
-        return jdbc.sql("SELECT id,family_id,engine,validation_policy,profile_sha256,contract_sha256,status,catalog_json FROM hybrid_rule_version WHERE id=?")
+        return jdbc.sql("SELECT v.id,v.family_id,v.engine,v.validation_policy,v.profile_sha256,v.contract_sha256,v.status,v.catalog_json,v.package_json,f.visibility,f.owner_id,f.shared FROM hybrid_rule_version v JOIN hybrid_rule_family f ON f.id=v.family_id WHERE v.id=?")
                 .param(id).query((r,n)->new Version(r.getString(1),r.getString(2),r.getString(3),r.getString(4),r.getString(5),r.getString(6),r.getString(7),
-                        r.getString(8)==null?JudgeJson.JSON.createObjectNode():JudgeJson.parse(r.getString(8)))).optional();
+                        r.getString(8)==null?JudgeJson.JSON.createObjectNode():JudgeJson.parse(r.getString(8)),r.getString(9),r.getString(10),
+                        r.getObject(11,UUID.class),r.getBoolean(12))).optional();
     }
     /** Built-in execution definition for a stored version, or empty when identity no longer matches. */
     private Optional<HybridProfiles.Definition> engine(Version v) {
+        if(HybridRulePackage.ENGINE.equals(v.engine)) {
+            // Data package: stored bytes are the identity; a stored hash mismatch is never repaired.
+            try {
+                var stored=JudgeJson.parse(v.packageJson);var pkg=HybridRulePackage.parse(v.id,stored);
+                var d=HybridProfiles.Definition.of(pkg,pkg.hash(stored));
+                if(!d.policy().equals(v.policy)||!d.hash().equals(v.profileHash)||!contractHash(d).equals(v.contractHash))return Optional.empty();
+                HybridProfiles.register(d);return Optional.of(d);
+            }catch(RuntimeException invalid){return Optional.empty();}
+        }
         if(!BUILTIN.equals(v.engine))return Optional.empty();
         try {
             var d=HybridProfiles.byId(v.id);
@@ -72,7 +82,13 @@ class HybridRuleRegistry {
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     void sync() {
-        for(var d:HybridProfiles.all()) {
+        for(String id:jdbc.sql("SELECT id FROM hybrid_rule_version WHERE engine=? AND status='ACTIVE'").param(HybridRulePackage.ENGINE).query(String.class).list()) {
+            if(engine(row(id).orElseThrow()).isPresent())continue;
+            log.error("Rule package {} failed identity verification; quarantined",id);HybridProfiles.unregister(id);
+            jdbc.sql("UPDATE hybrid_rule_version SET status='QUARANTINED',status_reason='EXECUTION_IDENTITY_MISMATCH',updated_at=? WHERE id=?")
+                    .param(OffsetDateTime.now(ZoneOffset.UTC)).param(id).update();
+        }
+        for(var d:HybridProfiles.builtins()) {
             var v=row(d.id());
             if(v.isEmpty()){log.error("Built-in rule version {} missing from registry; not selectable",d.id());continue;}
             jdbc.sql("UPDATE hybrid_rule_version SET profile_sha256=?,contract_sha256=?,updated_at=? WHERE id=? AND profile_sha256 IS NULL AND contract_sha256 IS NULL")
@@ -90,24 +106,60 @@ class HybridRuleRegistry {
                 .query(UUID.class).list();
         for(UUID id:published)qualify(id);
     }
-    List<Version> selectable() {
-        return jdbc.sql("SELECT id FROM hybrid_rule_version WHERE status='ACTIVE' ORDER BY sort_order,id").query(String.class).list()
-                .stream().map(id->row(id).orElseThrow()).filter(v->engine(v).isPresent()).toList();
+    private static boolean visible(Version v,UUID viewer){return "BUILTIN".equals(v.visibility)||v.shared||(viewer!=null&&viewer.equals(v.owner));}
+    /** Built-ins, the viewer's own registered rules and rules their owners explicitly shared. */
+    List<Version> selectable(UUID viewer) {
+        return jdbc.sql("SELECT id FROM hybrid_rule_version WHERE status='ACTIVE' ORDER BY sort_order,created_at,id").query(String.class).list()
+                .stream().map(id->row(id).orElseThrow()).filter(v->visible(v,viewer)).filter(v->engine(v).isPresent()).toList();
     }
+    List<Version> selectable(){return selectable(null);}
     Optional<Version> version(String id){return row(id);}
-    /** Admission-time resolution. Unknown, retired, quarantined or drifted versions are rejected. */
-    Optional<HybridProfiles.Definition> resolve(String versionId) {
-        return row(versionId).filter(v->v.status.equals("ACTIVE")).flatMap(this::engine);
+    /** Admission-time resolution. Unknown, invisible, retired, quarantined or drifted versions are rejected. */
+    Optional<HybridProfiles.Definition> resolve(String versionId,UUID viewer) {
+        return row(versionId).filter(v->v.status.equals("ACTIVE")&&visible(v,viewer)).flatMap(this::engine);
+    }
+    Optional<HybridProfiles.Definition> resolve(String versionId){return resolve(versionId,null);}
+    /** Owner's registered rules, including inactive ones, for the registration screen. */
+    List<Version> owned(UUID owner) {
+        return jdbc.sql("SELECT v.id FROM hybrid_rule_version v JOIN hybrid_rule_family f ON f.id=v.family_id WHERE f.owner_id=? ORDER BY v.created_at DESC,v.id")
+                .param(owner).query(String.class).list().stream().map(id->row(id).orElseThrow()).toList();
+    }
+    /** Desired-state sharing; safe to repeat after response loss. Only the owner may change it. */
+    @Transactional
+    Version share(UUID owner,String versionId,boolean shared) {
+        var v=row(versionId).filter(x->owner.equals(x.owner)).orElseThrow(()->new AccountException(404,"등록한 규칙을 찾을 수 없어요."));
+        if(shared&&!v.status.equals("ACTIVE"))throw new AccountException(409,"사용할 수 있는 규칙만 공개할 수 있어요.");
+        jdbc.sql("UPDATE hybrid_rule_family SET shared=? WHERE id=? AND owner_id=?").param(shared).param(v.familyId).param(owner).update();
+        return row(versionId).orElseThrow();
+    }
+    /**
+     * Activates a qualified package and its qualified reference atomically. The caller has verified every
+     * qualification obligation in the Runner; this method only persists that exact evidence.
+     */
+    HybridProfiles.Definition activate(UUID owner,UUID onboarding,String versionId,JsonNode stored,JsonNode reference) {
+        var pkg=HybridRulePackage.parse(versionId,stored);var d=HybridProfiles.Definition.of(pkg,pkg.hash(stored));
+        String contract=contractHash(d);
+        if(jdbc.sql("SELECT count(*) FROM hybrid_rule_version WHERE contract_sha256=? AND status='ACTIVE'").param(contract).query(Integer.class).single()>0)
+            throw new HybridArtifacts.Invalid("DUPLICATE_RULE_CONTRACT");
+        var now=OffsetDateTime.now(ZoneOffset.UTC);String family="family-"+versionId;
+        jdbc.sql("INSERT INTO hybrid_rule_family(id,visibility,owner_id,shared) VALUES (?,'MEMBER',?,false)").param(family).param(owner).update();
+        jdbc.sql("INSERT INTO hybrid_rule_version(id,family_id,engine,validation_policy,profile_sha256,contract_sha256,status,catalog_json,sort_order,package_json,created_at,updated_at) VALUES (?,?,?,?,?,?,'ACTIVE',?,1000,?,?,?)")
+                .param(versionId).param(family).param(HybridRulePackage.ENGINE).param(d.policy()).param(d.hash()).param(contract)
+                .param(JudgeJson.canonical(pkg.catalog())).param(JudgeJson.canonical(stored)).param(now).param(now).update();
+        String raw=JudgeJson.canonical(reference);
+        jdbc.sql("INSERT INTO hybrid_rule_artifact(id,rule_version_id,kind,payload_json,payload_sha256,source_onboarding_id,status,qualified_at) VALUES (?,?,'REFERENCE',?,?,?,'QUALIFIED',?)")
+                .param(UUID.randomUUID()).param(versionId).param(raw).param(JudgeJson.hash(raw)).param(onboarding).param(now).update();
+        HybridProfiles.register(d);return d;
     }
     /** Latest qualified reference whose source problem is still published and not held. */
     Optional<Reference> qualifiedReference(String versionId) {
-        var rows=jdbc.sql("SELECT a.id,a.payload_json,a.payload_sha256 FROM hybrid_rule_artifact a JOIN problem_version p ON p.id=a.source_version_id WHERE a.rule_version_id=? AND a.kind='REFERENCE' AND a.status='QUALIFIED' AND p.ready=true AND p.review_hold=false ORDER BY a.qualified_at DESC,a.id")
+        var rows=jdbc.sql("SELECT a.id,a.payload_json,a.payload_sha256 FROM hybrid_rule_artifact a LEFT JOIN problem_version p ON p.id=a.source_version_id WHERE a.rule_version_id=? AND a.kind='REFERENCE' AND a.status='QUALIFIED' AND (a.source_onboarding_id IS NOT NULL OR (p.ready=true AND p.review_hold=false)) ORDER BY a.qualified_at DESC,a.id")
                 .param(versionId).query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getString(2),r.getString(3)}).list();
         for(var row:rows)if(JudgeJson.hash((String)row[1]).equals(row[2]))return Optional.of(new Reference((UUID)row[0],JudgeJson.parse((String)row[1])));
         return Optional.empty();
     }
     boolean stillQualified(UUID artifact) {
-        return jdbc.sql("SELECT count(*) FROM hybrid_rule_artifact a JOIN problem_version p ON p.id=a.source_version_id WHERE a.id=? AND a.status='QUALIFIED' AND p.ready=true AND p.review_hold=false")
+        return jdbc.sql("SELECT count(*) FROM hybrid_rule_artifact a LEFT JOIN problem_version p ON p.id=a.source_version_id JOIN hybrid_rule_version v ON v.id=a.rule_version_id WHERE a.id=? AND a.status='QUALIFIED' AND v.status='ACTIVE' AND (a.source_onboarding_id IS NOT NULL OR (p.ready=true AND p.review_hold=false))")
                 .param(artifact).query(Integer.class).single()==1;
     }
     /**

@@ -73,7 +73,7 @@ class HybridRunnerChecks {
     private static final Set<String> PIPELINE_ROLES=Set.of("stress-valid","batch-valid","batch-reference","batch-oracle");
     static String executionMode(String scheduling,String role) {
         // Only fixed, tiny inputs; stress, generated batches and package timing remain isolated.
-        if(PIPELINE.equals(scheduling))return FUNCTIONAL_ROLES.contains(role)||PIPELINE_ROLES.contains(role)?"FUNCTIONAL":"EXCLUSIVE";
+        if(PIPELINE.equals(scheduling))return FUNCTIONAL_ROLES.contains(role)||PIPELINE_ROLES.contains(role)||role.startsWith("mutant-")?"FUNCTIONAL":"EXCLUSIVE";
         return "FUNCTIONAL_V1".equals(scheduling)&&FUNCTIONAL_ROLES.contains(role)?"FUNCTIONAL":"EXCLUSIVE";
     }
     private String mode(State s,String role) {
@@ -178,7 +178,8 @@ class HybridRunnerChecks {
                 if(start&&HybridProfiles.packaged(policy)) {
                     // These frozen reader inputs are already available; reject malformed cases
                     // before spending Runner work, using the same parser as final assembly.
-                    for(var item:data.get("READER").path("adversarialInputs")) {
+                    // Registered packages validate reader inputs with the qualified validator in the Runner.
+                    if(HybridProfiles.byPolicy(policy).pkg()==null)for(var item:data.get("READER").path("adversarialInputs")) {
                         try {HybridProfiles.byPolicy(policy).answer(item.path("input").asText());}
                         catch(IllegalArgumentException invalid) {throw new IllegalArgumentException("READER_INPUT_BOUND");}
                     }
@@ -213,7 +214,7 @@ class HybridRunnerChecks {
         boolean finite=HybridProfiles.supports(policy),extended=finite&&!HybridFiniteProfile.POLICY.equals(policy);
         var rows=jdbc.sql("SELECT e.role,e.source_sha256,e.package_sha256,s.source_code,s.source_sha256,s.run_package,s.run_package_sha256,j.status,j.verdict,j.result_json,j.result_sha256,j.execution_mode FROM hybrid_execution_check e JOIN submission s ON s.id=e.submission_id JOIN judge_job j ON j.submission_id=s.id WHERE e.branch_id=? ORDER BY e.role")
                 .param(s.branch).query((r,n)->{var a=new String[12];for(int i=0;i<12;i++)a[i]=r.getString(i+1);return a;}).list();
-        if(s.verifyOnly&&(rows.size()!=15||rows.stream().anyMatch(r->!"FINISHED".equals(r[7]))))throw new IllegalArgumentException("INCOMPLETE_PUBLICATION_EVIDENCE");
+        if(s.verifyOnly&&(rows.size()!=(finite?HybridProfiles.byPolicy(policy).roles().size():15)||rows.stream().anyMatch(r->!"FINISHED".equals(r[7]))))throw new IllegalArgumentException("INCOMPLETE_PUBLICATION_EVIDENCE");
         if(rows.isEmpty())throw new IllegalArgumentException("MISSING_RUNNER_JOBS");
         var evidence=new HashMap<String,Evidence>();
         for(var row:rows) {
@@ -223,7 +224,7 @@ class HybridRunnerChecks {
                 case "domain-reference", "stress-reference-0", "stress-reference-1", "batch-reference", "package-final-0", "package-final-1" -> data.get("CORE").path("reference").asText();
                 case "mutant-unbounded", "mutant-strict-fit", "mutant-directed", "mutant-unreachable", "mutant-unit-weight", "mutant-first-discovery" -> HybridProfiles.byPolicy(policy).mutant(row[0]);
                 case "domain-oracle", "batch-oracle" -> data.get("READER").path("oracleSource").asText();
-                default -> row[0].matches("reference-[0-7]")?data.get("CORE").path("reference").asText():row[0].matches("oracle-[0-7]")?data.get("READER").path("oracleSource").asText():"";
+                default -> row[0].startsWith("mutant-")&&HybridProfiles.supports(policy)?HybridProfiles.byPolicy(policy).mutant(row[0]):row[0].matches("reference-[0-7]")?data.get("CORE").path("reference").asText():row[0].matches("oracle-[0-7]")?data.get("READER").path("oracleSource").asText():"";
             };
             if(!row[1].equals(JudgeJson.hash(source)))throw new IllegalArgumentException("RUNNER_SOURCE_FENCE");
             if(!row[1].equals(row[4])||!row[1].equals(JudgeJson.hash(row[3]))||!row[2].equals(row[6])||!row[2].equals(JudgeJson.hash(row[5])))throw new IllegalArgumentException("RUNNER_INPUT_FENCE");
@@ -400,14 +401,14 @@ class HybridRunnerChecks {
         for(String role:List.of("package-final-0","package-final-1")) {
             var e=evidence.get(role);if(!pack.equals(e.plan))throw new IllegalArgumentException("FINAL_PACKAGE_FENCE");
             var tests=JudgeJson.parse(e.report).path("tests");long total=0;
-            if(tests.size()!=candidates.size())throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
+            if(tests.size()!=candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count())throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
             for(var t:tests) {
                 var wall=t.path("wall_ms");if(!wall.isIntegralNumber()||!wall.canConvertToLong()||wall.asLong()<0||wall.asLong()>4000)throw new IllegalArgumentException("FINAL_PACKAGE_RESOURCE_MARGIN");
                 total+=wall.asLong();
             }
             if(total>40000)throw new IllegalArgumentException("FINAL_PACKAGE_TIME_BUDGET");
         }
-        return JudgeJson.JSON.createObjectNode().put("packageHash",hash).put("candidatesHash",saved[3]).put("testCount",candidates.size())
+        return JudgeJson.JSON.createObjectNode().put("packageHash",hash).put("candidatesHash",saved[3]).put("testCount",candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count())
                 .put("randomInputCount",4).put("generatorInputCount",4).put("boundedOracleInputCount",HybridPackagePlan.tests(candidates,"batch-oracle",profile).size())
                 .put("readerInputsIncluded",data.get("READER").path("adversarialInputs").size()).put("packageExecutions",2)
                 .put("generatorSeed",saved[0]).put("randomSeed",saved[1]).put("samplesMechanicallyDerived",true);
@@ -494,14 +495,14 @@ class HybridRunnerChecks {
         for(String role:List.of("package-final-0","package-final-1")) {
             var e=evidence.get(role);if(!pack.equals(e.plan))throw new IllegalArgumentException("FINAL_PACKAGE_FENCE");
             var tests=JudgeJson.parse(e.report).path("tests");long total=0;
-            if(tests.size()!=candidates.size())throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
+            if(tests.size()!=candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count())throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
             for(var t:tests) {
                 var wall=t.path("wall_ms");if(!wall.isIntegralNumber()||!wall.canConvertToLong()||wall.asLong()<0||wall.asLong()>4000)throw new IllegalArgumentException("FINAL_PACKAGE_RESOURCE_MARGIN");
                 total+=wall.asLong();
             }
             if(total>40000)throw new IllegalArgumentException("FINAL_PACKAGE_TIME_BUDGET");
         }
-        var packageEvidence=JudgeJson.JSON.createObjectNode().put("packageHash",hash).put("candidatesHash",saved[3]).put("testCount",candidates.size())
+        var packageEvidence=JudgeJson.JSON.createObjectNode().put("packageHash",hash).put("candidatesHash",saved[3]).put("testCount",candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count())
                 .put("randomInputCount",4).put("generatorInputCount",4).put("boundedOracleInputCount",HybridPackagePlan.tests(candidates,"batch-oracle",profile).size())
                 .put("readerInputsIncluded",data.get("READER").path("adversarialInputs").size()).put("packageExecutions",2)
                 .put("generatorSeed",saved[0]).put("randomSeed",saved[1]).put("samplesMechanicallyDerived",true);

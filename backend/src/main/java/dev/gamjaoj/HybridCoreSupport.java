@@ -15,6 +15,7 @@ final class HybridCoreSupport {
         return b;
     }
     private static String source(HybridProfiles.Definition profile,String name) {
+        if(profile.pkg()!=null)return name.equals("generator")?profile.pkg().generator():profile.pkg().validator();
         try(var in=HybridCoreSupport.class.getResourceAsStream("/hybrid/"+profile.supportVersion()+"/"+name+".java.txt")) {
             if(in==null)throw new IllegalStateException("Missing core support");
             return new String(in.readAllBytes(),StandardCharsets.UTF_8);

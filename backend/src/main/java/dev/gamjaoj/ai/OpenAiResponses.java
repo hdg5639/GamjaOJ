@@ -61,7 +61,7 @@ public final class OpenAiResponses {
 
     public Result generate(String model,String effort,String instructions,String input,String schemaName,
                            JsonNode schema,int maxOutputTokens,Duration timeout) {
-        if(timeout==null||timeout.isNegative()||timeout.isZero()||timeout.compareTo(Duration.ofSeconds(90))>0)
+        if(timeout==null||timeout.isNegative()||timeout.isZero()||timeout.compareTo(Duration.ofSeconds(300))>0)
             throw new IllegalArgumentException("Invalid provider deadline");
         if (model == null || model.isBlank() || maxOutputTokens < 1 || maxOutputTokens > 32768
                 || schema == null || !schema.isObject() || instructions == null || input == null
