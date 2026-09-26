@@ -127,7 +127,7 @@ class HybridRuleOnboarding {
             +" mutants: exactly two plausible wrong Java 8 solutions with different realistic mistakes; each must compile, terminate normally and print a well-formed answer, yet be wrong on at least one tiny input."
             +" tinyInputs: 8 to 24 distinct valid inputs from a small domain where exhaustive brute force is trivial, covering edge cases; describe that domain in oracleDomain.inputDomain and the brute-force method in oracleDomain.enumeration."
             +" Every tinyInput, stressInput and largeGenerator output must satisfy every constraint exactly, so the validator prints VALID for each; recheck counts, ranges and token layout against the contract."
-            +" invalidInputs: 3 to 10 inputs violating the format or constraints (an empty input is allowed). stressInputs: 1 to 3 valid literal inputs of at most 16384 bytes each that stress edge cases and value ranges."
+            +" invalidInputs: 3 to 10 inputs violating the format or constraints (an empty input is allowed). stressInputs: 1 to 3 valid literal inputs of at most 2000 characters each that stress edge cases and value ranges; never write long repeated literals, large inputs come only from largeGenerator."
             +" largeGenerator: Java 8 public class Main that reads a signed long seed and prints exactly ONE valid maximum-size input (at most 8 MB), deterministic for the seed, built with a StringBuilder or PrintWriter, that makes slowSolution exceed 5 seconds."
             +" slowSolution: a correct but asymptotically slower Java 8 public class Main (for example direct simulation) that is exact on tiny inputs but cannot finish largeGenerator inputs within 5 seconds."
             +" The validator and every solution must read large inputs quickly (BufferedInputStream or StreamTokenizer style parsing, not Scanner)."
@@ -159,7 +159,7 @@ class HybridRuleOnboarding {
     static JsonNode oracleSchema(){return obj("oracleSource",str());}
     private AiSettings.Model model(String role) {
         var base=HybridModels.slot(config,HybridGeneration.Role.CORE);
-        int tokens=role.equals("AUTHOR")?setting("HYBRID_RULE_AUTHOR_MAX_OUTPUT_TOKENS",32000,4096,32768):setting("HYBRID_RULE_ORACLE_MAX_OUTPUT_TOKENS",12000,2048,32768);
+        int tokens=role.equals("AUTHOR")?setting("HYBRID_RULE_AUTHOR_MAX_OUTPUT_TOKENS",16000,4096,32768):setting("HYBRID_RULE_ORACLE_MAX_OUTPUT_TOKENS",12000,2048,32768);
         String version="rule-"+role.toLowerCase(Locale.ROOT)+"-v1";
         return new AiSettings.Model(base.model(),base.effort(),base.inputRate(),base.cachedRate(),base.outputRate(),base.pricingVersion(),tokens,version,version);
     }
@@ -258,7 +258,7 @@ class HybridRuleOnboarding {
         for(var m:a.path("mutants"))source(m.path("source"));
         inputs(a.path("tinyInputs"),HybridRulePackage.MIN_TINY,HybridRulePackage.MAX_TINY,1024,"RULE_TINY_INPUTS");
         inputs(a.path("invalidInputs"),2,HybridRulePackage.MAX_INVALID,1024,"RULE_INVALID_INPUTS",true);
-        inputs(a.path("stressInputs"),1,HybridRulePackage.MAX_STRESS,16384,"RULE_STRESS_INPUTS");
+        inputs(a.path("stressInputs"),1,HybridRulePackage.MAX_STRESS,4096,"RULE_STRESS_INPUTS");
         // The same display/guidance limits the stored package enforces, checked before any Runner work.
         HybridRulePackage.metadata(a.path("catalog"),a.path("guidance"),a.path("oracleDomain").path("inputDomain"),a.path("oracleDomain").path("enumeration"));
         var actions=new HashSet<String>();a.path("contract").path("actions").forEach(x->actions.add(x.path("id").asText()));
