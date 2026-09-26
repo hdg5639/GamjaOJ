@@ -1,4 +1,5 @@
 """Verify confirmed feedback to real Runner AC to learner reflection. Source analysis is a fixture; no model calls."""
+import os
 import http.cookiejar
 import json
 import secrets
@@ -13,7 +14,7 @@ from pathlib import Path
 
 
 def ssh(command, data=None):
-    return subprocess.run(['ssh','-o','BatchMode=yes','ocr-serv',command],input=data,text=True,capture_output=True,check=True).stdout.strip()
+    return subprocess.run(['ssh','-o','BatchMode=yes',os.environ['GAMJAOJ_APP_SSH_TARGET'],command],input=data,text=True,capture_output=True,check=True).stdout.strip()
 
 
 def sql(query):

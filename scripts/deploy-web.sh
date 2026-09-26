@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+app_target="${GAMJAOJ_APP_SSH_TARGET:?Set GAMJAOJ_APP_SSH_TARGET in your private environment}"
 cd "$(dirname "$0")/.."
 [ "$(git branch --show-current)" = main ] || { echo 'Deploy from main.' >&2; exit 1; }
 ./scripts/build-web.sh
@@ -8,9 +9,9 @@ archive="$(mktemp)"
 trap 'rm -f "$archive"' EXIT
 COPYFILE_DISABLE=1 tar --format=ustar --exclude='__pycache__' --exclude='*.pyc' -czf "$archive" \
   backend/target/gamjaoj.jar deploy runner problems examples tests scripts/smoke-auth.py scripts/smoke-submissions.py
-ssh -o BatchMode=yes ocr-serv 'mkdir -p "$HOME/gamjaoj/web/releases"'
-scp -q "$archive" "ocr-serv:gamjaoj/web/releases/$release.tar.gz"
-ssh -o BatchMode=yes ocr-serv bash -s -- "$release" <<'REMOTE'
+ssh -o BatchMode=yes "$app_target" 'mkdir -p "$HOME/gamjaoj/web/releases"'
+scp -q "$archive" "$app_target:gamjaoj/web/releases/$release.tar.gz"
+ssh -o BatchMode=yes "$app_target" bash -s -- "$release" <<'REMOTE'
 set -euo pipefail
 umask 077
 release="$1"
@@ -26,7 +27,7 @@ import pathlib, secrets
 pathlib.Path('.env').write_text(
     'DB_PASSWORD=' + secrets.token_urlsafe(32) + '\n'
     'INVITE_CODE=' + secrets.token_urlsafe(18) + '\n'
-    'BIND_ADDRESS=192.168.0.210\nHTTP_PORT=18081\nCOOKIE_SECURE=false\n')
+    'BIND_ADDRESS=127.0.0.1\nHTTP_PORT=8080\nCOOKIE_SECURE=false\n')
 PY
 fi
 chmod 600 .env
@@ -65,5 +66,5 @@ done < "releases/$release/existing-containers.txt"
 printf '%s\n' "$GAMJAOJ_IMAGE" > "releases/$release/image.txt"
 ln -s "releases/$release" "current-$release"
 mv -Tf "current-$release" current
-echo "GamjaOJ web verified at http://192.168.0.210:18081 (release $release)."
+echo "GamjaOJ web verification passed (release $release)."
 REMOTE

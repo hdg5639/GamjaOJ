@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+app_target="${GAMJAOJ_APP_SSH_TARGET:?Set GAMJAOJ_APP_SSH_TARGET in your private environment}"
 cd "$(dirname "$0")/.."
 
 if [ "$(git branch --show-current)" != main ]; then
@@ -13,9 +14,9 @@ trap 'rm -f "$archive"' EXIT
 # Explicit allowlist; docs, credentials, local reports, and Git data are never transferred.
 COPYFILE_DISABLE=1 tar --format=ustar --exclude='__pycache__' --exclude='*.pyc' -czf "$archive" \
   runner tests problems examples README.md
-ssh -o BatchMode=yes -o ConnectTimeout=10 ocr-serv 'mkdir -p "$HOME/gamjaoj/releases"'
-scp -q "$archive" "ocr-serv:gamjaoj/releases/$release.tar.gz"
-ssh -o BatchMode=yes ocr-serv bash -s -- "$release" <<'REMOTE'
+ssh -o BatchMode=yes -o ConnectTimeout=10 "$app_target" 'mkdir -p "$HOME/gamjaoj/releases"'
+scp -q "$archive" "$app_target:gamjaoj/releases/$release.tar.gz"
+ssh -o BatchMode=yes "$app_target" bash -s -- "$release" <<'REMOTE'
 set -euo pipefail
 release="$1"
 cd "$HOME/gamjaoj"

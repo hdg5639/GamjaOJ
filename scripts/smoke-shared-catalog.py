@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Two-account HTTPS sharing and dedicated Runner smoke; only synthetic data, no model calls."""
+import os
 import argparse
 import importlib.util
 import http.cookiejar
@@ -18,8 +19,8 @@ ssh,sql=helper.ssh,helper.sql
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--language',choices=['JAVA','CPP','PYTHON'],default='JAVA');args=parser.parse_args()
-    base=ssh('ocr-serv',"sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env").rstrip('/')
-    invitation=ssh('ocr-serv',"sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
+    base=ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env").rstrip('/')
+    invitation=ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
     names=['catalog_'+secrets.token_hex(5) for _ in range(2)]
     version='catalog-smoke-'+str(uuid.uuid4())
     def client():

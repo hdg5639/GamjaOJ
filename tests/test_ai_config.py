@@ -14,7 +14,7 @@ class AiConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             env=Path(directory)/'.env'
             env.write_text('OPENAI_API_KEY=test-key-not-real\n')
-            with patch('sys.argv',['configure-ai','--env-file',str(env),*args]),patch.object(configure.subprocess,'run') as call:
+            with patch('sys.argv',['configure-ai','--target','app.example.invalid','--env-file',str(env),*args]),patch.object(configure.subprocess,'run') as call:
                 configure.main()
                 return json.loads(call.call_args.kwargs['input'])
     def test_paid_activation_does_not_require_or_overwrite_operator_accounts(self):

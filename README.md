@@ -28,3 +28,7 @@ python3 -m unittest discover -s tests
 Infrastructure addresses, SSH configuration, deployment details, credentials, and
 operational reports are maintained outside the public repository.
 Do not commit environment files, access tokens, internal hostnames, or private network addresses.
+
+Operational tools require explicit local configuration through `GAMJAOJ_APP_SSH_TARGET`,
+`GAMJAOJ_RUNNER_SSH_TARGET`, and `GAMJAOJ_BASE_URL` where applicable.
+The AI settings tool requires an explicit `--target`. Keep actual values in an ignored environment file.

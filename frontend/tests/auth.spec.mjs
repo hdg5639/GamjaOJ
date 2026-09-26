@@ -5,7 +5,8 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 async function remotePython(program) {
   // Keep credentials in the remote process; no token is returned to the browser test.
-  const child = execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ControlPath=none', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=2', 'ocr-serv', 'python3', '-'], {timeout:45000,killSignal:'SIGKILL'});
+  if (!process.env.GAMJAOJ_APP_SSH_TARGET) throw new Error('Set GAMJAOJ_APP_SSH_TARGET in your private environment');
+  const child = execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ControlPath=none', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=2', process.env.GAMJAOJ_APP_SSH_TARGET, 'python3', '-'], {timeout:45000,killSignal:'SIGKILL'});
   let out = '', err = '';
   child.stdout.on('data', data => { out += data; });
   child.stderr.on('data', data => { err += data; });
@@ -19,7 +20,8 @@ test('signup, login, personal settings, reload and logout in a real browser', as
   const username = process.env.GAMJAOJ_E2E_USERNAME;
   const invitation = process.env.INVITE_CODE;
   test.skip(!username || !invitation, 'Run through scripts/test-browser-auth.sh');
-  const base = process.env.GAMJAOJ_BASE_URL || 'http://192.168.0.210:18081';
+  const base = process.env.GAMJAOJ_BASE_URL;
+  if (!base) throw new Error('Set GAMJAOJ_BASE_URL');
   const password = 'Browser-test-only-429!';
   expect(username).toMatch(/^[a-z0-9_]{3,24}$/);
   const code = readFileSync('../examples/Main.java', 'utf8');

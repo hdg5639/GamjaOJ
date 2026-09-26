@@ -1,4 +1,4 @@
-"""Exercise HTTP -> PostgreSQL -> persistent runner-serv, without running code on ocr-serv."""
+"""Exercise HTTP -> PostgreSQL -> persistent the dedicated Runner host, without running code on the application host."""
 import argparse
 import hashlib
 import http.cookiejar
@@ -20,7 +20,7 @@ def ssh(host, command, data=None):
 
 
 def sql(statement):
-    return ssh("ocr-serv", "docker exec -i gamjaoj-postgres-1 psql -U gamjaoj -d gamjaoj -At -v ON_ERROR_STOP=1", statement)
+    return ssh(os.environ["GAMJAOJ_APP_SSH_TARGET"], "docker exec -i gamjaoj-postgres-1 psql -U gamjaoj -d gamjaoj -At -v ON_ERROR_STOP=1", statement)
 
 
 def main():
@@ -30,8 +30,8 @@ def main():
     mode.add_argument("--restart-worker", action="store_true", help="Pre-opening only: kill an active synthetic attempt and verify automatic recovery")
     args = parser.parse_args()
     # Only the invitation is needed locally; worker/DB credentials remain on their hosts.
-    invitation = ssh("ocr-serv", "sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
-    base = (os.environ.get("GAMJAOJ_BASE_URL") or ssh("ocr-serv", "sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env") or "http://192.168.0.210:18081").rstrip("/")
+    invitation = ssh(os.environ["GAMJAOJ_APP_SSH_TARGET"], "sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
+    base = (os.environ.get("GAMJAOJ_BASE_URL") or ssh(os.environ["GAMJAOJ_APP_SSH_TARGET"], "sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env")).rstrip("/")
     client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     client.addheaders = [("User-Agent", "GamjaOJ-Smoke/1.0")]
 
@@ -54,7 +54,7 @@ def main():
             return response.status, json.loads(raw) if raw else None
 
     username, password = "runner_" + secrets.token_hex(5), secrets.token_urlsafe(24)
-    worker_ids = set(json.loads(ssh("runner-serv", "python3 -c 'import json,pathlib; p=pathlib.Path.home()/\"gamjaoj-worker/state\"; print(json.dumps([json.loads(f.read_text())[\"workerId\"] for f in [p/\"identity.json\",*p.glob(\"slots/*/identity.json\")]]))'")))
+    worker_ids = set(json.loads(ssh(os.environ["GAMJAOJ_RUNNER_SSH_TARGET"], "python3 -c 'import json,pathlib; p=pathlib.Path.home()/\"gamjaoj-worker/state\"; print(json.dumps([json.loads(f.read_text())[\"workerId\"] for f in [p/\"identity.json\",*p.glob(\"slots/*/identity.json\")]]))'")))
     environment_evidence=[]
     expected_environment=json.loads(Path('backend/src/main/resources/runner-execution-contract.json').read_text())
     def verify_environment(job):
@@ -64,7 +64,7 @@ def main():
         assert value['actual']['dockerControl']=='engine'
         environment_evidence.append(dict(submissionId=job,environment=value['actual']))
     for worker_id in worker_ids: uuid.UUID(worker_id)
-    assert ssh("runner-serv", "systemctl --user is-active gamjaoj-worker") == "active"
+    assert ssh(os.environ["GAMJAOJ_RUNNER_SSH_TARGET"], "systemctl --user is-active gamjaoj-worker") == "active"
     try:
         assert call("/api/auth/signup", "POST", dict(username=username, password=password, nickname="Runner 검증", inviteCode=invitation))[0] == 201
         assert call("/api/auth/login", "POST", dict(username=username, password=password), form=True)[0] == 204
@@ -107,9 +107,9 @@ def main():
                     token = sql(f"SELECT coalesce(token::text,'') FROM judge_job WHERE submission_id='{job}'")
                     if token:
                         uuid.UUID(token)
-                        active = ssh("runner-serv", f"docker ps -q --filter label=com.gamjaoj.attempt={token}")
+                        active = ssh(os.environ["GAMJAOJ_RUNNER_SSH_TARGET"], f"docker ps -q --filter label=com.gamjaoj.attempt={token}")
                         if active:
-                            ssh("runner-serv", "systemctl --user kill --signal=SIGKILL gamjaoj-worker.service")
+                            ssh(os.environ["GAMJAOJ_RUNNER_SSH_TARGET"], "systemctl --user kill --signal=SIGKILL gamjaoj-worker.service")
                             print("Injected coordinator failure during a real sandbox execution", flush=True)
                             break
                     time.sleep(.2)
@@ -130,7 +130,7 @@ def main():
             assert sql(f"SELECT count(*) FROM judge_attempt WHERE submission_id='{job}' AND status='COMPLETED'") == "1"
             assert sql(f"SELECT count(*) FROM submission WHERE user_id=(SELECT id FROM app_user WHERE username='{username}') AND idempotency_key='{key}'") == "1"
             verify_environment(job)
-            print(f"PASS: {version} {verdict} on runner-serv, same-key replay, one completed attempt, persisted source", flush=True)
+            print(f"PASS: {version} {verdict} on the dedicated Runner host, same-key replay, one completed attempt, persisted source", flush=True)
         if opened:
             assert sql(f"SELECT count(*) FROM execution_grant WHERE user_id=(SELECT id FROM app_user WHERE username='{username}')") == "0"
             print("PASS: ordinary account submission without execution grants", flush=True)
@@ -168,7 +168,7 @@ def main():
                 assert sql(f"SELECT worker_id::text FROM judge_job WHERE submission_id='{job}'") in worker_ids
                 assert sql(f"SELECT count(*) FROM judge_attempt WHERE submission_id='{job}' AND status='COMPLETED'") == "1"
                 verify_environment(job)
-                print(f"PASS: custom {verdict}, input/output preserved, one completion on runner-serv", flush=True)
+                print(f"PASS: custom {verdict}, input/output preserved, one completion on the dedicated Runner host", flush=True)
             assert len(call("/api/submissions")[1]) == 4
             assert len(call("/api/runs")[1]) == len(cases)
         Path('.state').mkdir(exist_ok=True)

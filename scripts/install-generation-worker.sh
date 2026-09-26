@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+app_target="${GAMJAOJ_APP_SSH_TARGET:?Set GAMJAOJ_APP_SSH_TARGET in your private environment}"
 cd "$(dirname "$0")/.."
 target="${1:?Usage: scripts/install-generation-worker.sh <dedicated-generation-ssh-alias>}"
 [[ "$target" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$ ]] || { echo 'Invalid SSH target.' >&2; exit 1; }
-if [ "$target" = ocr-serv ]; then exec ./scripts/install-generation-container.sh "$target"; fi
-[[ "$target" != runner-serv ]] || { echo 'Use a separate generation account/VM, not the judge or database host.' >&2; exit 1; }
+if [ "$target" = "$app_target" ]; then exec ./scripts/install-generation-container.sh "$target"; fi
+[[ "$target" != "${GAMJAOJ_RUNNER_SSH_TARGET:?Set GAMJAOJ_RUNNER_SSH_TARGET}" ]] || { echo 'Use a separate generation account/VM, not the judge or database host.' >&2; exit 1; }
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 chmod 700 "$temporary"
@@ -23,7 +24,7 @@ if not path.exists() or json.loads(path.read_text()).get('auth_mode')!='chatgpt'
 PY
 [ "$(loginctl show-user "$USER" -p Linger --value)" = yes ] || { echo 'Enable lingering for this generation account.' >&2; exit 1; }
 REMOTE
-ssh -o BatchMode=yes ocr-serv python3 - <<'PY' > "$temporary/worker.env"
+ssh -o BatchMode=yes "$app_target" python3 - <<'PY' > "$temporary/worker.env"
 from pathlib import Path
 config=dict(line.split('=',1) for line in (Path.home()/'gamjaoj/web/.env').read_text().splitlines() if line and not line.startswith('#') and '=' in line)
 print('GAMJAOJ_API_URL=http://'+config['BIND_ADDRESS']+':'+config['HTTP_PORT'])

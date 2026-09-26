@@ -3,6 +3,7 @@
 Proves scheduler/worker behavior, not model quality or generation admission.
 Never stops the live worker or changes existing submissions.
 """
+import os
 import hashlib
 import json
 from pathlib import Path
@@ -17,7 +18,7 @@ def ssh(host, command, data=None):
 
 
 def sql(statement):
-    return ssh('ocr-serv','docker exec -i gamjaoj-postgres-1 psql -U gamjaoj -d gamjaoj -At -v ON_ERROR_STOP=1',statement)
+    return ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],'docker exec -i gamjaoj-postgres-1 psql -U gamjaoj -d gamjaoj -At -v ON_ERROR_STOP=1',statement)
 
 
 def quote(value):
@@ -82,7 +83,7 @@ print(json.dumps(rows))
 '''
         # The program is fixed trusted text; shell quote it, never interpolate fixture data into shell code.
         import shlex
-        timings=json.loads(ssh('runner-serv','python3 -c '+shlex.quote(program),json.dumps(tokens)))
+        timings=json.loads(ssh(os.environ['GAMJAOJ_RUNNER_SSH_TARGET'],'python3 -c '+shlex.quote(program),json.dumps(tokens)))
         from datetime import datetime
         def interval(timing):
             span=next(s for s in timing['segments'] if s['phase']=='test.container_lifetime')
