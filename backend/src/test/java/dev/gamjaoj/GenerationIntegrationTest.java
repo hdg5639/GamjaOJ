@@ -448,6 +448,9 @@ class GenerationIntegrationTest {
             if(work.runnerPolicy().equals("java8-run-v1"))row.put("stdout","1 0\n2 1 2\n1 -1\n3 1 -2 3\n").put("stderr","").put("stdout_truncated",false);
             if(verdict.equals("WA"))break;
         }
+        // Generated large tests run only after every explicit test passed, like the Runner.
+        if(!java.util.Set.of("CE","IE","WA").contains(verdict))for(JsonNode g:work.problem().path("generated").path("tests"))
+            tests.addObject().put("id",g.path("id").asText()).put("kind","generated").put("verdict",verdict).put("wall_ms",10);
         return report;
     }
     @Test void parenthesesUsesItsOwnContractAndAllGatesBeforePrivatePublication() throws Exception {

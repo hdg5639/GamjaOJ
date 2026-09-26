@@ -190,7 +190,7 @@ class HybridRunnerChecks {
                     jdbc.sql("UPDATE hybrid_generation SET status='VALIDATING',error_code=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?").param(s.generation).update();
                     advanceResults(s,data,policy);
                 } else if(start) {
-                    String scheduling=HybridProfiles.packaged(policy)&&Boolean.parseBoolean(settings.value("HYBRID_FUNCTIONAL_ENABLED","false"))?"FUNCTIONAL_V1":"SERIAL_V1";
+                    String scheduling=HybridProfiles.packaged(policy)&&Boolean.parseBoolean(settings.value("HYBRID_FUNCTIONAL_ENABLED","false"))?(pipelineEnabled()?PIPELINE:"FUNCTIONAL_V1"):"SERIAL_V1";
                     jdbc.sql("INSERT INTO hybrid_validation_profile(branch_id,policy,profile_hash,scheduling) VALUES (?,?,?,?)").param(s.branch).param(policy).param(finite?HybridProfiles.byPolicy(policy).hash():null).param(scheduling).update();
                     placeholder(s);
                     if(finite) {
@@ -383,7 +383,7 @@ class HybridRunnerChecks {
             queue(s,"batch-oracle",data.get("READER").path("oracleSource").asText(),HybridPackagePlan.tests(candidates,"batch-oracle",profile),false);return null;
         }
         if(!evidence.keySet().containsAll(Set.of("batch-valid","batch-reference","batch-oracle")))throw new IllegalArgumentException("INCOMPLETE_PACKAGE_CHECKS");
-        var pack=HybridPackagePlan.pack(version(s),candidates,data.get("PRESENTATION"),profile);String payload=JudgeJson.canonical(pack),hash=JudgeJson.hash(payload);
+        var pack=HybridPackagePlan.pack(version(s),candidates,data.get("PRESENTATION"),profile,core.path("reference").asText());String payload=JudgeJson.canonical(pack),hash=JudgeJson.hash(payload);
         var teaching=JudgeJson.JSON.createObjectNode().put("editorial",data.get("PRESENTATION").path("editorial").asText());teaching.set("hints",data.get("PRESENTATION").path("hints"));
         String teachingJson=JudgeJson.canonical(teaching);
         if(evidence.size()==13) {
@@ -401,7 +401,7 @@ class HybridRunnerChecks {
         for(String role:List.of("package-final-0","package-final-1")) {
             var e=evidence.get(role);if(!pack.equals(e.plan))throw new IllegalArgumentException("FINAL_PACKAGE_FENCE");
             var tests=JudgeJson.parse(e.report).path("tests");long total=0;
-            if(tests.size()!=candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count())throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
+            if(tests.size()!=candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count()+HybridPackagePlan.generatedCount(profile))throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
             for(var t:tests) {
                 var wall=t.path("wall_ms");if(!wall.isIntegralNumber()||!wall.canConvertToLong()||wall.asLong()<0||wall.asLong()>4000)throw new IllegalArgumentException("FINAL_PACKAGE_RESOURCE_MARGIN");
                 total+=wall.asLong();
@@ -419,16 +419,24 @@ class HybridRunnerChecks {
      * fixed counts, so reader-independent work runs while the statement and reader are still being written.
      * Each stage starts only after every queued check finished with its expected verdict.
      */
+    /** Fixed-role plan; a package's stress roles also validate and time its generated large inputs. */
+    private ObjectNode fixedPlan(State s,HybridProfiles.Definition profile,String role,String reference) {
+        var plan=JudgeJson.JSON.createObjectNode().put("version",version(s)).put("output_policy","TOKEN_EXACT");
+        var tests=plan.putArray("tests");profile.tests(role).forEach(tests::add);
+        if(profile.pkg()!=null&&profile.pkg().hasLarge()) {
+            if(role.equals("stress-valid"))plan.set("generated",profile.pkg().generated(null,"VALID"));
+            if(role.startsWith("stress-reference-"))plan.set("generated",profile.pkg().generated(reference,"REFERENCE"));
+        }
+        return plan;
+    }
     private void advancePipeline(State s,Map<String,JsonNode> data,Map<String,Evidence> evidence,HybridProfiles.Definition profile) {
-        String policy=profile.policy();boolean reader=data.containsKey("READER");
+        String policy=profile.policy();boolean reader=data.containsKey("READER");String referenceSource=data.get("CORE").path("reference").asText();
         for(var e:evidence.values()) {
             if(!profile.roles(true).contains(e.role))continue;
-            var expected=JudgeJson.JSON.createObjectNode().put("version",version(s)).put("output_policy","TOKEN_EXACT");
-            var tests=expected.putArray("tests");profile.tests(e.role).forEach(tests::add);
-            if(!expected.equals(e.plan))throw new IllegalArgumentException("FINITE_INPUT_FENCE");
+            if(!fixedPlan(s,profile,e.role,referenceSource).equals(e.plan))throw new IllegalArgumentException("FINITE_INPUT_FENCE");
         }
         var done=evidence.keySet();
-        java.util.function.Consumer<String> fixed=role->{if(!done.contains(role))queue(s,role,source(data,profile,role),profile.tests(role),false);};
+        java.util.function.Consumer<String> fixed=role->{if(!done.contains(role))queuePlan(s,role,source(data,profile,role),fixedPlan(s,profile,role,referenceSource),false);};
         var first=List.of("domain-valid","domain-invalid","domain-reference");
         if(!done.containsAll(first)){first.forEach(fixed);return;}
         var second=new ArrayList<String>(List.of("stress-valid"));second.addAll(profile.mutants());
@@ -437,7 +445,7 @@ class HybridRunnerChecks {
         if(!done.containsAll(stress)){stress.forEach(fixed);return;}
         for(String role:stress) {
             var tests=JudgeJson.parse(evidence.get(role).report).path("tests");
-            if(tests.size()!=profile.stress().size())throw new IllegalArgumentException("INCOMPLETE_STRESS_EVIDENCE");
+            if(tests.size()!=profile.stress().size()+HybridPackagePlan.generatedCount(profile))throw new IllegalArgumentException("INCOMPLETE_STRESS_EVIDENCE");
             for(var test:tests)if(!test.path("wall_ms").isIntegralNumber()||!test.path("wall_ms").canConvertToLong()
                     ||test.path("wall_ms").asLong()<0||test.path("wall_ms").asLong()>4000)throw new IllegalArgumentException("STRESS_RESOURCE_MARGIN");
         }
@@ -476,7 +484,7 @@ class HybridRunnerChecks {
                 queue(s,role,source(data,profile,role),HybridPackagePlan.tests(candidates,role,profile),false);
             return;
         }
-        var pack=HybridPackagePlan.pack(version(s),candidates,data.get("PRESENTATION"),profile);String payload=JudgeJson.canonical(pack),hash=JudgeJson.hash(payload);
+        var pack=HybridPackagePlan.pack(version(s),candidates,data.get("PRESENTATION"),profile,core.path("reference").asText());String payload=JudgeJson.canonical(pack),hash=JudgeJson.hash(payload);
         var teaching=JudgeJson.JSON.createObjectNode().put("editorial",data.get("PRESENTATION").path("editorial").asText());teaching.set("hints",data.get("PRESENTATION").path("hints"));
         String teachingJson=JudgeJson.canonical(teaching);
         if(!done.containsAll(List.of("package-final-0","package-final-1"))) {
@@ -495,7 +503,7 @@ class HybridRunnerChecks {
         for(String role:List.of("package-final-0","package-final-1")) {
             var e=evidence.get(role);if(!pack.equals(e.plan))throw new IllegalArgumentException("FINAL_PACKAGE_FENCE");
             var tests=JudgeJson.parse(e.report).path("tests");long total=0;
-            if(tests.size()!=candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count())throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
+            if(tests.size()!=candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count()+HybridPackagePlan.generatedCount(profile))throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
             for(var t:tests) {
                 var wall=t.path("wall_ms");if(!wall.isIntegralNumber()||!wall.canConvertToLong()||wall.asLong()<0||wall.asLong()>4000)throw new IllegalArgumentException("FINAL_PACKAGE_RESOURCE_MARGIN");
                 total+=wall.asLong();

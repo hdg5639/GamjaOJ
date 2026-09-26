@@ -61,7 +61,7 @@ class CompileCache:
 
     def key(self, version, image, source):
         identifier = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
-        if not re.fullmatch(r"(?:generated-" + identifier + r"-r[0-9]+|(?:experimental|hybrid)-check-" + identifier + r")", version):
+        if not re.fullmatch(r"(?:generated-" + identifier + r"-r[0-9]+|(?:experimental|hybrid)-check-" + identifier + r"|rule-qualify-" + identifier + r")", version):
             return None
         return (version, image, tuple(next((p['compileCommand'] for p in LANGUAGES.values() if p['image'] == image), COMPILE_COMMAND)), hashlib.sha256(source).hexdigest())
 
@@ -89,6 +89,57 @@ class CompileCache:
             self.entries[key] = (time.monotonic(), dict(result))
             self.entries.move_to_end(key)
             self.prune()
+
+
+class GeneratedCache:
+    """Worker-local memory for generated large inputs and trusted expected outputs.
+
+    Keyed by problem version, runtime and exact generator/reference/seed digests, so a changed program or
+    seed never reuses data. Only the same scoped versions as CompileCache are cached. Verdicts never are.
+    """
+    def __init__(self, max_bytes=96 * 1024 * 1024, max_entries=24, ttl=1800):
+        self.entries = OrderedDict()
+        self.lock = threading.RLock()
+        self.max_bytes, self.max_entries, self.ttl = max_bytes, max_entries, ttl
+
+    @staticmethod
+    def key(version, generator, reference, seed, expected):
+        identifier = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
+        if not re.fullmatch(r"(?:generated-" + identifier + r"-r[0-9]+|(?:experimental|hybrid)-check-" + identifier + r"|rule-qualify-" + identifier + r")", version):
+            return None
+        digest = lambda text: hashlib.sha256(text.encode()).hexdigest()
+        return (version, digest(generator), digest(reference), seed, expected)
+
+    def prune(self):
+        now = time.monotonic()
+        for key, (created, _) in list(self.entries.items()):
+            if now - created >= self.ttl:
+                del self.entries[key]
+        while (len(self.entries) > self.max_entries or
+               sum(len(value[1]["input"]) + len(value[1]["expected"]) for value in self.entries.values()) > self.max_bytes):
+            self.entries.popitem(last=False)
+
+    def get(self, key):
+        if key is None:
+            return None
+        with self.lock:
+            self.prune()
+            if key not in self.entries:
+                return None
+            self.entries.move_to_end(key)
+            return dict(self.entries[key][1])
+
+    def put(self, key, value):
+        if key is None:
+            return
+        with self.lock:
+            self.entries[key] = (time.monotonic(), dict(value))
+            self.entries.move_to_end(key)
+            self.prune()
+
+
+GENERATED_INPUT_LIMIT = 8 * 1024 * 1024
+GENERATED_OUTPUT_LIMIT = 8 * 1024 * 1024
 
 
 class InfrastructureError(Exception):
@@ -178,10 +229,11 @@ class Runner:
         self.state_dir = Path(state_dir or ROOT / ".state")
         self.attempt = str(uuid.UUID(attempt)) if attempt else None
         self.compile_cache = None
+        self.generated_cache = None
         self.timings = Timings()
         self.execution_mode = "EXCLUSIVE"
 
-    def sandbox(self, mount, command, stdin=b"", compile_phase=False):
+    def sandbox(self, mount, command, stdin=b"", compile_phase=False, output_limit=None):
         name = "gamjaoj-sandbox-" + uuid.uuid4().hex
         settings = self.profile
         flags = list(PROFILE['sandboxFlags'])
@@ -202,7 +254,7 @@ class Runner:
             self.timings.call(phase+".container_create", docker, *args)
             result = self.timings.call(phase+".start_attach_wait", capture,["docker", "start", "--attach", "--interactive", name], stdin,
                              seconds,
-                             BUILD_LIMIT if compile_phase else OUTPUT_LIMIT)
+                             BUILD_LIMIT if compile_phase else (output_limit or OUTPUT_LIMIT))
             if result["limit"]:
                 try:
                     docker("kill", name)
@@ -303,6 +355,8 @@ class Runner:
                         report["verdict"] = verdict
                         if verdict not in ("AC", "OK"):
                             break
+                    if report["verdict"] == "AC" and problem.get("generated"):
+                        self._generated(problem, classes, report)
         except (InfrastructureError, OSError, tarfile.TarError) as exc:
             report["verdict"] = "IE"
             report["error"] = str(exc)[:2048]
@@ -311,6 +365,71 @@ class Runner:
             temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2))
             temporary.replace(run_dir / "result.json")
         return report
+
+
+    def _aux_classes(self, version, source, parent):
+        """Compiles a trusted Java 8 helper (generator or reference) in its own sandboxed build."""
+        helper = Runner(LANGUAGES["JAVA"]["image"], self.state_dir, self.attempt)
+        helper.timings, helper.compile_cache, helper.execution_mode = self.timings, self.compile_cache, self.execution_mode
+        work = Path(tempfile.mkdtemp(dir=parent))
+        work.chmod(0o755)
+        (work / "Main.java").write_bytes(source.encode())
+        (work / "Main.java").chmod(0o444)
+        cache_key = self.compile_cache.key(version, helper.image, source.encode()) if self.compile_cache is not None else None
+        result = self.compile_cache.get(cache_key) if cache_key is not None else None
+        cached = result is not None
+        if result is None:
+            result = helper.sandbox(work, helper.profile["compileCommand"], compile_phase=True)
+        if result["limit"] or result["exit_code"]:
+            raise InfrastructureError("Generated test helper failed to compile")
+        classes = work / "compiled"
+        classes.mkdir(mode=0o755)
+        classes.chmod(0o755)
+        unpack_classes(result["stdout"], classes, "class")
+        if self.compile_cache is not None and not cached:
+            self.compile_cache.put(cache_key, result)
+        return helper, classes
+
+    def _generated(self, problem, classes, report):
+        """Large tests: a trusted generator builds the input inside the sandbox boundary and a trusted
+        reference (or a fixed VALID expectation) supplies the answer. The input never leaves the Runner."""
+        spec = problem["generated"]
+        with tempfile.TemporaryDirectory(prefix="gamjaoj-generated-") as parent:
+            Path(parent).chmod(0o755)
+            generator = reference = None
+            for test in spec["tests"]:
+                key = GeneratedCache.key(problem["version"], spec["generator"], spec.get("reference", ""), test["seed"], test["expected"])
+                data = self.generated_cache.get(key) if self.generated_cache is not None else None
+                entry = {"id": test["id"], "kind": "generated", "cache_hit": data is not None}
+                if data is None:
+                    if generator is None:
+                        generator = self._aux_classes(problem["version"], spec["generator"], parent)
+                    produced = self.timings.call("generated.generator", generator[0].sandbox, generator[1], generator[0].profile["testCommand"],
+                                                 (test["seed"] + "\n").encode(), output_limit=GENERATED_INPUT_LIMIT)
+                    if produced["limit"] or produced["exit_code"] or produced["oom_killed"] or not produced["stdout"].strip():
+                        raise InfrastructureError("Generated input could not be produced")
+                    data = {"input": produced["stdout"], "generator_wall_ms": produced["wall_ms"]}
+                    if test["expected"] == "VALID":
+                        data["expected"] = b"VALID\n"
+                    else:
+                        if reference is None:
+                            reference = self._aux_classes(problem["version"], spec["reference"], parent)
+                        solved = self.timings.call("generated.reference", reference[0].sandbox, reference[1], reference[0].profile["testCommand"],
+                                                   data["input"], output_limit=GENERATED_OUTPUT_LIMIT)
+                        if solved["limit"] or solved["exit_code"] or solved["oom_killed"] or not solved["stdout"].strip():
+                            raise InfrastructureError("Generated expected output could not be produced")
+                        data["expected"], data["reference_wall_ms"] = solved["stdout"], solved["wall_ms"]
+                    if self.generated_cache is not None:
+                        self.generated_cache.put(key, data)
+                result = self.timings.call("test_total", self.sandbox, classes, self.profile["testCommand"], data["input"], output_limit=GENERATED_OUTPUT_LIMIT)
+                verdict = classify(result, data["expected"])
+                entry |= {"verdict": verdict, **evidence(result), "input_sha256": hashlib.sha256(data["input"]).hexdigest(),
+                          "input_bytes": len(data["input"]), "expected_sha256": hashlib.sha256(data["expected"]).hexdigest(),
+                          "generator_wall_ms": data.get("generator_wall_ms"), "reference_wall_ms": data.get("reference_wall_ms")}
+                report["tests"].append(entry)
+                report["verdict"] = verdict
+                if verdict != "AC":
+                    break
 
 
 def unpack_classes(archive, destination, artifact="class"):
@@ -347,7 +466,26 @@ def validate_problem(problem):
             or tests[0].get("id") != "custom-input" or tests[0].get("output") != ""
             or len(tests[0].get("input", "").encode()) > 16384):
         raise ValueError("Custom run requires one bounded input and no expected output")
-    identifiers = set()
+    generated = problem.get("generated")
+    if generated is not None:
+        if problem["output_policy"] != "TOKEN_EXACT" or not isinstance(generated, dict) or set(generated) - {"generator", "reference", "tests"}:
+            raise ValueError("Generated tests require the judge policy and a known shape")
+        cases = generated.get("tests")
+        if not isinstance(generated.get("generator"), str) or not 0 < len(generated["generator"].encode()) <= SOURCE_LIMIT:
+            raise ValueError("Generated tests need a bounded generator")
+        if not isinstance(cases, list) or not 1 <= len(cases) <= 4:
+            raise ValueError("Expected 1 to 4 generated tests")
+        needs_reference = any(isinstance(c, dict) and c.get("expected") == "REFERENCE" for c in cases)
+        if needs_reference and (not isinstance(generated.get("reference"), str) or not 0 < len(generated["reference"].encode()) <= SOURCE_LIMIT):
+            raise ValueError("Generated reference answers need a bounded reference")
+        for case in cases:
+            if (not isinstance(case, dict) or set(case) != {"id", "seed", "expected"} or case["expected"] not in ("REFERENCE", "VALID")
+                    or not isinstance(case["seed"], str) or not re.fullmatch(r"-?[0-9]{1,19}", case["seed"])
+                    or not isinstance(case["id"], str) or not re.fullmatch(r"[a-z0-9-]{1,40}", case["id"])):
+                raise ValueError("Generated test entries must be id, integer seed and expectation")
+    identifiers = {case["id"] for case in generated["tests"]} if generated else set()
+    if generated and len(identifiers) != len(generated["tests"]):
+        raise ValueError("Test ids must be unique strings")
     for test in tests:
         if not isinstance(test.get("id"), str) or test["id"] in identifiers:
             raise ValueError("Test ids must be unique strings")

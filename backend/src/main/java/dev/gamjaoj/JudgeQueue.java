@@ -119,10 +119,15 @@ public class JudgeQueue {
                 || !expected.runnerPolicy().equals(report.path("policy").asText())
                 || !expected.problem().path("version").asText().equals(report.path("problem_version").asText()))
             throw new AccountException(400, "Judge report does not match the saved execution plan");
-        JsonNode tests = report.path("tests"), expectedTests = expected.problem().path("tests");
+        JsonNode tests = report.path("tests");
+        // Saved explicit tests first, then the plan's generated large tests in order (Runner-side inputs).
+        var expectedTests = JudgeJson.JSON.createArrayNode();expectedTests.addAll((com.fasterxml.jackson.databind.node.ArrayNode) expected.problem().path("tests"));
+        int explicit = expectedTests.size();
+        for (JsonNode g : expected.problem().path("generated").path("tests")) expectedTests.add(g);
         if (!tests.isArray() || tests.size() > expectedTests.size()) throw new AccountException(400, "Invalid test evidence");
         for (int i = 0; i < tests.size(); i++) {
             if (!tests.get(i).path("id").equals(expectedTests.get(i).path("id"))
+                    || (i >= explicit) != "generated".equals(tests.get(i).path("kind").asText())
                     || (i < tests.size()-1 && !tests.get(i).path("verdict").asText().equals(success)))
                 throw new AccountException(400, "Invalid test order or evidence");
         }

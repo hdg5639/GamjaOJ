@@ -14,7 +14,8 @@ import java.util.*;
 record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonNode catalog,String generator,String validator,
                          List<HybridFiniteProfile.Case> tiny,List<HybridFiniteProfile.Case> invalid,List<HybridFiniteProfile.Case> stress,
                          Map<String,String> mutantSources,Map<String,HybridFiniteProfile.Case> witnesses,
-                         String oracleDomain,String enumeration,String authorGuidance,String teachingGuidance,String readerGuidance) {
+                         String oracleDomain,String enumeration,String authorGuidance,String teachingGuidance,String readerGuidance,
+                         String largeGenerator,List<String> largeSeeds) {
     static final String ENGINE="PACKAGE_V1";
     static final int MIN_TINY=6,MAX_TINY=24,MAX_STRESS=3,MAX_INVALID=10;
     String policy(){return "pkg-"+versionId;}
@@ -37,7 +38,15 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
     }
     /** Parses a stored package; any structural deviation rejects the version rather than repairing it. */
     static HybridRulePackage parse(String versionId,JsonNode p) {
-        HybridArtifacts.fields(p,"contract","rules","catalog","generator","validator","tiny","invalid","stress","mutants","oracleDomain","enumeration","guidance");
+        var names=new HashSet<String>();p.fieldNames().forEachRemaining(names::add);names.remove("large");
+        HybridArtifacts.require(names.equals(Set.of("contract","rules","catalog","generator","validator","tiny","invalid","stress","mutants","oracleDomain","enumeration","guidance")),"RULE_PACKAGE_FIELDS");
+        // Optional generated large tests: a qualified generator and seeds; answers come from the reference in the Runner.
+        String largeGenerator=null;var seeds=new ArrayList<String>();
+        if(p.has("large")) {
+            HybridArtifacts.fields(p.path("large"),"generator","seeds");largeGenerator=text(p.path("large").path("generator"),65536);
+            var s=p.path("large").path("seeds");if(!s.isArray()||s.size()<1||s.size()>3)throw new HybridArtifacts.Invalid("RULE_PACKAGE_LARGE");
+            for(var seed:s){if(!seed.isTextual()||!seed.asText().matches("-?[0-9]{1,18}")||seeds.contains(seed.asText()))throw new HybridArtifacts.Invalid("RULE_PACKAGE_LARGE");seeds.add(seed.asText());}
+        }
         var contract=HybridArtifacts.contract(p.path("contract"));
         // Exactly one Korean normative explanation per contract action, as the public snapshot requires.
         var rules=p.path("rules");var actions=new HashSet<String>();contract.path("actions").forEach(a->actions.add(a.path("id").asText()));
@@ -62,7 +71,8 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
         metadata(catalog,g,p.path("oracleDomain"),p.path("enumeration"));
         return new HybridRulePackage(versionId,contract,rules.deepCopy(),catalog.deepCopy(),text(p.path("generator"),65536),text(p.path("validator"),65536),
                 tiny,invalid,stress,Collections.unmodifiableMap(sources),Collections.unmodifiableMap(witnesses),
-                p.path("oracleDomain").asText(),p.path("enumeration").asText(),g.path("author").asText(),g.path("teaching").asText(),g.path("reader").asText());
+                p.path("oracleDomain").asText(),p.path("enumeration").asText(),g.path("author").asText(),g.path("teaching").asText(),g.path("reader").asText(),
+                largeGenerator,List.copyOf(seeds));
     }
     /** Display and guidance limits in UTF-8 bytes (Korean is three bytes per character). */
     static void metadata(JsonNode catalog,JsonNode guidance,JsonNode oracleDomain,JsonNode enumeration) {
@@ -81,6 +91,15 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
         for(var list:List.of(tiny,stress))for(var c:list)if(c.input().equals(input))return c.output();
         throw new IllegalArgumentException("PROFILE_INPUT_BOUND");
     }
+    boolean hasLarge(){return largeGenerator!=null;}
+    /** Runner-side generated tests; expectation REFERENCE needs the qualified reference, VALID the validator as program. */
+    static ObjectNode generated(String generator,List<String> seeds,String reference,String expected) {
+        var g=JudgeJson.JSON.createObjectNode().put("generator",generator);
+        if(expected.equals("REFERENCE"))g.put("reference",reference);
+        var t=g.putArray("tests");for(int i=0;i<seeds.size();i++)t.addObject().put("id","large-"+i).put("seed",seeds.get(i)).put("expected",expected);
+        return g;
+    }
+    ObjectNode generated(String reference,String expected){return generated(largeGenerator,largeSeeds,reference,expected);}
     boolean tiny(String input){return tiny.stream().anyMatch(c->c.input().equals(input));}
     /** Four distinct qualified tiny inputs chosen by seed; no unqualified answers enter a package. */
     List<String> random(long seed) {

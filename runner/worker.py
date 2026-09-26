@@ -14,7 +14,7 @@ import uuid
 from contextlib import ExitStack
 from runner.telemetry import Timings
 
-from runner.judge import POLICY, RUN_POLICY, runtime_policies, ROOT, Runner, CompileCache, docker
+from runner.judge import POLICY, RUN_POLICY, runtime_policies, ROOT, Runner, CompileCache, GeneratedCache, docker
 
 LOG = logging.getLogger("gamjaoj.worker")
 
@@ -53,6 +53,7 @@ class Worker:
     def __init__(self, api, state, runner_factory=Runner):
         self.api, self.state, self.runner_factory = api, Path(state), runner_factory
         self.compile_cache = CompileCache()
+        self.generated_cache = GeneratedCache()
         self.state.mkdir(parents=True, exist_ok=True, mode=0o700)
         identity = self.state / "identity.json"
         if not identity.exists():
@@ -139,6 +140,7 @@ class Worker:
                 timings.call("attempt_cleanup", self.cleanup_attempt, token)
                 runner = self.runner_factory(assignment["runtimeImage"], work, attempt=token)
                 runner.compile_cache = self.compile_cache
+                runner.generated_cache = self.generated_cache
                 runner.execution_mode = execution_mode
                 report = timings.call("judge_total", runner.judge, source, assignment["problem"])
             timings.call("completion_save", atomic_json, path, {"submissionId": job_id, "token": token, "report": report})
@@ -175,6 +177,7 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         workers = []
         cache = CompileCache()
+        generated = GeneratedCache()
         for index in range(args.slots):
             state = args.state_dir if index == 0 else args.state_dir / "slots" / str(index)
             state.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -183,6 +186,7 @@ def main():
                 fcntl.flock(slot_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             worker = Worker(Api(os.environ["GAMJAOJ_API_URL"], os.environ["WORKER_TOKEN"]), state)
             worker.compile_cache = cache
+            worker.generated_cache = generated
             workers.append(worker)
             for attempt in (state / "attempts").glob("*"):
                 worker.cleanup_attempt(str(uuid.UUID(attempt.name)))
