@@ -276,6 +276,7 @@ class HybridAdmissionIntegrationTest {
         mutants.addObject().put("id","mutant-strict-fit").put("source",HybridFiniteProfile.mutant("mutant-strict-fit")).put("witness",HybridFiniteProfile.valid().get(0).input());
         p.put("oracleDomain","N <= 4, W <= 8").put("enumeration","all subsets");
         p.putObject("guidance").put("author","Use 0/1 knapsack DP.").put("teaching","Explain the reverse capacity loop.").put("reader","Enumerate all subsets.");
+        p.putObject("large").put("generator",support.path("generator").asText()).putArray("seeds").add("11").add("12");
         return p;
     }
     UUID onboardingRow(UUID owner) {
@@ -302,6 +303,12 @@ class HybridAdmissionIntegrationTest {
         // The package's own answers were used: generator output is validation-only, never an answer-bearing test.
         var pack=JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id=?").param(version).query(String.class).single());
         for(var t:pack.path("tests"))assertThat(t.path("id").asText()).doesNotStartWith("check-");
+        // Learners are judged on the generated large tests too; the reference stays inside the private package.
+        assertThat(pack.path("generated").path("tests").size()).isEqualTo(2);assertThat(pack.path("generated").path("reference").asText()).isEqualTo(reference.path("reference").asText());
+        var stressPlan=JudgeJson.parse(jdbc.sql("SELECT s.run_package FROM hybrid_execution_check e JOIN submission s ON s.id=e.submission_id WHERE e.role='stress-reference-0' AND s.problem_version=?").param(version).query(String.class).single());
+        assertThat(stressPlan.path("generated").path("tests").get(0).path("expected").asText()).isEqualTo("REFERENCE");
+        String listing=mvc.perform(get("/api/problems").with(user("owner"))).andReturn().getResponse().getContentAsString();
+        assertThat(listing).contains(version).doesNotContain(reference.path("reference").asText()).doesNotContain("\"seed\"");
         registry.share(owner,"rule-fixture-v1",true);
         mvc.perform(get("/api/generation/hybrid/options").with(user("other"))).andExpect(jsonPath("$.profiles.length()").value(4));
         assertThatThrownBy(()->registry.share(submissions.owner("other",false),"rule-fixture-v1",false)).isInstanceOf(AccountException.class);

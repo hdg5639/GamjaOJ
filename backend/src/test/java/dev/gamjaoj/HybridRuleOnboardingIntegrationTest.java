@@ -46,6 +46,7 @@ class HybridRuleOnboardingIntegrationTest {
         var p=HybridAdmissionIntegrationTest.fixturePackage();var a=JudgeJson.JSON.createObjectNode();
         for(String k:List.of("contract","rules","catalog","generator","validator","guidance"))a.set(k,p.path(k));
         a.put("reference",f.core().path("reference").asText());a.set("authorNotes",f.core().path("authorNotes"));
+        a.put("largeGenerator",p.path("generator").asText()).put("slowSolution",HybridFiniteProfile.mutant("mutant-unbounded"));
         var m=a.putArray("mutants");for(String id:List.of("mutant-unbounded","mutant-strict-fit"))m.addObject().put("idea",id).put("source",HybridFiniteProfile.mutant(id));
         var t=a.putArray("tinyInputs");tiny.forEach(c->t.add(c.input()));
         var i=a.putArray("invalidInputs");HybridFiniteProfile.invalid().forEach(c->i.add(c.input()));
@@ -62,6 +63,7 @@ class HybridRuleOnboardingIntegrationTest {
     String batchOf(List<String> outs){var b=new StringBuilder();for(String o:outs)b.append(o.getBytes(java.nio.charset.StandardCharsets.UTF_8).length).append('\n').append(o);return b.toString();}
     String role(JudgeQueue.Assignment a){return jdbc.sql("SELECT role FROM hybrid_execution_check WHERE submission_id=?").param(a.submissionId()).query(String.class).single();}
     /** Fake Runner: correct programs agree; mutant-a differs on case 4, mutant-b on case 0. */
+    String slowVerdict="TLE";
     int drain(boolean disagree,boolean survivor) {
         int n=0;Optional<JudgeQueue.Assignment> next;
         while((next=queue.claim(UUID.randomUUID())).isPresent()) {
@@ -74,9 +76,12 @@ class HybridRuleOnboardingIntegrationTest {
                 case "q-mutant-a-batch"->{verdict="OK";var r=new ArrayList<>(answers);if(!survivor)r.set(4,"0\n");stdout=batchOf(r);}
                 case "q-mutant-b-batch"->{verdict="OK";var r=new ArrayList<>(answers);r.set(0,"7\n");stdout=batchOf(r);}
                 case "q-mutant-a","q-mutant-b"->verdict="WA";
+                case "q-slow"->verdict=slowVerdict;
                 default->{if(role.startsWith("q-stress-run-")){verdict="OK";stdout=HybridFiniteProfile.stress().get(Integer.parseInt(role.substring(13))).output();}}
             }
-            var r=new GenerationIntegrationTest().report(a,verdict);
+            boolean timedOut=role.equals("q-slow")&&verdict.equals("TLE");
+            var r=new GenerationIntegrationTest().report(a,timedOut?"AC":verdict);
+            if(timedOut){var tests=(com.fasterxml.jackson.databind.node.ArrayNode)r.path("tests");((ObjectNode)tests.get(tests.size()-1)).put("verdict","TLE");r.put("verdict","TLE");}
             for(var t:r.path("tests"))((ObjectNode)t).put("stdout",stdout).put("stderr","").put("stdout_truncated",false).put("wall_ms",10);
             queue.complete(a.submissionId(),a.token(),r);
         }
@@ -98,15 +103,16 @@ class HybridRuleOnboardingIntegrationTest {
         assertThat(worker.runOnce()).isTrue();assertThat(view(id).status()).isEqualTo("AUTHORED");
         assertThat(worker.runOnce()).isTrue();assertThat(view(id).status()).isEqualTo("QUALIFYING");assertThat(worker.runOnce()).isFalse();
         verify(provider,times(2)).generate(any());
+        assertThat(drain(false,false)).isEqualTo(8);onboarding.advance();
         assertThat(drain(false,false)).isEqualTo(7);onboarding.advance();
-        assertThat(drain(false,false)).isEqualTo(6);onboarding.advance();
-        assertThat(drain(false,false)).isEqualTo(2);onboarding.advance();
+        assertThat(drain(false,false)).isEqualTo(4);onboarding.advance();
         var v=view(id);assertThat(v.status()).isEqualTo("ACTIVE");assertThat(v.versionId()).startsWith("rule-");assertThat(v.label()).isEqualTo("등록 규칙 · 물건 고르기");
         assertThat(v.spentUsd()).isPositive();assertThat(ledger.budget().reservedUsd()).isEqualByComparingTo("0");
         var d=HybridProfiles.byId(v.versionId());assertThat(d.pkg().tiny()).hasSize(tiny.size());
         assertThat(d.pkg().witnesses().get("mutant-a").input()).isEqualTo(tiny.get(4).input());
         assertThat(d.pkg().witnesses().get("mutant-b").input()).isEqualTo(tiny.get(0).input());
         assertThat(registry.qualifiedReference(v.versionId())).isPresent();
+        assertThat(d.pkg().hasLarge()).isTrue();assertThat(d.pkg().largeSeeds()).hasSize(2);
         mvc.perform(get("/api/rules/mine").with(user("owner"))).andExpect(jsonPath("$[0].id").value(v.versionId())).andExpect(jsonPath("$[0].shared").value(false));
         mvc.perform(get("/api/rules/mine").with(user("other"))).andExpect(jsonPath("$.length()").value(0));
         mvc.perform(put("/api/rules/"+v.versionId()+"/sharing").with(user("other")).with(csrf()).contentType("application/json").content("{\"shared\":true}")).andExpect(status().isNotFound());
@@ -130,6 +136,13 @@ class HybridRuleOnboardingIntegrationTest {
         assertThat(drain(false,false)).isZero();
         UUID next=request();worker.runOnce();worker.runOnce();drain(false,true);onboarding.advance();
         assertThat(view(next).error()).isEqualTo("MUTANT_SURVIVED");assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_version WHERE engine='PACKAGE_V1'").query(Integer.class).single()).isZero();
+    }
+    @Test void largeTestsMustMakeTheSlowSolutionTimeOut() throws Exception {
+        provide(author());slowVerdict="AC";UUID id=request();worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
+        assertThat(view(id).error()).isEqualTo("LARGE_TESTS_NOT_DISCRIMINATING");
+        slowVerdict="WA";UUID wrong=request();worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
+        assertThat(view(wrong).error()).isEqualTo("SLOW_SOLUTION_INCORRECT");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_version WHERE engine='PACKAGE_V1'").query(Integer.class).single()).isZero();
     }
     @Test void malformedAuthorBudgetCapAndCancellationStopBeforeRunnerWork() throws Exception {
         var bad=author();bad.remove("stressInputs");provide(bad);UUID id=request();worker.runOnce();

@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from unittest.mock import patch
 
-from runner.judge import InfrastructureError, ROOT, Runner, CompileCache, classify, unpack_classes, validate_problem
+from runner.judge import InfrastructureError, ROOT, Runner, CompileCache, GeneratedCache, classify, unpack_classes, validate_problem
 
 
 class ContractTests(unittest.TestCase):
@@ -49,6 +49,39 @@ class ContractTests(unittest.TestCase):
                     package.addfile(entry)
                 with self.assertRaises(InfrastructureError):
                     unpack_classes(archive.getvalue(), Path(directory))
+
+
+class GeneratedValidationTests(unittest.TestCase):
+    def plan(self, **generated):
+        spec = {"generator": "public class Main{}", "reference": "public class Main{}",
+                "tests": [{"id": "large-0", "seed": "7", "expected": "REFERENCE"}]} | generated
+        return {"version": "v", "output_policy": "TOKEN_EXACT", "tests": [{"id": "t", "input": "1\n", "output": "1\n"}], "generated": spec}
+
+    def test_shape_is_strict(self):
+        validate_problem(self.plan())
+        validate_problem(self.plan(reference=None, tests=[{"id": "v-0", "seed": "-3", "expected": "VALID"}]) | {})
+        for bad in (self.plan(tests=[]), self.plan(tests=[{"id": "x", "seed": "1e3", "expected": "REFERENCE"}]),
+                    self.plan(tests=[{"id": "x", "seed": "1", "expected": "GUESS"}]), self.plan(extra="x"),
+                    self.plan(reference=None), self.plan(tests=[{"id": "t", "seed": "1", "expected": "VALID"}]),
+                    self.plan(tests=[{"id": "a", "seed": "1", "expected": "VALID"}] * 2)):
+            with self.subTest(bad=bad["generated"]):
+                with self.assertRaises(ValueError):
+                    validate_problem(bad)
+        run = self.plan() | {"output_policy": "RUN_ONLY", "tests": [{"id": "custom-input", "input": "", "output": ""}]}
+        with self.assertRaises(ValueError):
+            validate_problem(run)
+
+    def test_cache_scope_and_identity(self):
+        uid = "12345678-1234-1234-1234-123456789abc"
+        self.assertIsNone(GeneratedCache.key("public-v1", "g", "r", "1", "REFERENCE"))
+        key = GeneratedCache.key("hybrid-check-" + uid, "g", "r", "1", "REFERENCE")
+        self.assertNotEqual(key, GeneratedCache.key("hybrid-check-" + uid, "g", "r", "2", "REFERENCE"))
+        self.assertNotEqual(key, GeneratedCache.key("hybrid-check-" + uid, "g2", "r", "1", "REFERENCE"))
+        cache = GeneratedCache(max_bytes=10)
+        cache.put(key, {"input": b"12345", "expected": b"1"})
+        self.assertEqual(b"12345", cache.get(key)["input"])
+        cache.put(GeneratedCache.key("rule-qualify-" + uid, "g", "r", "1", "VALID"), {"input": b"123456", "expected": b"1"})
+        self.assertIsNone(cache.get(key))
 
 
 class CompileCacheTests(unittest.TestCase):
@@ -237,6 +270,47 @@ class DockerTests(unittest.TestCase):
             self.assertTrue(all(part.get("elapsedMs",0)>=0 for part in timing["segments"]))
 
         self.assertNotEqual(first["problem_sha256"], second["problem_sha256"])
+
+    GENERATOR = ('public class Main { public static void main(String[] a) { long seed = new java.util.Scanner(System.in).nextLong();'
+                 ' int n = 200000; StringBuilder b = new StringBuilder(); b.append(n).append("\\n"); java.util.Random r = new java.util.Random(seed);'
+                 ' for (int i = 0; i < n; i++) b.append(r.nextInt(1000)).append(i + 1 < n ? " " : "\\n"); System.out.print(b); }}')
+    SUM = ('public class Main { public static void main(String[] a) throws Exception { java.io.DataInputStream in = new java.io.DataInputStream(new java.io.BufferedInputStream(System.in));'
+           ' java.io.StreamTokenizer t = new java.io.StreamTokenizer(new java.io.BufferedReader(new java.io.InputStreamReader(System.in))); t.nextToken(); int n = (int) t.nval; long s = 0;'
+           ' for (int i = 0; i < n; i++) { t.nextToken(); s += (long) t.nval; } System.out.println(s); }}')
+
+    def generated_plan(self, version, expected="REFERENCE"):
+        return {"version": version, "output_policy": "TOKEN_EXACT", "tests": [{"id": "small", "input": "2\n1 2\n", "output": "3\n"}],
+                "generated": {"generator": self.GENERATOR, "reference": self.SUM, "tests": [
+                    {"id": "large-0", "seed": "11", "expected": expected}, {"id": "large-1", "seed": "12", "expected": expected}]}}
+
+    def test_generated_large_inputs_are_judged_against_reference_inside_runner(self):
+        version = "hybrid-check-12345678-1234-1234-1234-123456789abc"
+        self.runner.generated_cache = GeneratedCache()
+        report = self.runner.judge(self.SUM.encode(), self.generated_plan(version))
+        self.assertEqual("AC", report["verdict"], report)
+        large = [t for t in report["tests"] if t.get("kind") == "generated"]
+        self.assertEqual(2, len(large))
+        self.assertTrue(all(t["input_bytes"] > 600000 and not t["cache_hit"] for t in large))
+        self.assertNotEqual(large[0]["input_sha256"], large[1]["input_sha256"])
+        # A wrong program still passes the small explicit test but fails the large generated one.
+        wrong = self.SUM.replace("long s = 0", "int s = 0").replace("s += (long) t.nval", "s = (s + (int) t.nval) % 1000")
+        wrong_report = self.runner.judge(wrong.encode(), self.generated_plan(version))
+        self.assertEqual("WA", wrong_report["verdict"], wrong_report)
+        self.assertTrue(wrong_report["tests"][-1]["cache_hit"])
+        # Too slow: quadratic work on the large input exceeds the wall limit.
+        slow = self.SUM.replace("public class Main {", "public class Main { static volatile int sink;").replace("s += (long) t.nval;", "s += (long) t.nval; for (int k = 0; k < i; k++) sink = k;")
+        self.assertEqual("TLE", self.runner.judge(slow.encode(), self.generated_plan(version))["verdict"])
+
+    def test_generated_validation_expectation_and_broken_generator(self):
+        version = "rule-qualify-12345678-1234-1234-1234-123456789abc"
+        validator = 'public class Main { public static void main(String[] a) { java.util.Scanner s = new java.util.Scanner(System.in); s.nextInt(); System.out.println("VALID"); }}'
+        plan = self.generated_plan(version, "VALID") | {"tests": [{"id": "small", "input": "2\n1 2\n", "output": "VALID\n"}]}
+        plan["generated"].pop("reference")
+        self.assertEqual("AC", self.runner.judge(validator.encode(), plan)["verdict"])
+        broken = self.generated_plan(version)
+        broken["generated"]["generator"] = 'public class Main { public static void main(String[] a) { System.exit(3); }}'
+        report = self.runner.judge(self.SUM.encode(), broken)
+        self.assertEqual("IE", report["verdict"], report)
 
     def test_wa(self):
         self.check('System.out.println(4);', "WA")

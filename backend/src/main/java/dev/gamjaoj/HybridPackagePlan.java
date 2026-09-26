@@ -80,7 +80,10 @@ final class HybridPackagePlan {
         return candidates.stream().filter(c->!checkOnly(c)).toList();
     }
     static ObjectNode pack(String version,List<JsonNode> candidates,JsonNode presentation) {return pack(version,candidates,presentation,HybridProfiles.KNAPSACK);}
-    static ObjectNode pack(String version,List<JsonNode> candidates,JsonNode presentation,HybridProfiles.Definition profile) {
+    static ObjectNode pack(String version,List<JsonNode> candidates,JsonNode presentation,HybridProfiles.Definition profile) {return pack(version,candidates,presentation,profile,null);}
+    /** Registered packages with large tests carry them into every learner judgement; reference answers stay in the Runner. */
+    static int generatedCount(HybridProfiles.Definition profile){return profile.pkg()!=null&&profile.pkg().hasLarge()?profile.pkg().largeSeeds().size():0;}
+    static ObjectNode pack(String version,List<JsonNode> candidates,JsonNode presentation,HybridProfiles.Definition profile,String reference) {
         var p=JudgeJson.JSON.createObjectNode().put("version",version).put("output_policy","TOKEN_EXACT")
                 .put("title",presentation.path("title").asText()).put("mode","HYBRID_V1");
         var sem=presentation.path("semantics");var statement=new StringBuilder(presentation.path("context").asText());
@@ -101,6 +104,10 @@ final class HybridPackagePlan {
         statement.append("\n\n제약\n").append(sem.path("limits").path("maxInputSize").asText()).append('\n').append(sem.path("limits").path("executionConstraints").asText());
         p.put("statement",statement.toString());p.set("semantics",sem.deepCopy());
         var tests=p.putArray("tests");candidates.stream().filter(c->!checkOnly(c)).forEach(tests::add);
+        if(generatedCount(profile)>0) {
+            if(reference==null||reference.isBlank())throw new IllegalArgumentException("MISSING_GENERATED_REFERENCE");
+            p.set("generated",profile.pkg().generated(reference,"REFERENCE"));
+        }
         // Mechanically sourced, already checked by both implementations; never guessed by a writer.
         var samples=p.putArray("samples");
         candidates.stream().filter(c->!checkOnly(c)&&profile.tiny(c.path("input").asText())).limit(2).forEach(c->{
