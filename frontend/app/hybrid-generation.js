@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
+import RuleOnboarding from './rule-onboarding';
 
 const activeStates=['QUEUED','DESIGNING','BUILDING','VALIDATING','REVIEWING'];
 const handoffs=['VALIDATION_ADAPTER_NOT_CONNECTED','CONTENT_REVIEW_REQUIRED'];
@@ -95,6 +96,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
         <button className="primary" disabled={busy||(!pending&&(!options?.enabled||!profile||!consent||running||otherActive||!loaded))}>{busy?'처리 중…':pending?'기존 요청 확인':'이 규칙으로 생성·게시'}</button>
       </form>
       {error&&<p className="notice error" role="alert">{error}</p>}
+      <RuleOnboarding api={api} onRegistered={loadOptions}/>
     </section>
     <section className="generation-results" aria-labelledby="hybrid-generation-results">
       <h3 id="hybrid-generation-results" tabIndex={-1} ref={results}>진행·결과</h3>

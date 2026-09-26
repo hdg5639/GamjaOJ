@@ -19,11 +19,14 @@ class HybridAdmission {
     /** verifiedReference: a previously published implementation of these exact rules can be reused. */
     record Profile(String id,String label,String description,List<String> rules,boolean verifiedReference) {}
     private boolean reuseEnabled(){return Boolean.parseBoolean(settings.value("HYBRID_REFERENCE_REUSE_ENABLED","false"));}
-    private List<Profile> profiles() {
-        return registry.selectable().stream().map(v->{
+    private UUID viewer(String user){return jdbc.sql("SELECT id FROM app_user WHERE username=?").param(user).query(UUID.class).optional().orElse(null);}
+    /** Registered packages always reuse their qualified implementation; built-ins follow the reuse flag. */
+    private boolean reuse(HybridRuleRegistry.Version v){return HybridRulePackage.ENGINE.equals(v.engine())||reuseEnabled();}
+    private List<Profile> profiles(String user) {
+        return registry.selectable(viewer(user)).stream().map(v->{
             var rules=new ArrayList<String>();v.catalog().path("rules").forEach(r->rules.add(r.asText()));
             return new Profile(v.id(),v.label(),v.catalog().path("description").asText(),List.copyOf(rules),
-                    reuseEnabled()&&registry.qualifiedReference(v.id()).isPresent());
+                    reuse(v)&&registry.qualifiedReference(v.id()).isPresent());
         }).toList();
     }
     record Options(boolean enabled,String message,List<Profile> profiles) {}
@@ -37,7 +40,7 @@ class HybridAdmission {
                 &&HybridFiniteProfile.PACKAGE_POLICY.equals(settings.value("HYBRID_VALIDATION_PROFILE",""));
         if(enabled)try {for(var role:List.of(HybridGeneration.Role.PRESENTATION,HybridGeneration.Role.READER,HybridGeneration.Role.CONTENT_REVIEW))HybridModels.slot(settings,role);}
         catch(AccountException unavailable){enabled=false;}
-        return new Options(enabled,enabled?"검증을 통과한 문제만 게시합니다. 실패한 요청은 자동으로 다시 생성하지 않습니다.":"아직 이 계정에서는 실험 출제를 시작할 수 없어요. 기존 출제 방식은 계속 이용할 수 있습니다.",profiles());
+        return new Options(enabled,enabled?"검증을 통과한 문제만 게시합니다. 실패한 요청은 자동으로 다시 생성하지 않습니다.":"아직 이 계정에서는 실험 출제를 시작할 수 없어요. 기존 출제 방식은 계속 이용할 수 있습니다.",profiles(user));
     }
     /** Whether this user may admit the given registered rule version now (flags, allowlist, registry). */
     boolean available(String user,String versionId) {
@@ -52,7 +55,7 @@ class HybridAdmission {
     HybridGeneration.Progress create(String user,UUID id,JsonNode request) {
         try {
             HybridArtifacts.fields(request,"profileId","shared","publishOnSuccess");
-            HybridArtifacts.require(request.path("profileId").isTextual()&&registry.resolve(request.path("profileId").asText()).isPresent(),"UNSUPPORTED_PROFILE");
+            HybridArtifacts.require(request.path("profileId").isTextual()&&registry.resolve(request.path("profileId").asText(),viewer(user)).isPresent(),"UNSUPPORTED_PROFILE");
             HybridArtifacts.require(request.path("shared").isBoolean()&&request.path("publishOnSuccess").isBoolean()&&request.path("publishOnSuccess").asBoolean(),"EXPLICIT_PUBLICATION_REQUIRED");
         }catch(HybridArtifacts.Invalid invalid){throw new AccountException(400,"지원되는 규칙과 검증 후 게시 여부를 선택해 주세요. 자유 요청은 직접 요청하기를 이용해 주세요.");}
         jdbc.sql("SELECT id FROM ai_budget_lock WHERE id=1 FOR UPDATE").query(Integer.class).single();
@@ -68,7 +71,7 @@ class HybridAdmission {
             throw new AccountException(409,"진행 중인 출제를 먼저 마쳐 주세요.");
         execution.admit(user,id,canonical,shared);
         String versionId=request.path("profileId").asText();
-        var selected=registry.resolve(versionId).orElseThrow(()->new AccountException(409,"선택한 규칙을 지금은 사용할 수 없어요. 목록을 새로 확인해 주세요."));
+        var selected=registry.resolve(versionId,viewer(user)).orElseThrow(()->new AccountException(409,"선택한 규칙을 지금은 사용할 수 없어요. 목록을 새로 확인해 주세요."));
         var contract=selected.contract();
         jdbc.sql("INSERT INTO hybrid_public_request(generation_id,profile_id,profile_hash,contract_sha256,handoff_mode,rule_version_id) VALUES (?,?,?,?,'SERVER_FIXED_CONTRACT_V1',?)")
                 .param(id).param(selected.id()).param(selected.hash()).param(JudgeJson.hash(JudgeJson.canonical(contract))).param(versionId).update();
@@ -79,7 +82,10 @@ class HybridAdmission {
                 JudgeJson.JSON.createObjectNode().put("executor","SERVER_FIXED_CONTRACT_V1").put("billingMode","NONE"),null));
         // A verified implementation of the same rule version replaces the author call. Story, reader,
         // every Runner check and final review still run for this instance.
-        var reference=reuseEnabled()?registry.qualifiedReference(versionId):Optional.<HybridRuleRegistry.Reference>empty();
+        boolean registered=selected.pkg()!=null;
+        var reference=registered||reuseEnabled()?registry.qualifiedReference(versionId):Optional.<HybridRuleRegistry.Reference>empty();
+        // A registered package has no author path of its own: its qualified reference is part of the rule.
+        if(registered&&reference.isEmpty())throw new AccountException(409,"이 규칙의 검증된 정답 코드를 지금은 사용할 수 없어요.");
         if(reference.isPresent()) {
             var core=jobs.claim(id,HybridGeneration.Role.CORE);
             if(core!=null) {

@@ -167,3 +167,27 @@ test('registry catalog selects the first available rule and labels reused verifi
   await expect(page.getByText('검증을 통과한 정답 코드를 다시 사용해 코드 작성 단계를 생략합니다',{exact:false})).toBeVisible();
   await expect(page.getByText('검증된 코드 재사용',{exact:true})).toBeVisible();
 });
+test('member rule registration submits once, shows qualification progress and toggles sharing',async({page})=>{
+  const writes=[];let items=[],mine=[];
+  await fixture(page,async(route,path,req)=>{
+    if(path==='/api/rules/onboarding/options'){await route.fulfill({json:{enabled:true}});return true;}
+    if(path==='/api/rules/onboarding'&&req.method()==='POST'){writes.push({key:req.headers()['idempotency-key'],body:req.postDataJSON()});
+      items=[{id:'o1',status:'QUALIFYING',request:req.postDataJSON().request,checks:{'q-valid':'AC','q-invalid':'AC','q-generator':'QUEUED'},spentUsd:0.08}];await route.fulfill({json:items[0]});return true;}
+    if(path==='/api/rules/onboarding'){await route.fulfill({json:items});return true;}
+    if(path==='/api/rules/mine'){await route.fulfill({json:mine});return true;}
+    if(path==='/api/rules/rule-o1-v1/sharing'){mine=[{...mine[0],shared:req.postDataJSON().shared}];await route.fulfill({json:mine[0]});return true;}
+  });
+  const request=page.getByRole('button',{name:'이 설명으로 규칙 등록 요청'});
+  await expect(request).toBeDisabled();
+  await page.getByLabel('만들고 싶은 규칙').fill('구간 합 질의를 누적 합으로 처리하는 규칙');
+  await request.click();
+  await expect(page.getByText('실행 검증 2건 완료')).toBeVisible();expect(writes).toHaveLength(1);
+  expect(writes[0].body.request).toBe('구간 합 질의를 누적 합으로 처리하는 규칙');
+  await expect(page.getByRole('button',{name:'이 설명으로 규칙 등록 요청'})).toBeDisabled();
+  items=[{...items[0],status:'ACTIVE',label:'구간 합'}];mine=[{id:'rule-o1-v1',label:'구간 합',category:'누적 합',status:'ACTIVE',shared:false}];
+  await page.getByRole('button',{name:'이 등록 취소'}).isVisible();
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await expect(page.getByText('나만 사용')).toBeVisible({timeout:8000});
+  await page.getByRole('button',{name:'다른 회원에게 공개'}).click();
+  await expect(page.getByText('다른 회원에게 공개',{exact:false}).first()).toBeVisible();
+});
