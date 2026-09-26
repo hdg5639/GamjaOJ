@@ -1,4 +1,5 @@
 """Explicit live Codex -> Runner -> private problem -> submission smoke."""
+import os
 import argparse
 import http.cookiejar
 import json
@@ -12,7 +13,7 @@ import uuid
 import subprocess
 
 def ssh(command, data=None):
-    return subprocess.run(['ssh','-o','BatchMode=yes','ocr-serv',command],input=data,text=True,capture_output=True,check=True).stdout.strip()
+    return subprocess.run(['ssh','-o','BatchMode=yes',os.environ['GAMJAOJ_APP_SSH_TARGET'],command],input=data,text=True,capture_output=True,check=True).stdout.strip()
 
 def sql(query):
     return ssh('docker exec -i gamjaoj-postgres-1 psql -U gamjaoj -d gamjaoj -At -v ON_ERROR_STOP=1',query)

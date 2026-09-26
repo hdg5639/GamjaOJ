@@ -1,4 +1,5 @@
 """Live experimental spec draft smoke; never publishes a problem or invokes paid API generation."""
+import os
 import argparse
 import http.cookiejar
 import json
@@ -13,7 +14,7 @@ import uuid
 
 
 def ssh(command,data=None):
-    return subprocess.run(['ssh','-o','BatchMode=yes','ocr-serv',command],input=data,text=True,capture_output=True,check=True).stdout.strip()
+    return subprocess.run(['ssh','-o','BatchMode=yes',os.environ['GAMJAOJ_APP_SSH_TARGET'],command],input=data,text=True,capture_output=True,check=True).stdout.strip()
 
 
 def sql(query):

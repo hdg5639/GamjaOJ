@@ -1,4 +1,5 @@
 """Verify review-hold on synthetic private records; no model or Runner calls."""
+import os
 import http.cookiejar
 import json
 import secrets
@@ -10,7 +11,7 @@ import uuid
 
 
 def ssh(command, data=None):
-    return subprocess.run(['ssh','-o','BatchMode=yes','ocr-serv',command],input=data,text=True,capture_output=True,check=True).stdout.strip()
+    return subprocess.run(['ssh','-o','BatchMode=yes',os.environ['GAMJAOJ_APP_SSH_TARGET'],command],input=data,text=True,capture_output=True,check=True).stdout.strip()
 
 
 def sql(query):

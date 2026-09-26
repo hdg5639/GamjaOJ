@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Shared app VM: only dedicated generator container/resources are created or restarted.
 set -euo pipefail
+app_target="${GAMJAOJ_APP_SSH_TARGET:?Set GAMJAOJ_APP_SSH_TARGET in your private environment}"
 cd "$(dirname "$0")/.."
-target="${1:-ocr-serv}"
-[[ "$target" = ocr-serv ]] || { echo 'This deployment uses the configured ocr-serv application endpoint.' >&2; exit 1; }
+target="${1:-$app_target}"
+[[ "$target" = "$app_target" ]] || { echo 'Use the configured application endpoint.' >&2; exit 1; }
 archive="$(mktemp)"
 trap 'rm -f "$archive"' EXIT
 COPYFILE_DISABLE=1 tar --format=ustar --exclude='__pycache__' --exclude='*.pyc' -czf "$archive" generation deploy/generation.Dockerfile deploy/generation-compose.yaml

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+app_target="${GAMJAOJ_APP_SSH_TARGET:?Set GAMJAOJ_APP_SSH_TARGET in your private environment}"
 cd "$(dirname "$0")/.."
 target="${1:?Usage: scripts/install-worker.sh <separate-runner-ssh-alias>}"
 [[ "$target" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$ ]] || { echo 'Invalid SSH target.' >&2; exit 1; }
-[ "$target" != ocr-serv ] || { echo 'Use a separate Runner VM; shared-server checks use the smoke script.' >&2; exit 1; }
+[ "$target" != "$app_target" ] || { echo 'Use a separate Runner VM; shared-server checks use the smoke script.' >&2; exit 1; }
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
-ssh -o BatchMode=yes ocr-serv python3 - <<'PY' > "$temporary/worker.env"
+ssh -o BatchMode=yes "$app_target" python3 - <<'PY' > "$temporary/worker.env"
 from pathlib import Path
 config = dict(line.split('=',1) for line in (Path.home()/'gamjaoj/web/.env').read_text().splitlines() if line and not line.startswith('#'))
 print('GAMJAOJ_API_URL=http://'+config['BIND_ADDRESS']+':'+config['HTTP_PORT'])

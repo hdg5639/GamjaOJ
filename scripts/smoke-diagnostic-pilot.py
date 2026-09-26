@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the released eight-question pilot over HTTPS and the dedicated Runner; no model calls."""
+import os
 import argparse
 import importlib.util
 import http.cookiejar
@@ -19,8 +20,8 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--reassess',action='store_true');parser.add_argument('--language',choices=['JAVA','CPP','PYTHON'],default='JAVA');args=parser.parse_args()
     references=json.loads((Path(__file__).resolve().parents[1]/'tests/fixtures/diagnostic-language-references.json').read_text())
     bank=json.loads((Path(__file__).resolve().parents[1]/'diagnostics/core-a-v2.json').read_text())
-    base=ssh('ocr-serv',"sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env").rstrip('/')
-    invitation=ssh('ocr-serv',"sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
+    base=ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env").rstrip('/')
+    invitation=ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
     client=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()));client.addheaders=[('User-Agent','GamjaOJ-Smoke/1.0')]
     def call(path,method='GET',body=None,key=None,form=False):
         headers={}

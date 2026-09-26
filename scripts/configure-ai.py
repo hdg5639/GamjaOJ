@@ -13,7 +13,7 @@ import subprocess
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--target',default='ocr-serv')
+    parser.add_argument('--target',required=True)
     parser.add_argument('--env-file',type=Path,default=Path('.env'))
     parser.add_argument('--operators',default=None,help='Optional operator allowlist; omitted preserves existing roles')
     parser.add_argument('--budget-usd',default='10')

@@ -1,5 +1,5 @@
 """Audit known line-based generation contracts; optionally rerun full Runner gates, without model calls.
-Run on ocr-serv with --env-file ~/gamjaoj/web/.env. Old packages and verdicts are retained.
+Run on the application host with --env-file ~/gamjaoj/web/.env. Old packages and verdicts are retained.
 """
 import argparse
 import json
@@ -38,7 +38,7 @@ def main():
         if not bad:continue
         print(json.dumps({'version':row['version'],'mismatchedTests':bad}),flush=True)
         if args.apply:
-            url='http://'+config.get('BIND_ADDRESS','127.0.0.1')+':'+config.get('HTTP_PORT','18081')+'/internal/generation/'+row['id']+'/repair-input-layout'
+            url='http://'+config.get('BIND_ADDRESS','127.0.0.1')+':'+config.get('HTTP_PORT','8080')+'/internal/generation/'+row['id']+'/repair-input-layout'
             request=urllib.request.Request(url,data=json.dumps({'packageHash':row['hash']}).encode(),headers={'Authorization':'Bearer '+config['GENERATION_WORKER_TOKEN'],'Content-Type':'application/json'},method='POST')
             with urllib.request.urlopen(request,timeout=30) as response:result=json.load(response)
             print(json.dumps({'id':result['id'],'revision':result['revision'],'status':result['status']}),flush=True)
