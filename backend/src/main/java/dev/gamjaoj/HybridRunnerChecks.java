@@ -15,6 +15,12 @@ class HybridRunnerChecks {
     HybridRunnerChecks(JdbcClient jdbc,AiSettings settings){this.jdbc=jdbc;this.settings=settings;}
     private record State(UUID branch,UUID generation,int revision,String manifest,String hash,boolean verifyOnly) {
         State(UUID b,UUID g,int r,String m,String h){this(b,g,r,m,h,false);}
+        /** Reader-independent checks run before the public snapshot and reader exist. */
+        boolean early(){return JudgeJson.parse(manifest).path("early").asBoolean(false);}
+    }
+    static final String PIPELINE="FUNCTIONAL_V2";
+    private boolean pipelineEnabled() {
+        return Boolean.parseBoolean(settings.value("HYBRID_PIPELINE_V2_ENABLED","false"))&&Boolean.parseBoolean(settings.value("HYBRID_FUNCTIONAL_ENABLED","false"));
     }
     // Rebuild the completed evidence without enqueueing or executing another job.
     Map<String,JsonNode> checkedPackage(UUID branch) {
@@ -42,7 +48,7 @@ class HybridRunnerChecks {
             if(row[0].equals("READER")&&!Objects.equals(row[3],manifest.path("publicHash").asText()))throw new IllegalArgumentException("PUBLIC_HASH_MISMATCH");
             out.put(row[0],JudgeJson.parse(row[4]));
         }
-        if(out.size()!=4)throw new IllegalArgumentException("MISSING_JOINED_ARTIFACT");return out;
+        if(out.size()!=(s.early()?2:4)||(s.early()&&!out.keySet().equals(Set.of("CONTRACT","CORE"))))throw new IllegalArgumentException("MISSING_JOINED_ARTIFACT");return out;
     }
     private String version(State s){return "hybrid-check-"+s.branch;}
     private ObjectNode test(String id,String input,String output){return JudgeJson.JSON.createObjectNode().put("id",id).put("input",input).put("output",output);}
@@ -61,13 +67,18 @@ class HybridRunnerChecks {
         jdbc.sql("INSERT INTO hybrid_execution_check(branch_id,role,submission_id,source_sha256,package_sha256) VALUES (?,?,?,?,?)")
                 .param(s.branch).param(role).param(id).param(sourceHash).param(hash).update();
     }
+    private static final Set<String> FUNCTIONAL_ROLES=Set.of("domain-valid","domain-invalid","domain-reference","domain-oracle","mutant-unbounded","mutant-strict-fit","mutant-directed","mutant-unreachable","mutant-unit-weight","mutant-first-discovery");
+    // V2 adds checks whose evidence carries no timing gate. Stress references, the generator and final
+    // package replays, which carry resource margins or seed provenance, stay isolated.
+    private static final Set<String> PIPELINE_ROLES=Set.of("stress-valid","batch-valid","batch-reference","batch-oracle");
     static String executionMode(String scheduling,String role) {
         // Only fixed, tiny inputs; stress, generated batches and package timing remain isolated.
-        return "FUNCTIONAL_V1".equals(scheduling)&&Set.of("domain-valid","domain-invalid","domain-reference","domain-oracle","mutant-unbounded","mutant-strict-fit","mutant-directed","mutant-unreachable","mutant-unit-weight","mutant-first-discovery").contains(role)?"FUNCTIONAL":"EXCLUSIVE";
+        if(PIPELINE.equals(scheduling))return FUNCTIONAL_ROLES.contains(role)||PIPELINE_ROLES.contains(role)?"FUNCTIONAL":"EXCLUSIVE";
+        return "FUNCTIONAL_V1".equals(scheduling)&&FUNCTIONAL_ROLES.contains(role)?"FUNCTIONAL":"EXCLUSIVE";
     }
     private String mode(State s,String role) {
         String scheduling=jdbc.sql("SELECT scheduling FROM hybrid_validation_profile WHERE branch_id=?").param(s.branch).query(String.class).single();
-        if(!Set.of("SERIAL_V1","FUNCTIONAL_V1").contains(scheduling))throw new IllegalArgumentException("UNKNOWN_SCHEDULING_POLICY");
+        if(!Set.of("SERIAL_V1","FUNCTIONAL_V1",PIPELINE).contains(scheduling))throw new IllegalArgumentException("UNKNOWN_SCHEDULING_POLICY");
         return executionMode(scheduling,role);
     }
     private void run(State s,String role,String source,String input) {queue(s,role,source,List.of(test("custom-input",input,"")),true);}
@@ -82,15 +93,74 @@ class HybridRunnerChecks {
         jdbc.sql("UPDATE hybrid_generation SET status='HELD',error_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
                 .param(error).param(s.generation).update();
     }
+    /**
+     * Starts reader-independent checks for fixed-profile requests as soon as CONTRACT and CORE exist.
+     * The VALIDATION branch is created early with a partial manifest; the join completes it later.
+     */
+    private void startEarly() {
+        var ready=jdbc.sql("SELECT g.id,g.revision,g.contract_sha256,r.profile_id FROM hybrid_generation g JOIN hybrid_public_request r ON r.generation_id=g.id WHERE g.status='BUILDING' AND g.deadline_at>CURRENT_TIMESTAMP AND g.contract_sha256 IS NOT NULL"
+                        +" AND EXISTS (SELECT 1 FROM hybrid_branch c WHERE c.generation_id=g.id AND c.revision=g.revision AND c.role='CORE' AND c.status='SUCCEEDED')"
+                        +" AND NOT EXISTS (SELECT 1 FROM hybrid_branch v WHERE v.generation_id=g.id AND v.revision=g.revision AND v.role='VALIDATION') ORDER BY g.created_at")
+                .query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getInt(2),r.getString(3),r.getString(4)}).list();
+        for(var row:ready) {
+            UUID generation=(UUID)row[0];int revision=(Integer)row[1];
+            var profile=HybridProfiles.byId((String)row[3]);if(!HybridProfiles.packaged(profile.policy()))continue;
+            jdbc.sql("SELECT id FROM hybrid_generation WHERE id=? FOR UPDATE").param(generation).query(UUID.class).single();
+            var outputs=jdbc.sql("SELECT role,output_sha256 FROM hybrid_branch WHERE generation_id=? AND revision=? AND role IN ('CONTRACT','CORE') AND status='SUCCEEDED'")
+                    .param(generation).param(revision).query((r,n)->new String[]{r.getString(1),r.getString(2)}).list();
+            if(outputs.size()!=2||jdbc.sql("SELECT count(*) FROM hybrid_branch WHERE generation_id=? AND revision=? AND role='VALIDATION'").param(generation).param(revision).query(Integer.class).single()>0)continue;
+            var manifest=JudgeJson.JSON.createObjectNode().put("pipelineVersion",HybridArtifacts.VERSION).put("revision",revision)
+                    .put("contractHash",(String)row[2]).put("early",true);
+            var hashes=manifest.putObject("artifacts");for(var o:outputs)hashes.put(o[0],o[1]);
+            String raw=JudgeJson.canonical(manifest);UUID branch=UUID.randomUUID();
+            jdbc.sql("INSERT INTO hybrid_branch(id,generation_id,revision,role,attempt,status,input_json,input_sha256,contract_sha256,created_at,started_at) VALUES (?,?,?,'VALIDATION',0,'EARLY',?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
+                    .param(branch).param(generation).param(revision).param(raw).param(JudgeJson.hash(raw)).param(row[2]).update();
+            var s=new State(branch,generation,revision,raw,JudgeJson.hash(raw));
+            try {
+                var data=artifacts(s);
+                var admitted=jdbc.sql("SELECT profile_hash,contract_sha256 FROM hybrid_public_request WHERE generation_id=?").param(generation)
+                        .query((r,n)->new String[]{r.getString(1),r.getString(2)}).single();
+                if(!profile.hash().equals(admitted[0])||!JudgeJson.hash(JudgeJson.canonical(data.get("CONTRACT"))).equals(admitted[1]))throw new IllegalArgumentException("ADMISSION_PROFILE_FENCE");
+                jdbc.sql("INSERT INTO hybrid_validation_profile(branch_id,policy,profile_hash,scheduling) VALUES (?,?,?,?)").param(branch).param(profile.policy()).param(profile.hash()).param(PIPELINE).update();
+                placeholder(s);
+                for(String role:List.of("domain-valid","domain-invalid","domain-reference"))queue(s,role,source(data,profile,role),profile.tests(role),false);
+            } catch(IllegalArgumentException e){finish(s,e.getMessage()==null?"INVALID_RUNNER_EVIDENCE":e.getMessage(),null);}
+        }
+    }
+    private void placeholder(State s) {
+        String empty=JudgeJson.canonical(JudgeJson.JSON.createObjectNode().put("version",version(s)).put("output_policy","TOKEN_EXACT"));
+        jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id) SELECT ?,?,?,p.runtime_image,p.runner_policy,false,g.owner_id FROM problem_version p JOIN hybrid_generation g ON g.id=? WHERE p.id='total-v1'")
+                .param(version(s)).param(empty).param(JudgeJson.hash(empty)).param(s.generation).update();
+    }
+    private static String source(Map<String,JsonNode> data,HybridProfiles.Definition profile,String role) {
+        return switch(role) {
+            case "domain-valid","domain-invalid","stress-valid","batch-valid" -> data.get("CORE").path("inputValidator").asText();
+            case "domain-reference","stress-reference-0","stress-reference-1","batch-reference","package-final-0","package-final-1" -> data.get("CORE").path("reference").asText();
+            case "domain-oracle","batch-oracle" -> data.get("READER").path("oracleSource").asText();
+            case "package-generator" -> data.get("CORE").path("generator").asText();
+            default -> profile.mutant(role);
+        };
+    }
     @Transactional
     void advance() {
         lock();
+        if(pipelineEnabled())startEarly();
         // Active work remains pinned to this policy even if new starts are disabled.
-        var rows=jdbc.sql("SELECT b.id,b.generation_id,b.revision,b.input_json,b.input_sha256,b.status FROM hybrid_branch b JOIN hybrid_generation g ON g.id=b.generation_id WHERE b.role='VALIDATION' AND b.revision=g.revision AND ((b.status='BLOCKED' AND g.status='HELD' AND g.error_code='VALIDATION_ADAPTER_NOT_CONNECTED') OR (b.status='RUNNING' AND g.status='VALIDATING')) AND g.deadline_at>CURRENT_TIMESTAMP ORDER BY b.created_at")
+        var rows=jdbc.sql("SELECT b.id,b.generation_id,b.revision,b.input_json,b.input_sha256,b.status FROM hybrid_branch b JOIN hybrid_generation g ON g.id=b.generation_id WHERE b.role='VALIDATION' AND b.revision=g.revision AND ((b.status='BLOCKED' AND g.status='HELD' AND g.error_code='VALIDATION_ADAPTER_NOT_CONNECTED') OR (b.status='RUNNING' AND g.status='VALIDATING') OR (b.status='EARLY' AND g.status='BUILDING')) AND g.deadline_at>CURRENT_TIMESTAMP ORDER BY b.created_at")
                 .query((r,n)->new Object[]{new State(r.getObject(1,UUID.class),r.getObject(2,UUID.class),r.getInt(3),r.getString(4),r.getString(5)),r.getString(6)}).list();
         for(var row:rows) {
             var s=(State)row[0];boolean start=row[1].equals("BLOCKED");
-            String policy=start?jdbc.sql("SELECT profile_id FROM hybrid_public_request WHERE generation_id=?").param(s.generation).query(String.class).optional().map(id->HybridProfiles.byId(id).policy()).orElseGet(()->settings.value("HYBRID_VALIDATION_PROFILE","")):jdbc.sql("SELECT policy FROM hybrid_validation_profile WHERE branch_id=?").param(s.branch).query(String.class).optional().orElse("");
+            if(row[1].equals("EARLY")) {
+                jdbc.sql("SELECT id FROM hybrid_generation WHERE id=? FOR UPDATE").param(s.generation).query(UUID.class).single();
+                try {
+                    String early=jdbc.sql("SELECT policy FROM hybrid_validation_profile WHERE branch_id=?").param(s.branch).query(String.class).single();
+                    advanceResults(s,artifacts(s),early);
+                } catch(IllegalArgumentException e){finish(s,e.getMessage()==null?"INVALID_RUNNER_EVIDENCE":e.getMessage(),null);}
+                continue;
+            }
+            // A branch started early already owns its profile, placeholder and first checks.
+            boolean resumed=start&&jdbc.sql("SELECT count(*) FROM hybrid_validation_profile WHERE branch_id=?").param(s.branch).query(Integer.class).single()>0;
+            String policy=start&&!resumed?jdbc.sql("SELECT profile_id FROM hybrid_public_request WHERE generation_id=?").param(s.generation).query(String.class).optional().map(id->HybridProfiles.byId(id).policy()).orElseGet(()->settings.value("HYBRID_VALIDATION_PROFILE","")):jdbc.sql("SELECT policy FROM hybrid_validation_profile WHERE branch_id=?").param(s.branch).query(String.class).optional().orElse("");
             if(start&&!POLICY.equals(policy)&&!HybridProfiles.supports(policy))continue;
             jdbc.sql("SELECT id FROM hybrid_generation WHERE id=? FOR UPDATE").param(s.generation).query(UUID.class).single();
             try {
@@ -113,12 +183,15 @@ class HybridRunnerChecks {
                         catch(IllegalArgumentException invalid) {throw new IllegalArgumentException("READER_INPUT_BOUND");}
                     }
                 }
-                if(start) {
+                if(resumed) {
+                    if(!HybridProfiles.byPolicy(policy).hash().equals(jdbc.sql("SELECT profile_hash FROM hybrid_validation_profile WHERE branch_id=?").param(s.branch).query(String.class).single()))throw new IllegalArgumentException("PROFILE_HASH_MISMATCH");
+                    jdbc.sql("UPDATE hybrid_branch SET status='RUNNING' WHERE id=?").param(s.branch).update();
+                    jdbc.sql("UPDATE hybrid_generation SET status='VALIDATING',error_code=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?").param(s.generation).update();
+                    advanceResults(s,data,policy);
+                } else if(start) {
                     String scheduling=HybridProfiles.packaged(policy)&&Boolean.parseBoolean(settings.value("HYBRID_FUNCTIONAL_ENABLED","false"))?"FUNCTIONAL_V1":"SERIAL_V1";
                     jdbc.sql("INSERT INTO hybrid_validation_profile(branch_id,policy,profile_hash,scheduling) VALUES (?,?,?,?)").param(s.branch).param(policy).param(finite?HybridProfiles.byPolicy(policy).hash():null).param(scheduling).update();
-                    String empty=JudgeJson.canonical(JudgeJson.JSON.createObjectNode().put("version",version(s)).put("output_policy","TOKEN_EXACT"));
-                    jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id) SELECT ?,?,?,p.runtime_image,p.runner_policy,false,g.owner_id FROM problem_version p JOIN hybrid_generation g ON g.id=? WHERE p.id='total-v1'")
-                            .param(version(s)).param(empty).param(JudgeJson.hash(empty)).param(s.generation).update();
+                    placeholder(s);
                     if(finite) {
                         queue(s,"domain-valid",core.path("inputValidator").asText(),HybridProfiles.byPolicy(policy).tests("domain-valid"),false);
                         queue(s,"domain-invalid",core.path("inputValidator").asText(),HybridProfiles.byPolicy(policy).tests("domain-invalid"),false);
@@ -163,6 +236,9 @@ class HybridRunnerChecks {
             if(!expected.equals(row[8]))throw new IllegalArgumentException(extended&&row[0].startsWith("mutant-")
                     ?row[8].equals("AC")?"MUTANT_SURVIVED":"MUTANT_"+row[8]:"RUNNER_"+row[8]);
             evidence.put(row[0],new Evidence(row[0],row[8],row[9],row[10],JudgeJson.parse(row[5])));
+        }
+        if(finite&&PIPELINE.equals(jdbc.sql("SELECT scheduling FROM hybrid_validation_profile WHERE branch_id=?").param(s.branch).query(String.class).single())) {
+            advancePipeline(s,data,evidence,HybridProfiles.byPolicy(policy));return;
         }
         if(finite){advanceFinite(s,data,evidence,policy);return;}
         JsonNode generated;
@@ -246,6 +322,9 @@ class HybridRunnerChecks {
         }
         JsonNode packageEvidence=packagePolicy?advancePackage(s,data,evidence,profile):null;
         if(packagePolicy&&packageEvidence==null)return;
+        finish(s,packagePolicy?"CONTENT_REVIEW_REQUIRED":"MISSING_PUBLICATION_EVIDENCE",report(s,evidence,profile,policy,extended,packagePolicy,packageEvidence));
+    }
+    private ObjectNode report(State s,Map<String,Evidence> evidence,HybridProfiles.Definition profile,String policy,boolean extended,boolean packagePolicy,JsonNode packageEvidence) {
         var report=JudgeJson.JSON.createObjectNode().put("policy",policy).put("publishable",false)
                 .put("manifestHash",s.hash).put("oracleDomainVerified",true).put("oracleDomainVerificationScope","only the "+profile.coverage().path("cases").asInt()+" server-enumerated inputs")
                 .put("invalidInputsChecked",profile.invalid().size());
@@ -268,7 +347,7 @@ class HybridRunnerChecks {
         remaining.add("teaching correctness");
         if(packagePolicy){report.put("executionChecksComplete",true);report.set("packageEvidence",packageEvidence);}
         else remaining.add("final package replay");
-        finish(s,packagePolicy?"CONTENT_REVIEW_REQUIRED":"MISSING_PUBLICATION_EVIDENCE",report);
+        return report;
     }
 
     private JsonNode advancePackage(State s,Map<String,JsonNode> data,Map<String,Evidence> evidence,HybridProfiles.Definition profile) {
@@ -332,6 +411,101 @@ class HybridRunnerChecks {
                 .put("randomInputCount",4).put("generatorInputCount",4).put("boundedOracleInputCount",HybridPackagePlan.tests(candidates,"batch-oracle",profile).size())
                 .put("readerInputsIncluded",data.get("READER").path("adversarialInputs").size()).put("packageExecutions",2)
                 .put("generatorSeed",saved[0]).put("randomSeed",saved[1]).put("samplesMechanicallyDerived",true);
+    }
+
+    /**
+     * FUNCTIONAL_V2: the same 15 checks and fences as the packaged profile, queued by readiness instead of
+     * fixed counts, so reader-independent work runs while the statement and reader are still being written.
+     * Each stage starts only after every queued check finished with its expected verdict.
+     */
+    private void advancePipeline(State s,Map<String,JsonNode> data,Map<String,Evidence> evidence,HybridProfiles.Definition profile) {
+        String policy=profile.policy();boolean reader=data.containsKey("READER");
+        for(var e:evidence.values()) {
+            if(!profile.roles(true).contains(e.role))continue;
+            var expected=JudgeJson.JSON.createObjectNode().put("version",version(s)).put("output_policy","TOKEN_EXACT");
+            var tests=expected.putArray("tests");profile.tests(e.role).forEach(tests::add);
+            if(!expected.equals(e.plan))throw new IllegalArgumentException("FINITE_INPUT_FENCE");
+        }
+        var done=evidence.keySet();
+        java.util.function.Consumer<String> fixed=role->{if(!done.contains(role))queue(s,role,source(data,profile,role),profile.tests(role),false);};
+        var first=List.of("domain-valid","domain-invalid","domain-reference");
+        if(!done.containsAll(first)){first.forEach(fixed);return;}
+        var second=new ArrayList<String>(List.of("stress-valid"));second.addAll(profile.mutants());
+        if(!done.containsAll(second)){second.forEach(fixed);return;}
+        var stress=List.of("stress-reference-0","stress-reference-1");
+        if(!done.containsAll(stress)){stress.forEach(fixed);return;}
+        for(String role:stress) {
+            var tests=JudgeJson.parse(evidence.get(role).report).path("tests");
+            if(tests.size()!=profile.stress().size())throw new IllegalArgumentException("INCOMPLETE_STRESS_EVIDENCE");
+            for(var test:tests)if(!test.path("wall_ms").isIntegralNumber()||!test.path("wall_ms").canConvertToLong()
+                    ||test.path("wall_ms").asLong()<0||test.path("wall_ms").asLong()>4000)throw new IllegalArgumentException("STRESS_RESOURCE_MARGIN");
+        }
+        var core=data.get("CORE");
+        if(!done.contains("package-generator")) {
+            var random=new java.security.SecureRandom();
+            jdbc.sql("INSERT INTO hybrid_package_evidence(branch_id,generator_seed,random_seed) VALUES (?,?,?)")
+                    .param(s.branch).param(random.nextLong()).param(random.nextLong()).update();
+            String seed=jdbc.sql("SELECT generator_seed FROM hybrid_package_evidence WHERE branch_id=?").param(s.branch).query(String.class).single();
+            run(s,"package-generator",core.path("generator").asText(),seed+"\n");return;
+        }
+        if(!reader)return; // Remaining checks need the independent reader's oracle and inputs.
+        var saved=jdbc.sql("SELECT generator_seed,random_seed,candidates_json,candidates_sha256,package_json,package_sha256 FROM hybrid_package_evidence WHERE branch_id=?")
+                .param(s.branch).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4),r.getString(5),r.getString(6)}).single();
+        var generatorPlan=JudgeJson.JSON.createObjectNode().put("version",version(s)).put("output_policy","RUN_ONLY");
+        generatorPlan.putArray("tests").add(test("custom-input",saved[0]+"\n",""));
+        if(!generatorPlan.equals(evidence.get("package-generator").plan))throw new IllegalArgumentException("GENERATOR_SEED_FENCE");
+        var candidates=HybridPackagePlan.candidates(output(evidence.get("package-generator")),data.get("READER"),Long.parseLong(saved[1]),profile);
+        String candidateJson=JudgeJson.canonical(JudgeJson.JSON.valueToTree(candidates));
+        if(saved[2]==null) {
+            jdbc.sql("UPDATE hybrid_package_evidence SET candidates_json=?,candidates_sha256=? WHERE branch_id=? AND candidates_json IS NULL")
+                    .param(candidateJson).param(JudgeJson.hash(candidateJson)).param(s.branch).update();
+        } else if(!candidateJson.equals(saved[2])||!JudgeJson.hash(candidateJson).equals(saved[3]))throw new IllegalArgumentException("CANDIDATE_FENCE");
+        for(String role:List.of("batch-valid","batch-reference","batch-oracle"))if(done.contains(role)) {
+            var plan=JudgeJson.JSON.createObjectNode().put("version",version(s)).put("output_policy","TOKEN_EXACT");
+            var tests=plan.putArray("tests");HybridPackagePlan.tests(candidates,role,profile).forEach(tests::add);
+            if(!plan.equals(evidence.get(role).plan))throw new IllegalArgumentException("PACKAGE_INPUT_FENCE");
+        }
+        if(!done.containsAll(List.of("domain-oracle","batch-valid"))) {
+            fixed.accept("domain-oracle");
+            if(!done.contains("batch-valid"))queue(s,"batch-valid",core.path("inputValidator").asText(),HybridPackagePlan.tests(candidates,"batch-valid",profile),false);
+            return;
+        }
+        if(!done.containsAll(List.of("batch-reference","batch-oracle"))) {
+            for(String role:List.of("batch-reference","batch-oracle"))if(!done.contains(role))
+                queue(s,role,source(data,profile,role),HybridPackagePlan.tests(candidates,role,profile),false);
+            return;
+        }
+        var pack=HybridPackagePlan.pack(version(s),candidates,data.get("PRESENTATION"),profile);String payload=JudgeJson.canonical(pack),hash=JudgeJson.hash(payload);
+        var teaching=JudgeJson.JSON.createObjectNode().put("editorial",data.get("PRESENTATION").path("editorial").asText());teaching.set("hints",data.get("PRESENTATION").path("hints"));
+        String teachingJson=JudgeJson.canonical(teaching);
+        if(!done.containsAll(List.of("package-final-0","package-final-1"))) {
+            if(done.contains("package-final-0")||done.contains("package-final-1"))throw new IllegalArgumentException("FINAL_PACKAGE_FENCE");
+            jdbc.sql("UPDATE hybrid_package_evidence SET package_json=?,package_sha256=? WHERE branch_id=? AND package_json IS NULL")
+                    .param(payload).param(hash).param(s.branch).update();
+            if(jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=?,teaching_json=? WHERE id=? AND ready=false")
+                    .param(payload).param(hash).param(teachingJson).param(version(s)).update()!=1)throw new IllegalStateException("Missing unpublished hybrid package");
+            for(String role:List.of("package-final-0","package-final-1"))queuePlan(s,role,core.path("reference").asText(),pack,false);return;
+        }
+        if(!done.equals(profile.roles()))throw new IllegalArgumentException("INCOMPLETE_PACKAGE_CHECKS");
+        var stored=jdbc.sql("SELECT package_json,package_sha256,teaching_json,ready FROM problem_version WHERE id=?").param(version(s))
+                .query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),Boolean.toString(r.getBoolean(4))}).single();
+        if(!payload.equals(saved[4])||!hash.equals(saved[5])||!payload.equals(stored[0])||!hash.equals(stored[1])||!teachingJson.equals(stored[2])||!stored[3].equalsIgnoreCase("false"))
+            throw new IllegalArgumentException("FINAL_PACKAGE_FENCE");
+        for(String role:List.of("package-final-0","package-final-1")) {
+            var e=evidence.get(role);if(!pack.equals(e.plan))throw new IllegalArgumentException("FINAL_PACKAGE_FENCE");
+            var tests=JudgeJson.parse(e.report).path("tests");long total=0;
+            if(tests.size()!=candidates.size())throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
+            for(var t:tests) {
+                var wall=t.path("wall_ms");if(!wall.isIntegralNumber()||!wall.canConvertToLong()||wall.asLong()<0||wall.asLong()>4000)throw new IllegalArgumentException("FINAL_PACKAGE_RESOURCE_MARGIN");
+                total+=wall.asLong();
+            }
+            if(total>40000)throw new IllegalArgumentException("FINAL_PACKAGE_TIME_BUDGET");
+        }
+        var packageEvidence=JudgeJson.JSON.createObjectNode().put("packageHash",hash).put("candidatesHash",saved[3]).put("testCount",candidates.size())
+                .put("randomInputCount",4).put("generatorInputCount",4).put("boundedOracleInputCount",HybridPackagePlan.tests(candidates,"batch-oracle",profile).size())
+                .put("readerInputsIncluded",data.get("READER").path("adversarialInputs").size()).put("packageExecutions",2)
+                .put("generatorSeed",saved[0]).put("randomSeed",saved[1]).put("samplesMechanicallyDerived",true);
+        finish(s,"CONTENT_REVIEW_REQUIRED",report(s,evidence,profile,policy,true,true,packageEvidence));
     }
 
 }

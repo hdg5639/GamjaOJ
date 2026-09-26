@@ -7,7 +7,7 @@ const handoffs=['VALIDATION_ADAPTER_NOT_CONNECTED','CONTENT_REVIEW_REQUIRED'];
 const active=job=>activeStates.includes(job.status)||(job.status==='HELD'&&handoffs.includes(job.error));
 const states={QUEUED:'출제 대기',DESIGNING:'규칙 준비 중',BUILDING:'문제 작성 중',VALIDATING:'실행 검증 중',REVIEWING:'본문·해설 검토 중',PUBLISHED:'풀이 준비 완료',CANCELLED:'요청 취소됨',DEADLINE_EXCEEDED:'처리 기한 초과',FAILED:'생성 실패',HELD:'검토 보류'};
 const stages=[['CONTRACT','규칙 확정'],['CORE','코드 작성'],['PRESENTATION','본문 작성'],['READER','독립 검토'],['VALIDATION','실행 검증'],['CONTENT_REVIEW','최종 검토']];
-const branchStates={NOT_STARTED:'대기',QUEUED:'대기',BLOCKED:'대기',RUNNING:'진행 중',SUCCEEDED:'완료',CHECKED:'완료',FAILED:'실패',CANCELLED:'중단'};
+const branchStates={NOT_STARTED:'대기',QUEUED:'대기',BLOCKED:'대기',RUNNING:'진행 중',EARLY:'먼저 진행 중',SUCCEEDED:'완료',CHECKED:'완료',FAILED:'실패',CANCELLED:'중단'};
 
 export default function HybridGeneration({userId,api,onOpen,onActive,visible,otherActive}) {
   const [profileId,setProfileId]=useState('zero-one-items-v1');
