@@ -63,7 +63,7 @@ class HybridGeneration {
         if(TERMINAL.contains(value)&&!Set.of("VALIDATION_ADAPTER_NOT_CONNECTED","CONTENT_REVIEW_REQUIRED").contains(error==null?"":error))jdbc.sql("UPDATE ai_attempt SET status='HYBRID_RELEASED',actual_usd=0,finished_at=CURRENT_TIMESTAMP WHERE status='HYBRID_RESERVED' AND id IN (SELECT attempt_id FROM hybrid_api_reservation WHERE generation_id=?)").param(id).update();
     }
     private void cancelPending(UUID id,int revision,Set<Role> roles) {
-        for(Role role:roles)jdbc.sql("UPDATE hybrid_branch SET status='CANCELLED',error_code='SUPERSEDED_OR_STOPPED',finished_at=? WHERE generation_id=? AND revision=? AND role=? AND status IN ('QUEUED','RUNNING','BLOCKED')")
+        for(Role role:roles)jdbc.sql("UPDATE hybrid_branch SET status='CANCELLED',error_code='SUPERSEDED_OR_STOPPED',finished_at=? WHERE generation_id=? AND revision=? AND role=? AND status IN ('QUEUED','RUNNING','BLOCKED','EARLY')")
                 .param(now()).param(id).param(revision).param(role.name()).update();
     }
     private boolean expire(Job j) {
@@ -213,7 +213,8 @@ class HybridGeneration {
     }
     private void join(Job j) {
         var latest=latest(j);
-        if(latest.containsKey(Role.VALIDATION)&&!latest.get(Role.VALIDATION).status.equals("SUPERSEDED"))return;
+        Branch early=latest.get(Role.VALIDATION)!=null&&latest.get(Role.VALIDATION).status.equals("EARLY")?latest.get(Role.VALIDATION):null;
+        if(latest.containsKey(Role.VALIDATION)&&early==null&&!latest.get(Role.VALIDATION).status.equals("SUPERSEDED"))return;
         for(Role role:List.of(Role.CONTRACT,Role.CORE,Role.PRESENTATION,Role.READER)) {
             Branch b=latest.get(role);if(b==null||!b.status.equals("SUCCEEDED"))return;
             artifact(b);
@@ -224,7 +225,16 @@ class HybridGeneration {
                 .put("revision",j.revision).put("contractHash",j.contractHash).put("publicHash",j.publicHash);
         var hashes=manifest.putObject("artifacts");
         for(Role role:List.of(Role.CONTRACT,Role.CORE,Role.PRESENTATION,Role.READER))hashes.put(role.name(),latest.get(role).outputHash);
-        enqueue(j,Role.VALIDATION,manifest,"BLOCKED");
+        if(early!=null) {
+            // Checks already queued under this branch were bound to exactly these CONTRACT and CORE outputs.
+            var partial=early.input.path("artifacts");
+            if(!partial.path("CONTRACT").asText().equals(hashes.path("CONTRACT").asText())||!partial.path("CORE").asText().equals(hashes.path("CORE").asText())
+                    ||!early.input.path("contractHash").asText().equals(j.contractHash))throw new HybridArtifacts.Invalid("EARLY_VALIDATION_FENCE");
+            String raw=JudgeJson.canonical(HybridArtifacts.bounded(manifest));
+            jdbc.sql("UPDATE hybrid_branch SET status='BLOCKED',input_json=?,input_sha256=?,public_sha256=? WHERE id=? AND status='EARLY'")
+                    .param(raw).param(JudgeJson.hash(raw)).param(j.publicHash).param(early.id).update();
+        }
+        else enqueue(j,Role.VALIDATION,manifest,"BLOCKED");
         // A fixture join is never validation evidence. No READY or problem_version write exists here.
         status(j.id,"HELD","VALIDATION_ADAPTER_NOT_CONNECTED");
     }

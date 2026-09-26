@@ -214,6 +214,42 @@ class HybridAdmissionIntegrationTest {
         assertThat(followups.detail("owner",goal.id()).generationStatus()).isEqualTo("PUBLISHED");
         assertThat(followups.detail("owner",goal.id()).candidates()).extracting(PracticeFollowups.Candidate::version).containsExactly(derived);
     }
+    int runReady(HybridProfiles.Definition profile) {
+        int ran=0;Optional<JudgeQueue.Assignment> next;
+        while((next=queue.claim(UUID.randomUUID())).isPresent()) {
+            var a=next.get();String role=runner.role(a);ran++;
+            runner.complete(a,role.equals("package-generator")?"OK":role.startsWith("mutant-")?"WA":"AC",role.equals("package-generator")?(profile.weighted()?HybridDijkstraProfileTest.generated():profile.bfs()?HybridBfsProfileTest.generated():HybridRunnerIntegrationTest.GENERATED):"");
+        }
+        return ran;
+    }
+    @ParameterizedTest @ValueSource(strings={"bfs-shortest-path-v1","dijkstra-shortest-path-v1","zero-one-items-v1"}) void pipelineV2RunsReaderIndependentChecksBeforeTheReaderAndPublishes(String profileId) throws Exception {
+        var profile=HybridProfiles.byId(profileId);
+        overrides.put("HYBRID_FUNCTIONAL_ENABLED","true");overrides.put("HYBRID_PIPELINE_V2_ENABLED","true");
+        UUID id=admitAndAuthor(profileId);
+        // Writer and reader have not run: only CONTRACT and CORE outputs are bound.
+        int before=0;for(int stage=0;stage<8;stage++){checks.advance();before+=runReady(profile);}
+        assertThat(before).isEqualTo(9);
+        assertThat(jdbc.sql("SELECT status FROM hybrid_branch WHERE generation_id=? AND role='VALIDATION'").param(id).query(String.class).single()).isEqualTo("EARLY");
+        assertThat(jobs.view("owner",id).status()).isEqualTo("BUILDING");assertThat(jobs.view("owner",id).branches().get(VALIDATION)).isEqualTo("EARLY");
+        assertThat(jdbc.sql("SELECT scheduling FROM hybrid_validation_profile v JOIN hybrid_branch b ON b.id=v.branch_id WHERE b.generation_id=?").param(id).query(String.class).single()).isEqualTo("FUNCTIONAL_V2");
+        String version=finish(id,profile);assertThat(runner.jobs()).isEqualTo(15);
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_execution_check e JOIN judge_job j ON j.submission_id=e.submission_id JOIN hybrid_branch b ON b.id=e.branch_id WHERE b.generation_id=? AND j.execution_mode='FUNCTIONAL'").param(id).query(Integer.class).single())
+                .isEqualTo(profile.mutants().size()+8);
+        assertThat(jdbc.sql("SELECT ready FROM problem_version WHERE id=?").param(version).query(Boolean.class).single()).isTrue();
+    }
+    @Test void pipelineV2EarlyChecksStopWhenTheReaderHolds() throws Exception {
+        var profile=HybridProfiles.byId("bfs-shortest-path-v1");
+        overrides.put("HYBRID_FUNCTIONAL_ENABLED","true");overrides.put("HYBRID_PIPELINE_V2_ENABLED","true");
+        UUID id=admitAndAuthor(profile.id());checks.advance();runReady(profile);
+        var writer=execution.claimApi();var prose=HybridBfsProfileTest.prose();prose.remove(List.of("semantics","ruleExplanations"));
+        execution.finish(writer.attemptId(),result(prose),null);
+        var reader=execution.claimApi();var ambiguous=HybridBfsProfileTest.reader();ambiguous.putArray("ambiguities").add("S와 T가 같을 때의 출력이 모순됩니다.");
+        execution.finish(reader.attemptId(),result(ambiguous),null);
+        assertThat(jobs.view("owner",id).status()).isEqualTo("HELD");
+        int after=0;for(int stage=0;stage<6;stage++){checks.advance();after+=runReady(profile);}
+        assertThat(after).isZero();assertThat(runner.jobs()).isEqualTo(3);
+        assertThat(jdbc.sql("SELECT count(*) FROM problem_version WHERE id LIKE 'hybrid-check-%' AND ready=true").query(Integer.class).single()).isZero();
+    }
     @Test void readEndpointsNeverDispatchAndLegacyModesCannotCreateAlongsideAdmittedWork() throws Exception {
         for(int i=0;i<3;i++){mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(status().isOk());mvc.perform(get("/api/generation/hybrid").with(user("owner"))).andExpect(status().isOk());}
         assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt").query(Integer.class).single()).isZero();
