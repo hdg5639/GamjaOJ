@@ -1,0 +1,1 @@
+ALTER TABLE generation_job ALTER COLUMN focus TYPE VARCHAR(200);

@@ -14,7 +14,9 @@ public class SubmissionController {
     private final Submissions submissions;
     public SubmissionController(Submissions submissions) { this.submissions = submissions; }
     public record Request(@NotBlank @Size(max=80) String problemVersion,
-                          @NotBlank @Size(max=65536) String source, UUID sessionId) {
+                          @NotBlank @Size(max=65536) String source, UUID sessionId, UUID diagnosticItemId, String language) {
+        public Request(String version,String source,UUID sessionId,UUID diagnosticItemId) { this(version,source,sessionId,diagnosticItemId,null); }
+        public Request(String version,String source,UUID sessionId) { this(version,source,sessionId,null); }
         public Request(String problemVersion, String source) { this(problemVersion,source,null); }
     }
     @GetMapping("/api/problems")
@@ -25,7 +27,7 @@ public class SubmissionController {
         return ResponseEntity.accepted().body(submissions.submit(principal.getName(), key, request));
     }
     @GetMapping("/api/submissions")
-    List<Submissions.View> history(Principal principal) { return submissions.history(principal.getName()); }
+    List<Submissions.View> history(Principal principal,@RequestParam(required=false) String problemVersion,@RequestParam(defaultValue="0") int page) { return submissions.history(principal.getName(),problemVersion,page); }
     @GetMapping("/api/submissions/{id}")
     Submissions.View detail(Principal principal, @PathVariable UUID id) { return submissions.detail(principal.getName(), id); }
 }

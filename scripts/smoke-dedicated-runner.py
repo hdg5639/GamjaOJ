@@ -25,7 +25,9 @@ def sql(statement):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--restart-worker", action="store_true", help="Pre-opening only: kill an active synthetic attempt and verify automatic recovery")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--catalog-only", action="store_true", help="Verify new catalog references and representative wrong answers on the persistent worker")
+    mode.add_argument("--restart-worker", action="store_true", help="Pre-opening only: kill an active synthetic attempt and verify automatic recovery")
     args = parser.parse_args()
     # Only the invitation is needed locally; worker/DB credentials remain on their hosts.
     invitation = ssh("ocr-serv", "sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
@@ -52,8 +54,16 @@ def main():
             return response.status, json.loads(raw) if raw else None
 
     username, password = "runner_" + secrets.token_hex(5), secrets.token_urlsafe(24)
-    worker_id = json.loads(ssh("runner-serv", "cat ~/gamjaoj-worker/state/identity.json"))["workerId"]
-    uuid.UUID(worker_id)
+    worker_ids = set(json.loads(ssh("runner-serv", "python3 -c 'import json,pathlib; p=pathlib.Path.home()/\"gamjaoj-worker/state\"; print(json.dumps([json.loads(f.read_text())[\"workerId\"] for f in [p/\"identity.json\",*p.glob(\"slots/*/identity.json\")]]))'")))
+    environment_evidence=[]
+    expected_environment=json.loads(Path('backend/src/main/resources/runner-execution-contract.json').read_text())
+    def verify_environment(job):
+        value=json.loads(sql(f"SELECT json_build_object('expected',a.execution_environment_json::json,'actual',j.result_json::json->'runner_environment') FROM judge_job j JOIN judge_attempt a ON a.submission_id=j.submission_id AND a.attempt=j.attempt WHERE j.submission_id='{job}'"))
+        assert value['expected']==expected_environment
+        assert value['actual']['contract']==value['expected']
+        assert value['actual']['dockerControl']=='engine'
+        environment_evidence.append(dict(submissionId=job,environment=value['actual']))
+    for worker_id in worker_ids: uuid.UUID(worker_id)
     assert ssh("runner-serv", "systemctl --user is-active gamjaoj-worker") == "active"
     try:
         assert call("/api/auth/signup", "POST", dict(username=username, password=password, nickname="Runner 검증", inviteCode=invitation))[0] == 201
@@ -68,12 +78,25 @@ def main():
             "CE": "public class Main { invalid java; }",
             "TLE": "public class Main {public static void main(String[] a) {while(true) {}}}",
         }
-        for verdict, source in sources.items():
+        jobs = [("sum-v1", verdict, source) for verdict, source in sources.items()]
+        if args.catalog_only:
+            root = Path(__file__).resolve().parent.parent
+            total = (root / "examples/total/Main.java").read_text()
+            parens = (root / "examples/valid-parentheses/Main.java").read_text()
+            jobs = [("total-v1", "AC", total),
+                    ("total-v1", "WA", total.replace("long sum", "int sum")),
+                    ("total-v1", "WA", total.replace("i < n;", "i < n - 1;")),
+                    ("valid-parentheses-v1", "AC", parens),
+                    ("valid-parentheses-v1", "WA", parens.replace("if (depth < 0)", "if (false)"))]
+            public = call("/api/problems")[1]
+            assert [item["version"] for item in public] == ["sum-v1", "total-v1", "valid-parentheses-v1"]
+            assert all(set(item) == {"version", "title", "statement", "sampleInput", "sampleOutput", "sourceLimitBytes", "submissionsEnabled"} for item in public)
+        for version, verdict, source in jobs:
             if not opened:
                 digest = hashlib.sha256(source.encode()).hexdigest()
                 sql(f"INSERT INTO execution_grant SELECT id,'{digest}' FROM app_user WHERE username='{username}'")
             key = str(uuid.uuid4())
-            payload = dict(problemVersion="sum-v1", source=source)
+            payload = dict(problemVersion=version, source=source)
             status, submission = call("/api/submissions", "POST", payload, key)
             assert status == 202, submission
             job = str(uuid.UUID(submission["id"]))
@@ -102,13 +125,18 @@ def main():
                 raise AssertionError("Persistent worker did not finish submission")
             assert done["verdict"] == verdict, done
             assert done["source"] == source
-            assert sql(f"SELECT worker_id::text||'|'||attempt FROM judge_job WHERE submission_id='{job}'") == worker_id + "|1"
+            assert done["problemVersion"] == version and done["runnerPolicy"] == "java8-judge-v1"
+            assert sql(f"SELECT worker_id::text||'|'||attempt FROM judge_job WHERE submission_id='{job}'") in {worker_id + "|1" for worker_id in worker_ids}
             assert sql(f"SELECT count(*) FROM judge_attempt WHERE submission_id='{job}' AND status='COMPLETED'") == "1"
             assert sql(f"SELECT count(*) FROM submission WHERE user_id=(SELECT id FROM app_user WHERE username='{username}') AND idempotency_key='{key}'") == "1"
-            print(f"PASS: {verdict} on runner-serv, same-key replay, one completed attempt, persisted source", flush=True)
+            verify_environment(job)
+            print(f"PASS: {version} {verdict} on runner-serv, same-key replay, one completed attempt, persisted source", flush=True)
         if opened:
             assert sql(f"SELECT count(*) FROM execution_grant WHERE user_id=(SELECT id FROM app_user WHERE username='{username}')") == "0"
             print("PASS: ordinary account submission without execution grants", flush=True)
+            if args.catalog_only:
+                assert len(call("/api/submissions")[1]) == len(jobs)
+                return
             cases = [
                 ("OK", sources["AC"], "17 25\n", "42\n"),
                 ("OK", 'public class Main {public static void main(String[] a) {System.out.println(System.getProperty("java.specification.version"));}}', "", "1.8\n"),
@@ -137,11 +165,15 @@ def main():
                 if output is not None: assert done["stdout"] == output
                 else: assert done["outputTruncated"] and len(done["stdout"]) <= 16384
                 if verdict == "RE": assert "custom error" in done["stderr"]
-                assert sql(f"SELECT worker_id::text FROM judge_job WHERE submission_id='{job}'") == worker_id
+                assert sql(f"SELECT worker_id::text FROM judge_job WHERE submission_id='{job}'") in worker_ids
                 assert sql(f"SELECT count(*) FROM judge_attempt WHERE submission_id='{job}' AND status='COMPLETED'") == "1"
+                verify_environment(job)
                 print(f"PASS: custom {verdict}, input/output preserved, one completion on runner-serv", flush=True)
             assert len(call("/api/submissions")[1]) == 4
             assert len(call("/api/runs")[1]) == len(cases)
+        Path('.state').mkdir(exist_ok=True)
+        Path('.state/runner-environment-live.json').write_text(json.dumps(environment_evidence,indent=2))
+        print(f"PASS: {len(environment_evidence)} saved attempt environments match actual Runner build and limits",flush=True)
     finally:
         sql(f"DELETE FROM spring_session WHERE principal_name='{username}'; DELETE FROM app_user WHERE username='{username}';")
 

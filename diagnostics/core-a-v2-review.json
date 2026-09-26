@@ -1,0 +1,23 @@
+{
+  "bankId": "core-a-v2",
+  "artifactSha256": "d289849c9d08d3b168e4b30d0ec34408450a310b210deb1a1ee40e09f67d2cdb",
+  "decision": "APPROVED_LIMITED_PILOT",
+  "reviewerType": "AI_ASSISTED_CONTENT_REVIEW",
+  "reviewDate": "2026-09-26",
+  "scope": "Eight fixed questions in four narrow easy/medium pairs; optional pilot only.",
+  "checks": [
+    "Korean statement, constraints and sample consistency",
+    "53 fixed inputs and expected answers independently recomputed",
+    "Reference and two targeted mutant families per question",
+    "Rubric observable skills and alternative valid strategies",
+    "Related grid pair dependence and no stable-habit inference",
+    "Generic algorithm exercises authored in local builder; no external statement copied",
+    "Workload bounded by small inputs, optional scope and pause; no measured duration claim"
+  ],
+  "limitations": [
+    "No independent human review or learner calibration completed",
+    "Difficulty labels are provisional; no mastery, validated measurement or exhaustive coverage claim",
+    "No B-bank release or independent improvement claim"
+  ],
+  "changeFromV1": "New immutable v2 bank/problem IDs; clock title corrected to elapsed minutes. All 53 cases unchanged."
+}

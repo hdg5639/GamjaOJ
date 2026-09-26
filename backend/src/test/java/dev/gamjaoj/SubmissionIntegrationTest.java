@@ -49,6 +49,37 @@ class SubmissionIntegrationTest {
     Submissions.View submit(String name, UUID key) {
         return submissions.submit(name, key, new SubmissionController.Request("sum-v1", SOURCE));
     }
+    @Autowired TransientRuns transientRuns;
+    @Test void personalHistoryFiltersBeforePaginationAndExcludesCustomRuns() throws Exception {
+        mvc.perform(get("/api/my/summary")).andExpect(status().isUnauthorized());
+        var base=submit(alice,UUID.randomUUID());
+        jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='AC',finished_at=CURRENT_TIMESTAMP WHERE submission_id=?").param(base.id()).update();
+        for(int i=0;i<51;i++) {
+            UUID id=UUID.randomUUID();
+            jdbc.sql("INSERT INTO submission(id,user_id,problem_version,source_code,source_sha256,idempotency_key,runtime_image,runner_policy) SELECT ?,user_id,'total-v1',source_code,source_sha256,?,runtime_image,runner_policy FROM submission WHERE id=?")
+                .param(id).param(id).param(base.id()).update();
+            jdbc.sql("INSERT INTO judge_job(submission_id,status,verdict,finished_at) VALUES (?,'FINISHED','WA',CURRENT_TIMESTAMP)").param(id).update();
+        }
+        assertThat(submissions.history(alice,"sum-v1",0)).extracting(Submissions.View::id).containsExactly(base.id());
+        assertThat(submissions.history(alice,null,0)).hasSize(50);
+        assertThat(submissions.history(alice,null,1)).hasSize(2);
+        assertThat(submissions.history(bob,null,0)).isEmpty();
+        mvc.perform(get("/api/my/summary").with(user(alice))).andExpect(status().isOk()).andExpect(jsonPath("$.submitted").value(52)).andExpect(jsonPath("$.attemptedProblems").value(2)).andExpect(jsonPath("$.solvedProblems").value(1));
+        mvc.perform(get("/api/my/problems").with(user(alice))).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(2)).andExpect(jsonPath("$.items.length()").value(2));
+        mvc.perform(get("/api/my/summary").with(user(bob))).andExpect(jsonPath("$.submitted").value(0));
+        mvc.perform(get("/api/submissions?problemVersion=sum-v1").with(user(alice))).andExpect(jsonPath("$.length()").value(1));
+        mvc.perform(get("/api/my/problems?page=-1").with(user(alice))).andExpect(status().isBadRequest());
+    }
+    @Test void customResultsExpireOnlyAfterCompletionRecoveryWindow() {
+        var run=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2"));
+        var pending=submissions.run(bob,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2"));
+        var formal=submit(alice,UUID.randomUUID());
+        jdbc.sql("UPDATE judge_job SET status='FINISHED',finished_at=? WHERE submission_id IN (?,?)").param(OffsetDateTime.now().minusHours(25)).param(run.id()).param(formal.id()).update();
+        transientRuns.clean();
+        assertThatThrownBy(()->submissions.runDetail(alice,run.id())).isInstanceOf(AccountException.class);
+        assertThat(submissions.runDetail(bob,pending.id()).id()).isEqualTo(pending.id());
+        assertThat(submissions.detail(alice,formal.id()).id()).isEqualTo(formal.id());
+    }
     void expire(UUID id) {
         jdbc.sql("UPDATE judge_job SET lease_until=? WHERE submission_id=?").param(OffsetDateTime.now().minusMinutes(1)).param(id).update();
     }
@@ -56,13 +87,116 @@ class SubmissionIntegrationTest {
         ObjectNode report = JudgeJson.JSON.createObjectNode();
         report.put("run_id", UUID.randomUUID().toString()).put("policy", assignment.runnerPolicy())
                 .put("image", assignment.runtimeImage()).put("source_sha256", assignment.sourceSha256())
-                .put("problem_sha256", assignment.problemSha256()).put("problem_version", "sum-v1").put("verdict", "AC");
+                .put("problem_sha256", assignment.problemSha256()).put("problem_version", "sum-v1").put("verdict", "AC")
+                .put("execution_mode", assignment.executionMode());
+        if(assignment.executionProfile()!=null){report.put("language",assignment.language());report.set("execution_profile",assignment.executionProfile().deepCopy());}
+        report.putObject("runner_environment").put("dockerControl","engine").set("contract",assignment.runnerEnvironment()==null?null:assignment.runnerEnvironment().deepCopy());
         report.putObject("compile").put("exit_code",0).put("wall_ms",1).put("stderr", "");
         var tests = report.putArray("tests");
         assignment.problem().path("tests").forEach(test -> tests.addObject().put("id",test.path("id").asText())
                 .put("verdict","AC").put("exit_code",0).put("oom_killed",false).put("wall_ms",1)
                 .put("stdout_sha256",JudgeJson.hash(test.path("output").asText())).put("stderr", ""));
         return report;
+    }
+
+    @Test void languagesPersistTrustedLimitsAndFenceReportsAndIdempotency() {
+        assertThat(submissions.problems(alice).get(0).languages()).extracting(LanguageProfiles.Option::id)
+                .containsExactly("JAVA","CPP","PYTHON");
+        for(String language:List.of("JAVA","CPP","PYTHON")) {
+            UUID key=UUID.randomUUID();
+            var request=new SubmissionController.Request("sum-v1",SOURCE,null,null,language);
+            var saved=submissions.submit(alice,key,request);
+            assertThat(saved.language()).isEqualTo(language);
+            assertThat(saved.execution()).isEqualTo(LanguageProfiles.option(LanguageProfiles.profile(language)));
+            assertThat(submissions.submit(alice,key,request).id()).isEqualTo(saved.id());
+            assertThatThrownBy(()->submissions.submit(alice,key,new SubmissionController.Request("sum-v1",SOURCE,null,null,language.equals("JAVA")?"CPP":"JAVA")))
+                    .isInstanceOf(AccountException.class);
+            var assignment=queue.claim(UUID.randomUUID()).orElseThrow();
+            assertThat(assignment.language()).isEqualTo(language);
+            assertThat(assignment.runtimeImage()).isEqualTo(LanguageProfiles.profile(language).path("image").asText());
+            var bad=report(assignment);((ObjectNode)bad.path("execution_profile")).put("testWallSeconds",999);
+            assertThatThrownBy(()->queue.complete(saved.id(),assignment.token(),bad)).isInstanceOf(AccountException.class);
+            var wrongLanguage=report(assignment).put("language","FORGED");
+            assertThatThrownBy(()->queue.complete(saved.id(),assignment.token(),wrongLanguage)).isInstanceOf(AccountException.class);
+            queue.complete(saved.id(),assignment.token(),report(assignment));
+            assertThat(submissions.detail(alice,saved.id()).language()).isEqualTo(language);
+            assertThatThrownBy(()->submissions.detail(bob,saved.id())).isInstanceOf(AccountException.class);
+        }
+        assertThatThrownBy(()->submissions.submit(alice,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,"BASH")))
+                .isInstanceOf(AccountException.class);
+    }
+
+    @Test void customRunsUseChosenLanguageAndItsOwnRunPolicy() {
+        for(String language:List.of("CPP","PYTHON")) {
+            var saved=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2",null,null,language));
+            assertThat(saved.language()).isEqualTo(language);
+            assertThat(saved.runnerPolicy()).isEqualTo(LanguageProfiles.profile(language).path("runPolicy").asText());
+            var assignment=queue.claim(UUID.randomUUID()).orElseThrow();
+            assertThat(assignment.executionProfile()).isEqualTo(LanguageProfiles.profile(language));
+            assertThat(assignment.problem().path("output_policy").asText()).isEqualTo("RUN_ONLY");
+            var report=report(assignment);report.put("verdict","OK");
+            report.path("tests").forEach(test->((ObjectNode)test).put("verdict","OK").put("stdout","3").put("stdout_truncated",false));
+            queue.complete(saved.id(),assignment.token(),report);
+        }
+    }
+
+    @Test void runnerEnvironmentIsPinnedToAttemptAndRejectsMissingChangedOrUnknownReports() {
+        var saved=submit(alice,UUID.randomUUID());
+        UUID worker=UUID.randomUUID();var first=queue.claim(worker).orElseThrow();
+        assertThat(first.runnerEnvironment()).isEqualTo(RunnerEnvironment.expected());
+        for(String mismatch:List.of("missing","build","limits","transport")) {
+            var bad=report(first);
+            if(mismatch.equals("missing"))bad.remove("runner_environment");
+            if(mismatch.equals("build"))((ObjectNode)bad.path("runner_environment").path("contract").path("files")).put("runner/judge.py","wrong");
+            if(mismatch.equals("limits"))((ObjectNode)bad.path("runner_environment").path("contract").path("profile")).put("testWallSeconds",99);
+            if(mismatch.equals("transport"))((ObjectNode)bad.path("runner_environment")).put("dockerControl","remote");
+            assertThatThrownBy(()->queue.complete(saved.id(),first.token(),bad)).as(mismatch).isInstanceOf(AccountException.class);
+        }
+        // Simulate a contract from a previous app build: resume and completion use the persisted value.
+        var old=(ObjectNode)first.runnerEnvironment().deepCopy();old.put("format","previous-build");
+        jdbc.sql("UPDATE judge_attempt SET execution_environment_json=? WHERE submission_id=? AND attempt=1")
+                .param(JudgeJson.canonical(old)).param(saved.id()).update();
+        var resumed=queue.claim(worker).orElseThrow();assertThat(resumed.runnerEnvironment()).isEqualTo(old);
+        var result=report(resumed);queue.complete(saved.id(),resumed.token(),result);queue.complete(saved.id(),resumed.token(),result);
+    }
+    @Test void legacyAttemptRemainsWithoutEnvironmentUntilAReplacementClaim() {
+        var saved=submit(alice,UUID.randomUUID());UUID worker=UUID.randomUUID();
+        var first=queue.claim(worker).orElseThrow();
+        jdbc.sql("UPDATE judge_attempt SET execution_environment_json=NULL WHERE submission_id=?").param(saved.id()).update();
+        assertThat(queue.claim(worker).orElseThrow().runnerEnvironment()).isNull();
+        expire(saved.id());var next=queue.claim(worker).orElseThrow();
+        assertThat(next.runnerEnvironment()).isEqualTo(RunnerEnvironment.expected());
+        assertThat(next.token()).isNotEqualTo(first.token());
+    }
+
+    @Test
+    void catalogPackagesAreImmutableAndPublicProjectionHidesTests() throws Exception {
+        var publicItems = submissions.problems(alice);
+        assertThat(publicItems).extracting(Submissions.Problem::version)
+                .containsExactly("sum-v1", "total-v1", "valid-parentheses-v1");
+        for (var item : publicItems) {
+            String raw = java.nio.file.Files.readString(java.nio.file.Path.of("../problems", item.version()+".json"));
+            String canonical = JudgeJson.canonical(JudgeJson.parse(raw));
+            String stored = jdbc.sql("SELECT package_json FROM problem_version WHERE id=?")
+                    .param(item.version()).query(String.class).single();
+            assertThat(JudgeJson.canonical(JudgeJson.parse(stored))).isEqualTo(canonical);
+            assertThat(jdbc.sql("SELECT package_sha256 FROM problem_version WHERE id=?")
+                    .param(item.version()).query(String.class).single()).isEqualTo(JudgeJson.hash(canonical));
+            assertThat(item.sampleInput()).isEqualTo(JudgeJson.parse(raw).path("tests").get(0).path("input").asText());
+        }
+        String publicJson = mvc.perform(get("/api/problems").with(user(alice))).andReturn().getResponse().getContentAsString();
+        assertThat(publicJson).doesNotContain("positive-limit", "early-close", "package_sha256", "runtime_image", "tests");
+        var key = UUID.randomUUID();
+        var saved = submissions.submit(alice, key, new SubmissionController.Request("total-v1", SOURCE));
+        var assignment = queue.claim(UUID.randomUUID()).orElseThrow();
+        assertThat(assignment.problem().path("version").asText()).isEqualTo("total-v1");
+        assertThat(assignment.problemSha256()).isEqualTo(JudgeJson.hash(JudgeJson.canonical(assignment.problem())));
+        assertThat(saved.runnerPolicy()).isEqualTo("java8-judge-v1");
+        assertThatThrownBy(() -> submissions.submit(alice, key,
+                new SubmissionController.Request("valid-parentheses-v1", SOURCE))).isInstanceOf(AccountException.class);
+        var session = sessions.start(alice, UUID.randomUUID(), new TrainingSessionController.Start("total-v1", "합계"));
+        assertThatThrownBy(() -> submissions.submit(alice, UUID.randomUUID(),
+                new SubmissionController.Request("valid-parentheses-v1", SOURCE, session.id()))).isInstanceOf(AccountException.class);
     }
 
     @Test
@@ -117,14 +251,15 @@ class SubmissionIntegrationTest {
         assertThatThrownBy(()->submissions.submit(alice,UUID.randomUUID(),request)).isInstanceOf(AccountException.class);
         assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"",session))).isInstanceOf(AccountException.class);
         assertThatThrownBy(()->submissions.submit(alice,key,new SubmissionController.Request("sum-v1",SOURCE))).isInstanceOf(AccountException.class);
+        // Put the formal job first; exclusive jobs no longer admit a second claim.
+        jdbc.sql("UPDATE judge_job SET created_at=? WHERE submission_id=?")
+                .param(OffsetDateTime.now().minusMinutes(1)).param(saved.id()).update();
         var assignment=queue.claim(UUID.randomUUID()).orElseThrow();
-        // Select the formal job independently of tied database timestamps.
-        if (assignment.submissionId().equals(custom.id())) assignment=queue.claim(UUID.randomUUID()).orElseThrow();
         assertThat(assignment.submissionId()).isEqualTo(saved.id());
         queue.complete(saved.id(),assignment.token(),report(assignment));
         assertThat(sessions.detail(alice,session).session().accepted()).isEqualTo(1);
         assertThat(sessions.detail(alice,session).session().pending()).isEqualTo(1);
-        assertThat(sessions.detail(alice,session).entries()).hasSize(2);
+        assertThat(sessions.detail(alice,session).entries()).hasSize(1);
         var next=sessions.start(alice,UUID.randomUUID(),new TrainingSessionController.Start("sum-v1","next"));
         assertThat(next.id()).isNotEqualTo(session);
     }
@@ -172,7 +307,7 @@ class SubmissionIntegrationTest {
                 .isInstanceOf(AccountException.class);
         assertThatThrownBy(() -> submit(alice,key)).isInstanceOf(AccountException.class);
         assertThat(submissions.history(alice)).isEmpty();
-        assertThat(submissions.runs(alice)).hasSize(1);
+        assertThat(submissions.runs(alice)).isEmpty();
         mvc.perform(get("/api/runs/"+saved.id()).with(user(bob))).andExpect(status().isNotFound());
         mvc.perform(get("/api/submissions/"+saved.id()).with(user(alice))).andExpect(status().isNotFound());
         mvc.perform(post("/api/runs").with(user(alice)).contentType("application/json").content("{}"))
@@ -193,7 +328,7 @@ class SubmissionIntegrationTest {
         assertThat(done.verdict()).isEqualTo("OK");
         assertThat(done.input()).isEqualTo("17 25\n");
         assertThat(done.stdout()).isEqualTo("42\n");
-        assertThat(submissions.runs(alice).getFirst().stdout()).isEmpty();
+        assertThat(submissions.runs(alice)).isEmpty();
         assertThat(jdbc.sql("SELECT count(*) FROM judge_attempt WHERE status='COMPLETED'").query(Integer.class).single()).isEqualTo(1);
     }
 
@@ -299,6 +434,70 @@ class SubmissionIntegrationTest {
         queue.complete(saved.id(),second.token(),report(second));
         assertThat(jdbc.sql("SELECT status FROM judge_attempt WHERE token=?").param(first.token()).query(String.class).single()).isEqualTo("SUPERSEDED");
         assertThat(submissions.detail(alice,saved.id()).verdict()).isEqualTo("AC");
+    }
+
+    @Test
+    void twoFunctionalSlotsDrainForUserAndPreserveResumeAndFence() {
+        // Synthetic scheduling fixtures; product admission is tested separately.
+        var first=submit(alice,UUID.randomUUID());var second=submit(alice,UUID.randomUUID());
+        var third=submit(bob,UUID.randomUUID());
+        for(var item:List.of(first,second,third)) jdbc.sql("UPDATE judge_job SET priority=1,execution_mode='FUNCTIONAL' WHERE submission_id=?").param(item.id()).update();
+        UUID worker1=UUID.randomUUID(),worker2=UUID.randomUUID();
+        var a=queue.claim(worker1).orElseThrow();var b=queue.claim(worker2).orElseThrow();
+        assertThat(a.submissionId()).isNotEqualTo(b.submissionId());
+        assertThat(queue.claim(worker1).orElseThrow().token()).isEqualTo(a.token());
+        assertThat(queue.claim(UUID.randomUUID())).isEmpty();
+        var userJob=submit(bob,UUID.randomUUID());
+        queue.complete(a.submissionId(),a.token(),report(a));
+        assertThat(queue.claim(worker1)).isEmpty(); // user waits for b, no new validation.
+        queue.complete(b.submissionId(),b.token(),report(b));
+        var user=queue.claim(worker1).orElseThrow();
+        assertThat(user.submissionId()).isEqualTo(userJob.id());
+        assertThat(user.executionMode()).isEqualTo("EXCLUSIVE");
+        assertThat(queue.claim(worker2)).isEmpty();
+        queue.complete(user.submissionId(),user.token(),report(user));
+        var last=queue.claim(worker2).orElseThrow();
+        var wrong=report(last).put("execution_mode","EXCLUSIVE");
+        assertThatThrownBy(()->queue.complete(last.submissionId(),last.token(),wrong)).isInstanceOf(AccountException.class);
+        expire(last.submissionId());
+        var replacement=queue.claim(worker1).orElseThrow();
+        assertThatThrownBy(()->queue.complete(last.submissionId(),last.token(),report(last))).isInstanceOf(AccountException.class);
+        var savedReport=report(replacement);
+        queue.complete(replacement.submissionId(),replacement.token(),savedReport);
+        queue.complete(replacement.submissionId(),replacement.token(),savedReport);
+        assertThat(jdbc.sql("SELECT count(*) FROM judge_attempt WHERE status='COMPLETED'").query(Integer.class).single()).isEqualTo(4);
+    }
+
+    @Test
+    void resourceQueueHeadIsNeverSkippedByLaterFunctionalWork() {
+        var functional=submit(alice,UUID.randomUUID());
+        jdbc.sql("UPDATE judge_job SET priority=1,execution_mode='FUNCTIONAL' WHERE submission_id=?").param(functional.id()).update();
+        var active=queue.claim(UUID.randomUUID()).orElseThrow();
+        var resource=submit(bob,UUID.randomUUID());var later=submit(alice,UUID.randomUUID());
+        jdbc.sql("UPDATE judge_job SET priority=1,created_at=? WHERE submission_id=?").param(OffsetDateTime.now().minusMinutes(1)).param(resource.id()).update();
+        jdbc.sql("UPDATE judge_job SET priority=1,execution_mode='FUNCTIONAL' WHERE submission_id=?").param(later.id()).update();
+        assertThat(queue.claim(UUID.randomUUID())).isEmpty();
+        queue.complete(active.submissionId(),active.token(),report(active));
+        var exclusive=queue.claim(UUID.randomUUID()).orElseThrow();
+        assertThat(exclusive.submissionId()).isEqualTo(resource.id());
+        assertThat(queue.claim(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void simultaneousClaimersCannotExceedTwoFunctionalAssignments() throws Exception {
+        for(int i=0;i<3;i++) {
+            var saved=submit(alice,UUID.randomUUID());
+            jdbc.sql("UPDATE judge_job SET priority=1,execution_mode='FUNCTIONAL' WHERE submission_id=?").param(saved.id()).update();
+        }
+        try(var executor=Executors.newFixedThreadPool(4)) {
+            List<Callable<java.util.Optional<JudgeQueue.Assignment>>> calls=new ArrayList<>();
+            for(int i=0;i<4;i++)calls.add(()->queue.claim(UUID.randomUUID()));
+            var results=executor.invokeAll(calls);
+            int claimed=0;var ids=new java.util.HashSet<UUID>();
+            for(var result:results)if(result.get().isPresent()){claimed++;ids.add(result.get().get().submissionId());}
+            assertThat(claimed).isEqualTo(2);assertThat(ids).hasSize(2);
+            assertThat(jdbc.sql("SELECT count(*) FROM judge_job WHERE status='RUNNING'").query(Integer.class).single()).isEqualTo(2);
+        }
     }
 
     @Test

@@ -1,17 +1,31 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
 import RunPanel from './run-panel';
+import {useEditorSizing,ResizeHandle,EditorSizing,splitScale} from './editor-sizing';
+import DiagnosticPanel from './diagnostic-panel';
+import RecordHistory from './record-history';
+import MyPage from './my-page';
 import SessionPanel from './session-panel';
+import ProblemCatalog from './problem-catalog';
+import NavIcon from './nav-icon';
+import AiFeedback from './ai-feedback';
+import FollowupPanel from './followup-panel';
+import ProblemTeaching from './problem-teaching';
+import AiOperations, { AiBudget } from './ai-operations';
+import dynamic from 'next/dynamic';
+
+const CodeEditor = dynamic(() => import('./code-editor'), { ssr: false,
+  loading: () => <div id="source" role="status">편집기를 불러오고 있어요…</div>,
+});
 
 const starter = `import java.util.Scanner;
 
 public class Main {
     public static void main(String[] args) {
         Scanner input = new Scanner(System.in);
-        long a = input.nextLong();
-        long b = input.nextLong();
-        // 두 정수의 합을 출력해 보세요.
+        // 문제의 입력 형식에 맞춰 읽고 결과를 출력하세요.
     }
 }
 `;
@@ -19,14 +33,30 @@ const verdicts = { AC: '정답', WA: '오답', CE: '컴파일 오류', RE: '실�
   MLE: '메모리 초과', OLE: '출력 초과', IE: '채점 시스템 오류' };
 const label = item => item.verdict ? `${item.verdict} · ${verdicts[item.verdict]}` : item.status === 'RUNNING' ? '채점 중' : '채점 대기';
 
-export default function Workspace({ user, api }) {
+export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar }) {
+  const [size,changeSize,resetSize]=useEditorSizing(user.id,'practice');
   const [problems, setProblems] = useState([]);
-  const [screen, setScreen] = useState('practice');
+  const [screen, updateScreen] = useState('home');
+  function setScreen(next) { updateScreen(next); window.history.pushState(null,'','#'+next); if(next==='home')requestAnimationFrame(()=>document.querySelector('.catalog-view')?.scrollTo(0,0)); }
+  useEffect(()=>{
+    const sync=()=>{const value=window.location.hash.slice(1)||'home';if(['home','practice','catalog','diagnostic','training','generation','mypage'].includes(value))updateScreen(value);};
+    sync();window.addEventListener('popstate',sync);return()=>window.removeEventListener('popstate',sync);
+  },[]);
+  const [generationMode,setGenerationMode]=useState('tags');
   const [tool, setTool] = useState('run');
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const [resultSize, setResultSize] = useState(360);
+  const [inputRequest,setInputRequest]=useState(0);
+  const [historyOpen,setHistoryOpen]=useState(false);
+  const [inspected,setInspected]=useState(null);
+  const panelRevision=useRef(0),selectionRevision=useRef(0),catalogRevision=useRef(0);
+  const [mobilePane, setMobilePane] = useState('code');
   const [sessions, setSessions] = useState([]);
   const [activity, setActivity] = useState(0);
   const activeSession = sessions.find(item => item.status === 'ACTIVE');
   const [version, setVersion] = useState('');
+  const [language,setLanguage]=useState('JAVA');
+  const lang=languageInfo[language];
   const [source, setSource] = useState(starter);
   const [history, setHistory] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -37,8 +67,11 @@ export default function Workspace({ user, api }) {
   const [loaded, setLoaded] = useState(false);
   const [draftStatus, setDraftStatus] = useState('');
   const storageKey = `gamjaoj-pending-${user.id}`;
+  const languageKey = `gamjaoj-language-${user.id}`;
+  const selectionKey = `gamjaoj-selected-problem-${user.id}`;
   const live = useRef(true);
   const problem = problems.find(item => item.version === version);
+  const currentSession = activeSession?.problemVersion === version ? activeSession : null;
 
   useEffect(() => {
     live.current = true;
@@ -52,29 +85,75 @@ export default function Workspace({ user, api }) {
       if (!live.current) return;
       const current = training.find(item => item.status === 'ACTIVE');
       setSessions(training);
-      const initialVersion = current?.problemVersion || (items.some(item => item.version === restoredPending?.problemVersion)
-        ? restoredPending.problemVersion : items[0]?.version || '');
+      let remembered='';try{remembered=localStorage.getItem(selectionKey)||'';}catch{/* Storage may be unavailable. */}
+      const initialVersion = items.some(item=>item.version===restoredPending?.problemVersion)?restoredPending.problemVersion:
+        items.some(item=>item.version===remembered&&!item.problemHeld)?remembered:
+        current?.problemVersion || items.find(item=>!item.problemHeld)?.version || items[0]?.version || '';
+      let preferred='JAVA';try{preferred=localStorage.getItem(languageKey)||'JAVA';}catch{}
+      const chosen=restoredPending ? (restoredPending.language||'JAVA') : preferred;
+      const initialLanguage=languageInfo[chosen] && (items.find(p=>p.version===initialVersion)?.languages||[languageInfo.JAVA]).some(l=>l.id===chosen)?chosen:'JAVA';
+      setLanguage(initialLanguage);
       setProblems(items); setVersion(initialVersion); setHistory(submissions);
-      restoreDraft(initialVersion, restoredPending?.problemVersion === initialVersion ? restoredPending.source : starter);
+      restoreDraft(initialVersion, restoredPending?.problemVersion === initialVersion ? restoredPending.source : starters[initialLanguage],initialLanguage);
+      if(restoredPending)setScreen('practice');
       setLoaded(true);
     }).catch(e => { if (live.current) setError(e.message); });
     return () => { live.current = false; };
   }, [user.id]);
 
+  useEffect(()=>{
+    let stopped=false;
+    async function refreshProblems(){const revision=++catalogRevision.current;try{
+      const items=await api('/api/problems');if(stopped||revision!==catalogRevision.current)return;
+      setProblems(items);
+      const held=new Set(items.filter(item=>item.problemHeld).map(item=>item.version));
+      setSelected(value=>value?{...value,problemHeld:held.has(value.problemVersion)}:value);
+      setHistory(values=>values.map(value=>({...value,problemHeld:held.has(value.problemVersion)})));
+    }catch(e){if(!stopped&&revision===catalogRevision.current)setError(e.message);}}
+    if(loaded&&['home','catalog'].includes(screen))refreshProblems();
+    window.addEventListener('focus',refreshProblems);
+    window.addEventListener('gamjaoj-problems-changed',refreshProblems);
+    return()=>{stopped=true;window.removeEventListener('focus',refreshProblems);window.removeEventListener('gamjaoj-problems-changed',refreshProblems);};
+  },[user.id,screen,loaded]);
+
+  useEffect(()=>{
+    const created=()=>setScreen('training');
+    window.addEventListener('gamjaoj-followup-created',created);
+    return()=>window.removeEventListener('gamjaoj-followup-created',created);
+  },[]);
+  async function openTraining(problemVersion){
+    if(busy||pending)throw new Error('진행 중인 제출을 먼저 확인해 주세요.');
+    const [items,training]=await Promise.all([api('/api/problems'),api('/api/training-sessions')]);
+    setProblems(items);setSessions(training);chooseProblem(problemVersion);
+  }
+
   function updateSessions(items) {
     setSessions(items);
-    const active = items.find(item => item.status === 'ACTIVE');
-    if (active && active.problemVersion !== version) { setVersion(active.problemVersion); restoreDraft(active.problemVersion); }
+    // Refresh session metadata without replacing the problem/draft the user is browsing.
   }
 
-  function draftKey(problemVersion) {
-    return `gamjaoj-draft-v1-${user.id}-${encodeURIComponent(problemVersion)}`;
+  function chooseProblem(nextVersion) {
+    if (busy || pending) return;
+    try{localStorage.setItem(selectionKey,nextVersion);}catch{/* Draft restoration still works without selection persistence. */}
+    if (nextVersion !== version) {
+      setVersion(nextVersion);
+      restoreDraft(nextVersion);
+    }
+    setScreen('practice');
+    setInspected(null);
+    panelRevision.current++;setResultsOpen(false);
+    setMobilePane('problem');
+    requestAnimationFrame(() => document.getElementById('problem-title')?.focus());
   }
 
-  function restoreDraft(problemVersion, fallback = starter) {
+  function draftKey(problemVersion, chosen=language) {
+    return `gamjaoj-draft-v1-${user.id}-${encodeURIComponent(problemVersion)}${chosen==='JAVA'?'':'-'+chosen}`;
+  }
+
+  function restoreDraft(problemVersion, fallback = starters[language], chosen=language) {
     setSource(fallback);
     try {
-      const draft = JSON.parse(localStorage.getItem(draftKey(problemVersion)));
+      const draft = JSON.parse(localStorage.getItem(draftKey(problemVersion,chosen)));
       if (draft && typeof draft.source === 'string' && draft.source.length <= 65536) {
         setSource(draft.source); setDraftStatus('이 브라우저에 저장된 초안을 불러왔어요.');
       } else setDraftStatus('작성한 코드는 이 브라우저에 자동 저장돼요.');
@@ -83,6 +162,11 @@ export default function Workspace({ user, api }) {
     }
   }
 
+  function changeLanguage(next) {
+    if(busy||pending)return;
+    setLanguage(next);setInspected(null);restoreDraft(version,starters[next],next);
+    try{localStorage.setItem(languageKey,next);}catch{}
+  }
   function editSource(value) {
     setSource(value);
     // Save in the edit event: an immediate reload or logout must not beat a debounce timer.
@@ -90,7 +174,7 @@ export default function Workspace({ user, api }) {
       localStorage.setItem(draftKey(version), JSON.stringify({ source: value }));
       setDraftStatus('이 브라우저에 초안을 저장했어요.');
     } catch {
-      setDraftStatus('자동 저장하지 못했어요. Main.java 내려받기로 보관해 주세요.');
+      setDraftStatus('자동 저장하지 못했어요. 코드 내려받기로 보관해 주세요.');
     }
   }
 
@@ -99,8 +183,8 @@ export default function Workspace({ user, api }) {
     event.target.value = '';
     if (!file) return;
     setError('');
-    if (!file.name.toLowerCase().endsWith('.java') || file.size > 65536) {
-      setError('64 KiB 이하의 UTF-8 .java 파일을 선택해 주세요.'); return;
+    if (!file.name.toLowerCase().endsWith(lang.extension) || file.size > 65536) {
+      setError(`64 KiB 이하의 UTF-8 ${lang.extension} 파일을 선택해 주세요.`); return;
     }
     setBusy(true);
     try {
@@ -116,7 +200,7 @@ export default function Workspace({ user, api }) {
   function downloadSource() {
     const url = URL.createObjectURL(new Blob([source], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
-    link.href = url; link.download = 'Main.java'; link.click();
+    link.href = url; link.download = lang.file; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
@@ -125,22 +209,46 @@ export default function Workspace({ user, api }) {
     let stopped = false;
     const timer = setInterval(async () => {
       try {
-        const items = await api('/api/submissions');
+        const items = await api(`/api/submissions?problemVersion=${encodeURIComponent(version)}`);
         if (stopped || !live.current) return;
         let detail = null;
         if (selected && items.some(item => item.id === selected.id && item.status !== selected.status)) {
           detail = await api(`/api/submissions/${selected.id}`);
         }
         if (stopped || !live.current) return;
+        const completed=items.some(item=>item.status==='FINISHED'&&history.some(previous=>previous.id===item.id&&previous.status!=='FINISHED'));
         setHistory(items);
+        if(completed)window.dispatchEvent(new Event('gamjaoj-problems-changed'));
         if (detail) setSelected(detail);
       } catch (e) { if (!stopped && live.current) setError(e.message); }
     }, 2500);
     return () => { stopped = true; clearInterval(timer); };
-  }, [history, selected?.id, selected?.status]);
+  }, [history, selected?.id, selected?.status,version]);
 
+  useEffect(()=>{
+    if(!version)return;
+    let stopped=false;selectionRevision.current++;setSelected(null);setHistory([]);setHistoryOpen(false);setInspected(null);
+    api(`/api/submissions?problemVersion=${encodeURIComponent(version)}`).then(items=>{if(!stopped)setHistory(items);}).catch(e=>{if(!stopped)setError(e.message);});
+    return()=>{stopped=true;};
+  },[version,user.id]);
+
+  function showTool(next){panelRevision.current++;setTool(next);setResultsOpen(true);setMobilePane('results');}
+  function closeResults(){panelRevision.current++;setResultsOpen(false);setMobilePane('code');requestAnimationFrame(()=>document.getElementById('tool-'+tool)?.focus());}
+  function viewCode(item){setInspected(item);setMobilePane('code');requestAnimationFrame(()=>document.getElementById('snapshot-heading')?.focus());}
+  function resizePanel(event){
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const start=event.clientX,initial=resultSize;
+    event.currentTarget.dataset.dragStart=start;event.currentTarget.dataset.dragWidth=initial;event.currentTarget.dataset.direction=window.innerWidth>=1440?-1:1;
+  }
+  function dragPanel(event){
+    if(!event.currentTarget.hasPointerCapture(event.pointerId))return;
+    const delta=(event.clientX-Number(event.currentTarget.dataset.dragStart))*Number(event.currentTarget.dataset.direction);
+    setResultSize(Math.max(300,Math.min(520,Number(event.currentTarget.dataset.dragWidth)+delta)));
+  }
   async function submit(event) {
     event.preventDefault();
+    if (inspected || busy || (!problem?.submissionsEnabled && !pending)) return;
+    if (!pending && !source.trim()) { setError(`먼저 ${lang.file} 코드를 작성해 주세요.`); return; }
     if (new TextEncoder().encode(source).length > 65536 && !pending) {
       setError('코드는 UTF-8 기준 64 KiB 이내로 입력해 주세요.'); return;
     }
@@ -149,17 +257,20 @@ export default function Workspace({ user, api }) {
     bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
     const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
     const key = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
-    const attempt = pending || { key, problemVersion: version, source, sessionId: activeSession?.id || null };
+    const intent=panelRevision.current;selectionRevision.current++;
+    const attempt = pending || { key, problemVersion: version, source, language, sessionId: currentSession?.id || null };
     setPending(attempt); setBusy(true); setError(''); setNotice('');
     try { sessionStorage.setItem(storageKey, JSON.stringify(attempt)); } catch { /* Keep in memory. */ }
     try {
       const result = await api('/api/submissions', { method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': attempt.key },
-        body: JSON.stringify({ problemVersion: attempt.problemVersion, source: attempt.source, sessionId: attempt.sessionId || null }) });
+        body: JSON.stringify({ problemVersion: attempt.problemVersion, source: attempt.source, language:attempt.language||'JAVA', sessionId: attempt.sessionId || null }) });
       if (!live.current) return;
       setPending(null); try { sessionStorage.removeItem(storageKey); } catch { /* Browser storage disabled. */ }
-      setTool('history');
+      if(intent===panelRevision.current)showTool('history');
+      setHistoryOpen(false);
       setSelected(result); setHistory(items => [result, ...items.filter(item => item.id !== result.id)].slice(0,50));
+      window.dispatchEvent(new Event('gamjaoj-problems-changed'));
       setActivity(value => value + 1);
       setNotice('제출한 코드를 저장했어요. 채점 결과는 자동으로 갱신됩니다.');
     } catch (e) {
@@ -172,78 +283,116 @@ export default function Workspace({ user, api }) {
   }
 
   async function open(id) {
-    try { const detail = await api(`/api/submissions/${id}`); if (live.current) setSelected(detail); }
+    const revision=++selectionRevision.current;
+    try { const detail = await api(`/api/submissions/${id}`); if (live.current&&revision===selectionRevision.current) {setSelected(detail);setHistoryOpen(false);requestAnimationFrame(()=>document.getElementById('submission-heading')?.focus());} }
     catch (e) { if (live.current) setError(e.message); }
   }
 
-  return <section className="workspace" aria-label="문제 풀이">
-    <div className="workspace-heading"><div><h1 className="workspace-title">알고리즘 연습</h1><span className="muted">{activeSession ? `훈련 중 · ${activeSession.goal || '자유 연습'}` : '코드를 작성하고, 실행하고, 제출하세요.'}</span></div>
-      <nav className="workspace-nav" aria-label="작업 화면"><button className={screen === 'practice' ? 'active' : ''} onClick={() => setScreen('practice')}>문제 풀기</button>
-      <button className={screen === 'training' ? 'active' : ''} onClick={() => setScreen('training')}>훈련 기록</button></nav></div>
-    <div hidden={screen !== 'training'}>{loaded && <SessionPanel user={user} problem={problem} sessions={sessions} onChange={updateSessions} activity={activity} api={api} />}</div>
-    <div hidden={screen !== 'practice'}>
-    {problem && <div className="practice-grid">
-      <article className="problem-card">
-        <span className="version">{problem.version}</span><h3>{problem.title}</h3><p>{problem.statement}</p>
-        <h4>예제 입력</h4><pre>{problem.sampleInput}</pre><h4>예제 출력</h4><pre>{problem.sampleOutput}</pre>
-        <p className="muted">클래스 이름은 Main으로 작성해 주세요. 제출한 코드는 기록에서 다시 확인할 수 있어요.</p>
-      </article>
-      <form className="editor-card" onSubmit={submit}>
-        {problems.length > 1 && <label>풀이할 문제<select value={version} disabled={busy || !!pending || !!activeSession}
-          onChange={event => { setVersion(event.target.value); restoreDraft(event.target.value); }}>
-          {problems.map(item => <option key={item.version} value={item.version}>{item.title} · {item.version}</option>)}
+  return <section className="workspace" data-screen={screen} data-sidebar-collapsed={sidebarCollapsed} aria-label="문제 풀이">
+    <aside id="learning-navigation" className="app-navigation" aria-label="학습 내비게이션">
+      <div className="sidebar-heading"><span className="nav-section-label">LEARN & PRACTICE</span><button className="sidebar-toggle" type="button" aria-label={sidebarCollapsed?'사이드바 펼치기':'사이드바 접기'} title={sidebarCollapsed?'사이드바 펼치기':'사이드바 접기'} aria-expanded={!sidebarCollapsed} aria-controls="learning-navigation" onClick={onToggleSidebar}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d={sidebarCollapsed?'m13 9 3 3-3 3':'m16 9-3 3 3 3'}/></svg></button></div>
+      <nav className="workspace-nav" aria-label="작업 화면">{[
+        ['home','문제 탐색'],['practice','문제 풀기'],['diagnostic','선택 진단'],['generation','내 문제 생성'],['training','훈련 기록'],['mypage','마이페이지']
+      ].map(([id,title])=><button key={id} title={title} aria-pressed={screen===id||(id==='home'&&screen==='catalog')} className={screen===id||(id==='home'&&screen==='catalog')?'active':''} onClick={()=>setScreen(id)}><NavIcon name={id}/><span>{title}</span></button>)}</nav>
+      <div className="navigation-note"><span className="potato" aria-hidden="true">●</span><p>한 문제씩,<br/>내 것으로.</p><small>GamjaOJ · CODE & LEARN</small></div>
+    </aside>
+    <div className="workspace-heading"><div><span className="page-kicker">{['home','catalog'].includes(screen)?'PROBLEM LIBRARY':screen==='practice'?'WORKSPACE':'MY LEARNING'}</span><h1 className="workspace-title">{{home:'문제 탐색',catalog:'문제 탐색',practice:'문제 풀기',diagnostic:'선택 진단',generation:'내 문제 생성',training:'훈련 기록',mypage:'마이페이지'}[screen]}</h1></div>
+      {screen==='practice'&&<span className="muted">{currentSession ? `훈련 중 · ${currentSession.goal || '자유 연습'}` : activeSession ? `자유 풀이 · ${activeSession.problemVersion} 훈련은 유지 중` : `${lang.label} · ${lang.file}`}</span>}
+      {['home','catalog'].includes(screen)&&<button className="primary" onClick={()=>setScreen('generation')}>+ 문제 만들기</button>}
+    </div>
+    {screen==='mypage'&&<div className="training-view"><MyPage api={api} user={user} problems={problems} onChoose={chooseProblem} onDiagnostic={()=>setScreen('diagnostic')}/></div>}
+    <div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{screen === 'diagnostic' && <DiagnosticPanel user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>
+    <div className="catalog-view" hidden={!['home','catalog'].includes(screen)}><ProblemCatalog home={['home','catalog'].includes(screen)} onNavigate={setScreen} api={api} onChanged={value=>{setProblems(items=>items.map(p=>p.version===value.version?value:p));window.dispatchEvent(new Event('gamjaoj-problems-changed'));}} problems={problems} loaded={loaded} error={error}
+      selectedVersion={version} locked={busy || !!pending} onChoose={chooseProblem} /></div>
+    <div className="training-view" hidden={screen !== 'training'}>{screen === 'training' && <AiBudget api={api} />}{loaded&&<FollowupPanel api={api} onOpen={openTraining} onGeneration={()=>setScreen('generation')} locked={busy||!!pending}/>}
+    {loaded && <SessionPanel user={user} problem={problem} sessions={sessions} onChange={updateSessions} activity={activity} api={api} />}</div>
+    <div className="training-view" hidden={screen !== 'generation'}>{screen === 'generation' && <AiOperations api={api} initialMode={generationMode} onOpen={async generatedVersion => {
+      if (busy || pending) throw new Error('진행 중인 제출을 먼저 마쳐 주세요.');
+      const items=await api('/api/problems');setProblems(items);chooseProblem(generatedVersion);
+    }} />}</div>
+    <div className="practice-view" hidden={screen !== 'practice'}>
+    <nav className="workspace-tools" aria-label="풀이 영역">
+        {problems.length > 1 && <label className="solve-problem-choice"><span className="sr-only">풀이할 문제</span><select value={version} disabled={busy || !!pending} aria-describedby={busy || pending || activeSession ? "problem-selection-status" : undefined}
+          onChange={event => { try{localStorage.setItem(selectionKey,event.target.value);}catch{} setVersion(event.target.value); restoreDraft(event.target.value);setInspected(null); }}>
+          {problems.map(item => <option key={item.version} value={item.version}>{item.problemHeld?'[검토 중] ':''}{item.title} · {item.version}</option>)}
         </select></label>}
-        <div className="code-heading"><label htmlFor="source">Main.java</label><span className="language-badge">Java 8</span></div><textarea id="source" name="source" value={source}
-          onChange={event => editSource(event.target.value)}
-          onKeyDown={event => {
-            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-              event.preventDefault(); event.currentTarget.form.requestSubmit(); return;
-            }
-            if (event.key === 'Tab' && !event.shiftKey) {
-              event.preventDefault(); const field = event.currentTarget;
-              const start = field.selectionStart, end = field.selectionEnd;
-              editSource(source.slice(0, start) + '    ' + source.slice(end));
-              requestAnimationFrame(() => { field.selectionStart = field.selectionEnd = start + 4; });
-            }
-          }} rows={16} spellCheck="false" autoCapitalize="off"
-          maxLength={65536} required={!pending} disabled={busy} />
-        <p className="draft-status" aria-live="polite">{draftStatus}</p>
-        <span className="draft-help">Tab 들여쓰기 · Ctrl/⌘ + Enter 제출</span>
-        <details className="file-tools"><summary>파일 불러오기 / 내려받기</summary><div className="editor-tools">
-          <label className="file-import">Java 파일 불러오기<input type="file" accept=".java" disabled={busy} onChange={importSource} /></label>
-          <button type="button" className="secondary" onClick={downloadSource}>Main.java 내려받기</button>
+
+      <button aria-pressed={!resultsOpen&&mobilePane==='problem'} onClick={()=>{panelRevision.current++;setResultsOpen(false);setMobilePane('problem');}}>문제 보기</button>
+      <button className="code-pane-switch" aria-pressed={mobilePane==='code'} onClick={()=>setMobilePane('code')}>코드 작성</button>
+      <div className="tool-buttons">{[['run','실행 테스트'],['history','제출 기록'],['feedback','피드백']].map(([key,name])=><button id={'tool-'+key} key={key} aria-expanded={resultsOpen&&tool===key} aria-controls="workspace-results" className={resultsOpen&&tool===key?'active':''} onClick={()=>showTool(key)}>{name}</button>)}</div>
+    </nav>
+    {problem && <div className="practice-grid" data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
+      <article className="problem-card">
+        <span className="version">문제 · {problem.version}</span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2><p>{problem.statement}</p>
+        <h3>예제 입력</h3><pre>{problem.sampleInput}</pre><h3>예제 출력</h3><pre>{problem.sampleOutput}</pre>
+        {problem.problemHeld&&<p className="notice">문제 검토 중 · {problem.reviewReason} · 기존 코드와 기록은 보존되며 새 실행·제출·분석은 보류됩니다.</p>}
+        {!problem.problemHeld&&<ProblemTeaching key={version} version={version} api={api} />}
+        <p className="muted">{language==='JAVA'?'클래스 이름은 Main으로 작성해 주세요. ':''}제출한 코드는 기록에서 다시 확인할 수 있어요.</p>
+      </article>
+      <ResizeHandle className="problem-resizer" label="문제와 편집기 비율" value={size.ratio} min={20} max={70} step={2} scale={splitScale} onChange={ratio=>changeSize({ratio})}/>
+      <div className="editor-column">
+      <form id="code-form" className="editor-card" onSubmit={submit}>
+        {(busy || pending || activeSession) && <p id="problem-selection-status" className="draft-help">
+          {busy ? '요청 처리 중에는 문제를 변경할 수 없어요.' : pending ? '이전 제출의 접수를 확인한 뒤 문제를 변경할 수 있어요.' : currentSession
+            ? '이 문제의 제출은 진행 중인 훈련에 저장돼요. 다른 문제도 자유롭게 선택할 수 있어요.'
+            : `${activeSession.problemVersion} 훈련은 유지 중이에요. 현재 문제의 제출은 자유 풀이로 저장돼요.`}
+        </p>}
+        <div className="code-heading"><span>{inspected?languageInfo[recordLanguage(inspected)].file:lang.file}</span>
+          <label className="language-choice">언어<select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label></div>
+        <p className="draft-help">{inspected?`${recordLanguageLabel(inspected)} · ${limitText(inspected.execution)}`:limitText(problem.languages?.find(l=>l.id===language))}</p>
+        {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
+        <div className="editor-views" style={size.height==null?undefined:{flex:`0 0 ${size.height}px`,height:size.height}}><div className="editor-view" hidden={!!inspected}>
+        <CodeEditor key={`${user.id}:${version}:${language}`} language={language} label={lang.file} value={source} disabled={busy} onChange={editSource}
+          onLimit={() => setError('너무 긴 코드는 입력할 수 없어요. 기존 내용을 유지했어요. 제출 코드는 UTF-8 기준 64 KiB 이내여야 해요.')}
+          onSubmit={() => document.getElementById('code-form')?.requestSubmit()} />
+        </div>{inspected&&<div className="editor-view"><CodeEditor key={inspected.id} id="snapshot-source" label="기록 코드" language={recordLanguage(inspected)} value={inspected.source||''} disabled={true} onChange={()=>{}} onSubmit={()=>{}} onLimit={()=>{}} /></div>}</div>
+        <ResizeHandle label="편집기 높이 조절" orientation="horizontal" value={size.height} min={160} max={1000} step={20} onChange={height=>changeSize({height})}/>
+        <EditorSizing size={size} onChange={changeSize} onReset={resetSize}/>
+        <p className="draft-status" hidden={!!inspected} aria-live="polite">{draftStatus}</p>
+        <details id="editor-shortcuts" hidden={!!inspected} className="draft-help"><summary>편집기 단축키 · 자동완성</summary><span>Ctrl+Space 후보 · Enter 확정 · Tab 들여쓰기 · Esc 다음 Tab으로 나가기 · Ctrl/⌘+F 검색 · Ctrl/⌘+Enter 제출</span></details>
+        <details className="file-tools" hidden={!!inspected}><summary>파일 불러오기 / 내려받기</summary><div className="editor-tools">
+          <label className="file-import">{language==='JAVA'?'Java':lang.label} 파일 불러오기<input type="file" accept={lang.extension} disabled={busy} onChange={importSource} /></label>
+          <button type="button" className="secondary" onClick={downloadSource}>{lang.file} 내려받기</button>
         </div>
-        <p className="draft-help">초안은 계정·문제별로 이 브라우저에만 남아요. 다른 기기로 이동할 때는 파일을 내려받아 주세요. 공용 기기에서는 사용 후 사이트 데이터를 지워 주세요.</p></details>
-        {!problem.submissionsEnabled && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
+        <p className="draft-help">초안은 계정·문제·언어별로 이 브라우저에만 남아요. 다른 기기로 이동할 때는 파일을 내려받아 주세요. 공용 기기에서는 사용 후 사이트 데이터를 지워 주세요.</p></details>
+        {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
         {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
-        <div className="editor-actions"><button type="button" className="secondary" onClick={() => {
-          setTool('run'); requestAnimationFrame(() => document.getElementById('custom-input')?.focus());
-        }}>입력 테스트</button><button className="primary" disabled={busy || (!problem.submissionsEnabled && !pending)}>
-          {busy ? '제출 확인 중…' : pending ? '같은 제출 다시 확인' : '코드 제출'}</button></div>
       </form>
-    </div>}
-    {!loaded && !error && <p role="status">문제와 내 제출 기록을 불러오고 있어요…</p>}
+        <div className="editor-actions"><button type="button" className="secondary" onClick={() => {
+          showTool('run');setInputRequest(value=>value+1);
+        }}>입력 테스트</button><button form="code-form" className="primary" disabled={!!inspected || busy || (!problem.submissionsEnabled && !pending)}>
+          {busy ? '제출 확인 중…' : pending ? '같은 제출 다시 확인' : '코드 제출'}</button></div>
     {error && <p role="alert" className="notice error">{error}</p>}
     {notice && <p role="status" className="notice success">{notice}</p>}
-    <div className="result-dock"><nav className="result-tabs" aria-label="실행과 제출 결과">
-      <button className={tool === 'run' ? 'active' : ''} onClick={() => setTool('run')}>실행 테스트</button>
-      <button className={tool === 'history' ? 'active' : ''} onClick={() => setTool('history')}>제출 기록</button>
-    </nav><div hidden={tool !== 'run'}><RunPanel key={user.id} user={user} source={source} problem={problem} api={api} sessionId={activeSession?.id || null} onActivity={() => setActivity(value => value + 1)} /></div>
-    <div hidden={tool !== 'history'}>
-    <div className="history"><h3>내 제출 기록</h3>
-      {!history.length && <p className="muted">아직 제출한 코드가 없어요.</p>}
-      {history.length > 0 && <ul>{history.map(item => <li key={item.id}><button onClick={() => open(item.id)}>
-        <span><strong>{item.problemVersion}</strong><small>{new Date(item.createdAt).toLocaleString('ko-KR')}</small></span>
-        <span className={`verdict ${item.verdict || ''}`}>{label(item)}</span>
-      </button></li>)}</ul>}
-      {selected && <article className="submission-detail"><div className="workspace-heading"><h4>제출한 코드</h4>
-        <strong>{label(selected)}</strong></div>
-        <span className="version">{selected.runnerPolicy?.startsWith('java21') ? 'Java 21 · 이전 제출' : 'Java 8'}</span>
-        {selected.verdict === 'IE' && <p className="notice">채점 시스템 문제로 결과를 확인하지 못했어요. 풀이 실패로 기록하지 않습니다.</p>}
-        {selected.compileMessage && <pre className="compiler-message">{selected.compileMessage}</pre>}
-        <pre aria-label="저장된 제출 코드">{selected.source}</pre>
-        <small className="muted">제출 ID: {selected.id}</small>
-      </article>}
-    </div></div></div></div>
+    </div>
+    <div className="panel-resizer" role="separator" tabIndex={resultsOpen?0:-1} hidden={!resultsOpen} aria-label="결과 패널 너비" aria-orientation="vertical" aria-valuemin={300} aria-valuemax={520} aria-valuenow={resultSize}
+      onPointerDown={resizePanel} onPointerMove={dragPanel} onPointerUp={event=>event.currentTarget.releasePointerCapture(event.pointerId)}
+      onKeyDown={event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();setResultSize(value=>event.key==='Home'?300:event.key==='End'?520:Math.max(300,Math.min(520,value+(event.key==='ArrowLeft'?20:-20)*(window.innerWidth>=1440?1:-1))));}}} />
+    <aside id="workspace-results" className="result-dock" hidden={!resultsOpen} aria-label="실행과 제출 결과">
+      <div className="result-heading"><h3>{tool==='run'?'실행 테스트':tool==='history'?'제출 기록':'피드백'}</h3><button type="button" className="secondary" onClick={closeResults}>결과 접기</button></div>
+      <div className="result-content" id="run-results" hidden={tool!=='run'}><RunPanel key={user.id} user={user} source={source} language={language} problem={problem} api={api} sessionId={currentSession?.id || null} inputRequest={inputRequest} onViewCode={viewCode} onActivity={() => setActivity(value => value + 1)} /></div>
+      <div className="result-content" id="submission-results" hidden={tool==='run'}>
+        <RecordHistory title="최근 제출 내역" items={history.filter(item=>item.problemVersion===version)} selectedId={selected?.id} open={historyOpen} onToggle={setHistoryOpen} onSelect={open} label={label}/>
+        {(!selected||selected.problemVersion!==version)&&<p className="muted">제출 내역을 펼쳐 확인할 기록을 선택해 주세요.</p>}
+        {selected&&selected.problemVersion===version&&<article className="submission-detail">
+          {selected.problemHeld&&<p className="notice">문제 검토 중 · 이 기록은 학습 판단 근거에서 보류됩니다.</p>}
+          <div className="record-heading"><h4 id="submission-heading" tabIndex={-1}>{label(selected)}</h4><small>{new Date(selected.createdAt).toLocaleString('ko-KR')}</small></div>
+          <p className="version">{selected.problemVersion} · {recordLanguageLabel(selected)}</p>
+          {(selected.problemVersion!==version||selected.source!==source)&&<p className="notice">현재 편집 중인 코드와 다른 제출의 결과예요.</p>}
+          <button type="button" className="secondary" onClick={()=>viewCode(selected)}>해당 제출 코드 보기</button>
+          {tool==='history'&&<>
+            {selected.verdict==='IE'&&<p className="notice">채점 시스템 문제로 결과를 확인하지 못했어요. 풀이 실패로 기록하지 않습니다.</p>}
+            {selected.compileMessage&&<pre className="compiler-message">{selected.compileMessage}</pre>}
+            <details className="saved-code"><summary>제출 코드 펼치기</summary><pre aria-label="저장된 제출 코드">{selected.source}</pre></details>
+            <button type="button" className="secondary" onClick={()=>showTool('feedback')}>이 제출 피드백 보기</button>
+          </>}
+          <div hidden={tool!=='feedback'}><AiFeedback key={selected.id} submission={selected} api={api}/></div>
+        </article>}
+      </div>
+    </aside></div>}
+    {!loaded && !error && <p role="status">문제와 내 제출 기록을 불러오고 있어요…</p>}
+    {!problem && error && <p role="alert" className="notice error">{error}</p>}
+    {loaded && !problem && <p className="muted">현재 풀이할 수 있는 문제가 없어요.</p>}
+    </div>
   </section>;
 }

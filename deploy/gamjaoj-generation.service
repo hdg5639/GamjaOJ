@@ -1,0 +1,19 @@
+[Unit]
+Description=GamjaOJ Codex problem authoring worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/gamjaoj-generation/current
+EnvironmentFile=%h/gamjaoj-generation/worker.env
+Environment=GENERATION_CODEX_HOME=%h/gamjaoj-generation/auth
+ExecStart=/usr/bin/python3 -m generation.worker --state %h/gamjaoj-generation/state
+Restart=on-failure
+RestartSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

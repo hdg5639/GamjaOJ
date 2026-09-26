@@ -1,12 +1,13 @@
 [Unit]
-Description=GamjaOJ isolated Java judge coordinator
+Description=GamjaOJ isolated multilingual judge coordinator
 After=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=%h/gamjaoj-worker/current
 EnvironmentFile=%h/gamjaoj-worker/worker.env
-ExecStart=/usr/bin/python3 -m runner.worker --state-dir %h/gamjaoj-worker/state
+Environment=GAMJAOJ_DOCKER_CONTROL=engine
+ExecStart=/usr/bin/python3 -m runner.worker --state-dir %h/gamjaoj-worker/state --slots 2
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=150

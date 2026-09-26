@@ -38,6 +38,13 @@ tar -xzf "releases/$release.tar.gz" -C "releases/$release"
 rm "releases/$release.tar.gz"
 docker pull "$(cat "releases/$release/runner/java-image.txt")"
 docker pull "$(cat "releases/$release/runner/java21-image.txt")"
+docker pull "$(cat "releases/$release/runner/cpp-image.txt")"
+docker pull "$(cat "releases/$release/runner/python-image.txt")"
+systemd-run --user --wait --pipe --quiet --working-directory="$PWD/releases/$release" \
+  python3 -c 'from runner.judge import engine_control; engine_control()' || {
+  echo 'Local Docker control API check failed; current worker release is unchanged.' >&2
+  exit 1
+}
 ln -s "releases/$release" "current-$release"
 mv -Tf "current-$release" current
 mkdir -p "$HOME/.config/systemd/user"

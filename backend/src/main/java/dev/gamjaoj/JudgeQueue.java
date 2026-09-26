@@ -15,11 +15,11 @@ public class JudgeQueue {
     private final JdbcClient jdbc;
     public JudgeQueue(JdbcClient jdbc) { this.jdbc = jdbc; }
     record Job(UUID submissionId, String status, int attempt, UUID token, UUID workerId,
-               OffsetDateTime leaseUntil, String verdict, String resultJson, String resultSha256) {}
+               OffsetDateTime leaseUntil, String verdict, String resultJson, String resultSha256, String executionMode) {}
     public record Assignment(UUID submissionId, int attempt, UUID token, String source,
                              String sourceSha256, JsonNode problem, String problemSha256,
-                             String runtimeImage, String runnerPolicy, int heartbeatSeconds) {}
-    private static final String JOB_COLUMNS = "submission_id,status,attempt,token,worker_id,lease_until,verdict,result_json,result_sha256";
+                             String runtimeImage, String runnerPolicy, int heartbeatSeconds, String executionMode, JsonNode runnerEnvironment, String language, JsonNode executionProfile) {}
+    private static final String JOB_COLUMNS = "submission_id,status,attempt,token,worker_id,lease_until,verdict,result_json,result_sha256,execution_mode";
     private static OffsetDateTime now() { return OffsetDateTime.now(ZoneOffset.UTC); }
     private Job job(UUID id) {
         return jdbc.sql("SELECT " + JOB_COLUMNS + " FROM judge_job WHERE submission_id=? FOR UPDATE")
@@ -43,25 +43,34 @@ public class JudgeQueue {
         var resumed = jdbc.sql("SELECT submission_id FROM judge_job WHERE status='RUNNING' AND worker_id=? AND lease_until>? ORDER BY created_at LIMIT 1")
                 .param(worker).param(now).query(UUID.class).optional();
         if (resumed.isPresent()) return Optional.of(assignment(job(resumed.get())));
-        var next = jdbc.sql("SELECT submission_id FROM judge_job WHERE status='QUEUED' OR (status='RUNNING' AND lease_until<=? AND attempt<3) ORDER BY created_at,submission_id LIMIT 1 FOR UPDATE SKIP LOCKED")
+        var next = jdbc.sql("SELECT submission_id FROM judge_job WHERE status='QUEUED' OR (status='RUNNING' AND lease_until<=? AND attempt<3) ORDER BY priority,created_at,submission_id LIMIT 1 FOR UPDATE SKIP LOCKED")
                 .param(now).query(UUID.class).optional();
         if (next.isEmpty()) return Optional.empty();
         Job old = job(next.get());
+        // A waiting user or resource check drains both slots. Do not skip the queue head.
+        var active = jdbc.sql("SELECT execution_mode FROM judge_job WHERE status='RUNNING' AND lease_until>?")
+                .param(now).query(String.class).list();
+        if (!active.isEmpty() && (!old.executionMode().equals("FUNCTIONAL")
+                || active.size() >= 2 || active.stream().anyMatch(mode -> !mode.equals("FUNCTIONAL"))))
+            return Optional.empty();
         if (old.attempt() > 0) jdbc.sql("UPDATE judge_attempt SET status='SUPERSEDED',finished_at=? WHERE submission_id=? AND attempt=?")
                 .param(now).param(old.submissionId()).param(old.attempt()).update();
         UUID token = UUID.randomUUID();
         jdbc.sql("UPDATE judge_job SET status='RUNNING',attempt=?,token=?,worker_id=?,lease_until=? WHERE submission_id=?")
                 .param(old.attempt()+1).param(token).param(worker).param(now.plusSeconds(60)).param(old.submissionId()).update();
-        jdbc.sql("INSERT INTO judge_attempt (submission_id,attempt,token,worker_id,status) VALUES (?,?,?,?,'RUNNING')")
-                .param(old.submissionId()).param(old.attempt()+1).param(token).param(worker).update();
+        jdbc.sql("INSERT INTO judge_attempt (submission_id,attempt,token,worker_id,status,execution_environment_json) VALUES (?,?,?,?,'RUNNING',?)")
+                .param(old.submissionId()).param(old.attempt()+1).param(token).param(worker)
+                .param(JudgeJson.canonical(RunnerEnvironment.expected())).update();
         return Optional.of(assignment(job(old.submissionId())));
     }
 
     private Assignment assignment(Job job) {
-        return jdbc.sql("SELECT s.source_code,s.source_sha256,COALESCE(s.run_package,p.package_json) AS package_json,COALESCE(s.run_package_sha256,p.package_sha256) AS package_sha256,s.runtime_image,s.runner_policy FROM submission s JOIN problem_version p ON p.id=s.problem_version WHERE s.id=?")
+        String environment=jdbc.sql("SELECT execution_environment_json FROM judge_attempt WHERE submission_id=? AND attempt=?")
+                .param(job.submissionId()).param(job.attempt()).query(String.class).optional().orElse(null);
+        return jdbc.sql("SELECT s.source_code,s.source_sha256,COALESCE(s.run_package,d.package_json,p.package_json) AS package_json,COALESCE(s.run_package_sha256,d.package_sha256,p.package_sha256) AS package_sha256,s.runtime_image,s.runner_policy,s.language,s.execution_profile_json FROM submission s JOIN problem_version p ON p.id=s.problem_version LEFT JOIN diagnostic_item d ON d.id=s.diagnostic_item_id WHERE s.id=?")
                 .param(job.submissionId()).query((row, index) -> new Assignment(job.submissionId(), job.attempt(), job.token(),
                         row.getString("source_code"), row.getString("source_sha256"), JudgeJson.parse(row.getString("package_json")),
-                        row.getString("package_sha256"), row.getString("runtime_image"), row.getString("runner_policy"), 10)).single();
+                        row.getString("package_sha256"), row.getString("runtime_image"), row.getString("runner_policy"), 10, job.executionMode(), environment==null?null:JudgeJson.parse(environment), row.getString("language"),row.getString("execution_profile_json")==null?null:JudgeJson.parse(row.getString("execution_profile_json")))).single();
     }
 
     @Transactional
@@ -90,11 +99,17 @@ public class JudgeQueue {
     }
 
     private void validate(Assignment expected, JsonNode report) {
+        if(expected.runnerEnvironment()!=null && !RunnerEnvironment.matches(expected.runnerEnvironment(),report.get("runner_environment")))
+            throw new AccountException(400,"Runner environment does not match the saved attempt");
+        if(expected.executionProfile()!=null && (!expected.executionProfile().equals(report.path("execution_profile"))
+                || !expected.language().equals(report.path("language").asText())))
+            throw new AccountException(400,"Language/limits do not match the saved submission");
         String verdict = report.path("verdict").asText();
         boolean run = expected.problem().path("output_policy").asText().equals("RUN_ONLY");
         String success = run ? "OK" : "AC";
         Set<String> allowed = run ? Set.of("OK","CE","RE","TLE","MLE","OLE","IE") : Set.of("AC","WA","CE","RE","TLE","MLE","OLE","IE");
         if (!allowed.contains(verdict)
+                || !expected.executionMode().equals(report.path("execution_mode").asText("EXCLUSIVE"))
                 || !expected.sourceSha256().equals(report.path("source_sha256").asText())
                 || !expected.problemSha256().equals(report.path("problem_sha256").asText())
                 || !expected.runtimeImage().equals(report.path("image").asText())

@@ -14,14 +14,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class Submissions {
     private final JdbcClient jdbc;
     private final boolean enabled;
-    public Submissions(JdbcClient jdbc, @Value("${gamjaoj.submissions-enabled:false}") boolean enabled) {
-        this.jdbc = jdbc; this.enabled = enabled;
+    private final Diagnostics diagnostics;
+    public Submissions(JdbcClient jdbc, @Value("${gamjaoj.submissions-enabled:false}") boolean enabled, Diagnostics diagnostics) {
+        this.jdbc = jdbc; this.enabled = enabled; this.diagnostics=diagnostics;
     }
     public record Problem(String version, String title, String statement, String sampleInput,
-                          String sampleOutput, int sourceLimitBytes, boolean submissionsEnabled) {}
+                          String sampleOutput, int sourceLimitBytes, boolean submissionsEnabled, boolean problemHeld, String reviewReason, boolean mine, boolean shared, boolean generated, String category, List<String> tags, String difficulty, String difficultySource, String solveStatus, long pendingSubmissions, List<LanguageProfiles.Option> languages) {}
     public record View(UUID id, String problemVersion, String sourceSha256, String source,
                        String status, String verdict, String compileMessage, OffsetDateTime createdAt,
-                       OffsetDateTime finishedAt, String input, String stdout, String stderr, boolean outputTruncated, UUID sessionId, String runnerPolicy) {}
+                       OffsetDateTime finishedAt, String input, String stdout, String stderr, boolean outputTruncated, UUID sessionId, String runnerPolicy, boolean problemHeld, UUID diagnosticItemId, String language, LanguageProfiles.Option execution) {}
 
     UUID owner(String username, boolean lock) {
         return jdbc.sql("SELECT id FROM app_user WHERE username = ?" + (lock ? " FOR UPDATE" : ""))
@@ -33,13 +34,14 @@ public class Submissions {
         UUID owner = owner(username, false);
         boolean canSubmit = enabled || jdbc.sql("SELECT count(*) FROM execution_grant WHERE user_id = ?")
                 .param(owner).query(Integer.class).single() > 0;
-        return jdbc.sql("SELECT id, package_json FROM problem_version WHERE ready = true ORDER BY id")
+        return jdbc.sql("SELECT p.*,g.template_id,g.focus,d.spec_json,COALESCE(progress.submissions,0) AS my_submissions,COALESCE(progress.accepted,0) AS my_accepted,COALESCE(progress.pending,0) AS my_pending FROM problem_version p LEFT JOIN (SELECT s.problem_version,COUNT(*) AS submissions,SUM(CASE WHEN j.status='FINISHED' AND j.verdict='AC' THEN 1 ELSE 0 END) AS accepted,SUM(CASE WHEN j.status<>'FINISHED' THEN 1 ELSE 0 END) AS pending FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.user_id=? AND s.run_input IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.diagnostic_item_id IS NULL GROUP BY s.problem_version) progress ON progress.problem_version=p.id LEFT JOIN generation_job g ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) LEFT JOIN generation_spec_draft d ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE p.ready=true AND p.diagnostic_only=false AND (p.owner_id IS NULL OR p.owner_id=? OR (p.shared=true AND p.review_hold=false)) ORDER BY p.id").param(owner).param(owner)
                 .query((row, index) -> {
                     JsonNode data = JudgeJson.parse(row.getString("package_json"));
+                    var metadata=ProblemCatalogMetadata.read(row);
                     // Explicit public fields only: never serialize a private problem package.
                     return new Problem(row.getString("id"), data.path("title").asText(), data.path("statement").asText(),
                             data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText(),
-                            65536, canSubmit);
+                            65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options());
                 }).list();
     }
 
@@ -52,32 +54,39 @@ public class Submissions {
     public View run(String username, UUID key, RunController.Request request) {
         if (request.input().getBytes(StandardCharsets.UTF_8).length > 16384)
             throw new AccountException(400, "입력은 UTF-8 기준 16 KiB 이내로 작성해 주세요.");
-        return save(username, key, new SubmissionController.Request(request.problemVersion(), request.source(), request.sessionId()), request.input());
+        return save(username, key, new SubmissionController.Request(request.problemVersion(), request.source(), request.sessionId(), request.diagnosticItemId(), request.language()), request.input());
     }
 
     private View save(String username, UUID key, SubmissionController.Request request, String input) {
         if (request.source().getBytes(StandardCharsets.UTF_8).length > 65536)
             throw new AccountException(400, "코드는 UTF-8 기준 64 KiB 이내로 제출해 주세요.");
+        String language = LanguageProfiles.normalize(request.language());
+        JsonNode execution = LanguageProfiles.profile(language);
         String hash = JudgeJson.hash(request.source());
         UUID user = owner(username, true); // Serialize admission for this user's idempotency and pending cap.
         var existing = jdbc.sql("SELECT id FROM submission WHERE user_id = ? AND idempotency_key = ?")
                 .param(user).param(key).query(UUID.class).optional();
         if (existing.isPresent()) {
             View view = find(user, existing.get(), true);
-            if (!view.sourceSha256().equals(hash) || !view.problemVersion().equals(request.problemVersion())
-                    || !java.util.Objects.equals(view.input(), input) || !java.util.Objects.equals(view.sessionId(), request.sessionId()))
+            if (!view.language().equals(language) || !view.sourceSha256().equals(hash) || !view.problemVersion().equals(request.problemVersion())
+                    || !java.util.Objects.equals(view.input(), input) || !java.util.Objects.equals(view.sessionId(), request.sessionId())
+                    || !java.util.Objects.equals(view.diagnosticItemId(),request.diagnosticItemId()))
                 throw new AccountException(409, "같은 요청 키에 다른 코드가 들어왔어요. 새 제출로 보내 주세요.");
             return view;
         }
         if (!enabled && jdbc.sql("SELECT count(*) FROM execution_grant WHERE user_id = ? AND source_sha256 = ?")
                 .param(user).param(hash).query(Integer.class).single() == 0)
             throw new AccountException(503, "코드 채점을 준비하고 있어요. 잠시 후 다시 확인해 주세요.");
-        if (jdbc.sql("SELECT count(*) FROM problem_version WHERE id = ? AND ready = true")
-                .param(request.problemVersion()).query(Integer.class).single() == 0)
+        if (jdbc.sql("SELECT count(*) FROM problem_version WHERE id = ? AND ready = true AND review_hold=false AND (owner_id IS NULL OR owner_id=? OR shared=true)")
+                .param(request.problemVersion()).param(user).query(Integer.class).single() == 0)
             throw new AccountException(404, "제출할 수 있는 문제 버전이 아니에요.");
-        if (jdbc.sql("SELECT count(*) FROM submission s JOIN judge_job j ON s.id=j.submission_id WHERE s.user_id=? AND j.status <> 'FINISHED'")
+        if (jdbc.sql("SELECT count(*) FROM submission s JOIN judge_job j ON s.id=j.submission_id WHERE s.user_id=? AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND j.status <> 'FINISHED'")
                 .param(user).query(Integer.class).single() >= 3)
             throw new AccountException(429, "진행 중인 채점이 끝나면 다시 제출해 주세요.");
+        boolean diagnosticProblem=jdbc.sql("SELECT diagnostic_only FROM problem_version WHERE id=?").param(request.problemVersion()).query(Boolean.class).single();
+        if(diagnosticProblem != (request.diagnosticItemId()!=null) || (request.diagnosticItemId()!=null && request.sessionId()!=null))
+            throw new AccountException(409,"진단 문항은 현재 진단에서 제출해 주세요.");
+        Diagnostics.Snapshot snapshot=request.diagnosticItemId()==null?null:diagnostics.admit(user,request.diagnosticItemId(),request.problemVersion(),input!=null);
         if (request.sessionId() != null) {
             var session = jdbc.sql("SELECT problem_version,status FROM training_session WHERE id=? AND user_id=?")
                     .param(request.sessionId()).param(user).query((r,n)->new String[]{r.getString(1),r.getString(2)}).optional()
@@ -86,10 +95,16 @@ public class Submissions {
                 throw new AccountException(409,"진행 중인 훈련의 문제를 확인해 주세요. 종료된 훈련에는 새 작업을 추가할 수 없어요.");
         }
         UUID id = UUID.randomUUID();
-        jdbc.sql("INSERT INTO submission (id,user_id,problem_version,source_code,source_sha256,idempotency_key,runtime_image,runner_policy) SELECT ?,?,?,?,?,?,runtime_image,CASE WHEN ? THEN 'java8-run-v1' ELSE runner_policy END FROM problem_version WHERE id=?")
-                .param(id).param(user).param(request.problemVersion()).param(request.source()).param(hash).param(key).param(input != null).param(request.problemVersion()).update();
+        jdbc.sql("INSERT INTO submission (id,user_id,problem_version,source_code,source_sha256,idempotency_key,runtime_image,runner_policy,language,execution_profile_json) VALUES (?,?,?,?,?,?,?,?,?,?)")
+                .param(id).param(user).param(request.problemVersion()).param(request.source()).param(hash).param(key)
+                .param(execution.path("image").asText()).param(execution.path(input==null?"policy":"runPolicy").asText())
+                .param(language).param(JudgeJson.canonical(execution)).update();
         if (request.sessionId() != null) jdbc.sql("UPDATE submission SET training_session_id=? WHERE id=?")
                 .param(request.sessionId()).param(id).update();
+        if(snapshot!=null) {
+            jdbc.sql("UPDATE submission SET diagnostic_item_id=? WHERE id=?")
+                    .param(request.diagnosticItemId()).param(id).update();
+        }
         if (input != null) {
             var plan = JudgeJson.JSON.createObjectNode().put("version", request.problemVersion()).put("output_policy", "RUN_ONLY");
             plan.putArray("tests").addObject().put("id", "custom-input").put("input", input).put("output", "");
@@ -101,13 +116,16 @@ public class Submissions {
         return find(user, id, true);
     }
 
-    public List<View> history(String username) { return history(username, false); }
-    public List<View> runs(String username) { return history(username, true); }
-    private List<View> history(String username, boolean run) {
-        UUID user = owner(username, false);
-        return jdbc.sql("SELECT id FROM submission WHERE user_id = ? AND run_input IS " + (run ? "NOT NULL" : "NULL") + " ORDER BY created_at DESC, id DESC LIMIT 50")
-                .param(user).query(UUID.class).list().stream().map(id -> find(user, id, false)).toList();
+    public List<View> history(String username) { return history(username,null,0); }
+    public List<View> history(String username,String problemVersion,int page) {
+        if(page<0||page>100000)throw new AccountException(400,"잘못된 페이지예요.");
+        UUID user=owner(username,false);
+        String filter=problemVersion==null?"":" AND problem_version=?";
+        var query=jdbc.sql("SELECT id FROM submission WHERE generation_job_id IS NULL AND spec_draft_id IS NULL AND user_id=? AND run_input IS NULL"+filter+" ORDER BY created_at DESC,id DESC LIMIT 50 OFFSET ?").param(user);
+        if(problemVersion!=null)query=query.param(problemVersion);
+        return query.param(page*50).query(UUID.class).list().stream().map(id->find(user,id,false)).toList();
     }
+    public List<View> runs(String username) { owner(username,false);return List.of(); }
     public View detail(String username, UUID id) { return detail(username, id, false); }
     public View runDetail(String username, UUID id) { return detail(username, id, true); }
     private View detail(String username, UUID id, boolean run) {
@@ -116,7 +134,7 @@ public class Submissions {
         return view;
     }
     private View find(UUID user, UUID id, boolean includeSource) {
-        return jdbc.sql("SELECT s.*,j.status,j.verdict,j.result_json,j.finished_at FROM submission s JOIN judge_job j ON s.id=j.submission_id WHERE s.id=? AND s.user_id=?")
+        return jdbc.sql("SELECT s.*,p.review_hold,j.status,j.verdict,j.result_json,j.finished_at FROM submission s JOIN problem_version p ON p.id=s.problem_version JOIN judge_job j ON s.id=j.submission_id WHERE s.id=? AND s.user_id=? AND s.spec_draft_id IS NULL")
                 .param(id).param(user).query((row, index) -> {
                     String verdict = row.getString("verdict"), result = row.getString("result_json");
                     String compile = "CE".equals(verdict) && result != null
@@ -127,7 +145,8 @@ public class Submissions {
                     return new View(id, row.getString("problem_version"), row.getString("source_sha256"),
                             includeSource ? row.getString("source_code") : null, row.getString("status"), verdict, compile,
                             row.getObject("created_at", OffsetDateTime.class), row.getObject("finished_at", OffsetDateTime.class), input,
-                            output.path("stdout").asText(""), output.path("stderr").asText(""), output.path("stdout_truncated").asBoolean(), row.getObject("training_session_id", UUID.class), row.getString("runner_policy"));
+                            output.path("stdout").asText(""), output.path("stderr").asText(""), output.path("stdout_truncated").asBoolean(), row.getObject("training_session_id", UUID.class), row.getString("runner_policy"),row.getBoolean("review_hold"),row.getObject("diagnostic_item_id",UUID.class),row.getString("language"),
+                            row.getString("execution_profile_json")==null?null:LanguageProfiles.option(JudgeJson.parse(row.getString("execution_profile_json"))));
                 }).optional().orElseThrow(() -> new AccountException(404, "제출 기록을 찾을 수 없어요."));
     }
 }

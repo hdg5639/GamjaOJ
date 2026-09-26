@@ -1,0 +1,66 @@
+{
+  "diagnostic-core-a-clock-v2": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int h,m,d;cin>>h>>m>>d;int t=h*60+m+d;cout<<t/60%24<<\" \"<<t%60;}\n",
+    "PYTHON": "h,m,d=map(int,input().split())\nt=h*60+m+d\nprint(t//60%24,t%60)\n"
+  },
+  "diagnostic-core-a-robot-v2": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int n,r=1,c=1;string a;cin>>n>>a;for(char v:a){int x=r,y=c;if(v=='U')x--;if(v=='D')x++;if(v=='L')y--;if(v=='R')y++;if(x>=1&&x<=n&&y>=1&&y<=n){r=x;c=y;}}cout<<r<<\" \"<<c;}\n",
+    "PYTHON": "tokens=iter(__import__('sys').stdin.read().split())\nn=int(next(tokens)); a=next(tokens); r=c=1\nfor v in a:\n dr,dc={'U':(-1,0),'D':(1,0),'L':(0,-1),'R':(0,1)}[v]\n x,y=r+dr,c+dc\n if 1<=x<=n and 1<=y<=n:r,c=x,y\nprint(r,c)\n"
+  },
+  "diagnostic-core-a-runs-v2": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);string a;cin>>a;int cur=1,best=1;for(int i=1;i<(int)a.size();i++){cur=a[i]==a[i-1]?cur+1:1;best=max(best,cur);}cout<<best;}\n",
+    "PYTHON": "a=input().strip();cur=best=1\nfor i in range(1,len(a)):\n cur=cur+1 if a[i]==a[i-1] else 1\n best=max(best,cur)\nprint(best)\n"
+  },
+  "diagnostic-core-a-ranges-v2": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int n,q;cin>>n>>q;vector<long long> p(n+1);for(int i=1;i<=n;i++){cin>>p[i];p[i]+=p[i-1];}while(q--){int l,r;cin>>l>>r;cout<<p[r]-p[l-1]<<\"\\n\";}}\n",
+    "PYTHON": "it=iter(map(int,__import__('sys').stdin.read().split()));n=next(it);q=next(it);p=[0]\nfor _ in range(n):p.append(p[-1]+next(it))\nfor _ in range(q):\n l,r=next(it),next(it)\n print(p[r]-p[l-1])\n"
+  },
+  "diagnostic-core-a-distinct-v2": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int n,x;cin>>n;set<int>s;while(n--){cin>>x;s.insert(x);}cout<<s.size();}\n",
+    "PYTHON": "a=list(map(int,__import__(\"sys\").stdin.read().split()));print(len(set(a[1:])))\n"
+  },
+  "diagnostic-core-a-brackets-v2": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);string a,s;cin>>a;bool ok=true;for(char c:a){if(c=='('||c=='[')s+=c;else if(s.empty()||s.back()!=(c==')'?'(':'[')){ok=false;break;}else s.pop_back();}cout<<(ok&&s.empty()?\"YES\":\"NO\");}\n",
+    "PYTHON": "s=[];ok=True\nfor c in input().strip():\n if c in '([':s.append(c)\n elif not s or s.pop()!= {')':'(',']':'['}[c]:ok=False;break\nprint('YES' if ok and not s else 'NO')\n"
+  },
+  "diagnostic-core-a-reach-v2": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int h,w;cin>>h>>w;vector<string>g(h);for(auto &r:g)cin>>r;vector<vector<int>>d(h,vector<int>(w,-1));queue<pair<int,int>>q;q.push({0,0});d[0][0]=0;int dr[]={1,-1,0,0},dc[]={0,0,1,-1};while(!q.empty()){auto [r,c]=q.front();q.pop();for(int k=0;k<4;k++){int x=r+dr[k],y=c+dc[k];if(x>=0&&x<h&&y>=0&&y<w&&g[x][y]=='.'&&d[x][y]<0){d[x][y]=d[r][c]+1;q.push({x,y});}}}cout<<(d[h-1][w-1]>=0?\"YES\":\"NO\");}\n",
+    "PYTHON": "from collections import deque\nit=iter(__import__('sys').stdin.read().split());h,w=int(next(it)),int(next(it));g=[next(it) for _ in range(h)];d=[[-1]*w for _ in range(h)];d[0][0]=0;q=deque([(0,0)])\nwhile q:\n r,c=q.popleft()\n for dr,dc in ((1,0),(-1,0),(0,1),(0,-1)):\n  x,y=r+dr,c+dc\n  if 0<=x<h and 0<=y<w and g[x][y]=='.' and d[x][y]<0:\n   d[x][y]=d[r][c]+1;q.append((x,y))\nprint(\"YES\" if d[h-1][w-1]>=0 else \"NO\")\n"
+  },
+  "diagnostic-core-a-shortest-v2": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int h,w;cin>>h>>w;vector<string>g(h);for(auto &r:g)cin>>r;vector<vector<int>>d(h,vector<int>(w,-1));queue<pair<int,int>>q;q.push({0,0});d[0][0]=0;int dr[]={1,-1,0,0},dc[]={0,0,1,-1};while(!q.empty()){auto [r,c]=q.front();q.pop();for(int k=0;k<4;k++){int x=r+dr[k],y=c+dc[k];if(x>=0&&x<h&&y>=0&&y<w&&g[x][y]=='.'&&d[x][y]<0){d[x][y]=d[r][c]+1;q.push({x,y});}}}cout<<d[h-1][w-1];}\n",
+    "PYTHON": "from collections import deque\nit=iter(__import__('sys').stdin.read().split());h,w=int(next(it)),int(next(it));g=[next(it) for _ in range(h)];d=[[-1]*w for _ in range(h)];d[0][0]=0;q=deque([(0,0)])\nwhile q:\n r,c=q.popleft()\n for dr,dc in ((1,0),(-1,0),(0,1),(0,-1)):\n  x,y=r+dr,c+dc\n  if 0<=x<h and 0<=y<w and g[x][y]=='.' and d[x][y]<0:\n   d[x][y]=d[r][c]+1;q.append((x,y))\nprint(d[h-1][w-1])\n"
+  },
+  "diagnostic-core-b-before-v1": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int h,m,d;cin>>h>>m>>d;int t=((h*60+m-d)%1440+1440)%1440;cout<<t/60<<\" \"<<t%60;}\n",
+    "PYTHON": "h,m,d=map(int,__import__(\"sys\").stdin.read().split());t=(h*60+m-d)%1440;print(t//60,t%60)\n"
+  },
+  "diagnostic-core-b-storage-v1": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int c,x,n,d;cin>>c>>x>>n;while(n--){cin>>d;if(x+d>=0&&x+d<=c)x+=d;}cout<<x;}\n",
+    "PYTHON": "a=list(map(int,__import__('sys').stdin.read().split()));c,x,n=a[:3]\nfor d in a[3:]:\n if 0<=x+d<=c:x+=d\nprint(x)\n"
+  },
+  "diagnostic-core-b-rising-v1": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int n,p,x,cur=1,best=1;cin>>n>>p;while(--n){cin>>x;cur=x>p?cur+1:1;best=max(best,cur);p=x;}cout<<best;}\n",
+    "PYTHON": "a=list(map(int,__import__('sys').stdin.read().split()))[1:];cur=best=1\nfor p,x in zip(a,a[1:]):\n cur=cur+1 if x>p else 1\n best=max(best,cur)\nprint(best)\n"
+  },
+  "diagnostic-core-b-window-v1": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int n,k;cin>>n>>k;vector<long long>a(n);for(auto &x:a)cin>>x;long long s=accumulate(a.begin(),a.begin()+k,0LL),best=s;for(int i=k;i<n;i++){s+=a[i]-a[i-k];best=max(best,s);}cout<<best;}\n",
+    "PYTHON": "a=list(map(int,__import__('sys').stdin.read().split()));n,k=a[:2];a=a[2:];s=best=sum(a[:k])\nfor i in range(k,n):\n s+=a[i]-a[i-k];best=max(best,s)\nprint(best)\n"
+  },
+  "diagnostic-core-b-singletons-v1": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int n,x;cin>>n;map<int,int>m;while(n--){cin>>x;m[x]++;}int ans=0;for(auto p:m)ans+=p.second==1;cout<<ans;}\n",
+    "PYTHON": "from collections import Counter\na=list(map(int,__import__(\"sys\").stdin.read().split()))[1:];print(sum(v==1 for v in Counter(a).values()))\n"
+  },
+  "diagnostic-core-b-nested-v1": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int n,x;cin>>n;vector<int>s;bool ok=true;while(n--){cin>>x;if(x>0)s.push_back(x);else if(s.empty())ok=false;else{if(s.back()!=-x)ok=false;s.pop_back();}}cout<<(ok&&s.empty()?\"YES\":\"NO\");}\n",
+    "PYTHON": "a=list(map(int,__import__('sys').stdin.read().split()))[1:];s=[];ok=True\nfor x in a:\n if x>0:s.append(x)\n elif not s or s.pop()!=-x:ok=False\nprint('YES' if ok and not s else 'NO')\n"
+  },
+  "diagnostic-core-b-connected-v1": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int n,m,s,e;cin>>n>>m>>s>>e;--s;--e;vector<vector<int>>g(n);while(m--){int a,b;cin>>a>>b;--a;--b;g[a].push_back(b);g[b].push_back(a);}vector<int>d(n,-1);queue<int>q;q.push(s);d[s]=0;while(!q.empty()){int a=q.front();q.pop();for(int b:g[a])if(d[b]<0){d[b]=d[a]+1;q.push(b);}}cout<<(d[e]>=0?\"YES\":\"NO\");}\n",
+    "PYTHON": "from collections import deque\nit=iter(map(int,__import__('sys').stdin.read().split()));n,m,s,e=next(it),next(it),next(it)-1,next(it)-1;g=[[] for _ in range(n)]\nfor _ in range(m):\n a,b=next(it)-1,next(it)-1;g[a].append(b);g[b].append(a)\nd=[-1]*n;d[s]=0;q=deque([s])\nwhile q:\n a=q.popleft()\n for b in g[a]:\n  if d[b]<0:d[b]=d[a]+1;q.append(b)\nprint(\"YES\" if d[e]>=0 else \"NO\")\n"
+  },
+  "diagnostic-core-b-hops-v1": {
+    "CPP": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ios::sync_with_stdio(false);cin.tie(nullptr);int n,m,s,e;cin>>n>>m>>s>>e;--s;--e;vector<vector<int>>g(n);while(m--){int a,b;cin>>a>>b;--a;--b;g[a].push_back(b);g[b].push_back(a);}vector<int>d(n,-1);queue<int>q;q.push(s);d[s]=0;while(!q.empty()){int a=q.front();q.pop();for(int b:g[a])if(d[b]<0){d[b]=d[a]+1;q.push(b);}}cout<<d[e];}\n",
+    "PYTHON": "from collections import deque\nit=iter(map(int,__import__('sys').stdin.read().split()));n,m,s,e=next(it),next(it),next(it)-1,next(it)-1;g=[[] for _ in range(n)]\nfor _ in range(m):\n a,b=next(it)-1,next(it)-1;g[a].append(b);g[b].append(a)\nd=[-1]*n;d[s]=0;q=deque([s])\nwhile q:\n a=q.popleft()\n for b in g[a]:\n  if d[b]<0:d[b]=d[a]+1;q.append(b)\nprint(d[e])\n"
+  }
+}

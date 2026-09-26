@@ -13,7 +13,7 @@ public class TrainingSessions {
     private final Submissions submissions;
     public TrainingSessions(JdbcClient jdbc, Submissions submissions) { this.jdbc=jdbc; this.submissions=submissions; }
     public record View(UUID id, String problemVersion, String goal, String note, String status,
-                       OffsetDateTime startedAt, OffsetDateTime endedAt, int submissions, int accepted, int runs, int pending) {}
+                       OffsetDateTime startedAt, OffsetDateTime endedAt, int submissions, int accepted, int runs, int pending, boolean problemHeld) {}
     public record Entry(UUID id, String kind, String status, String verdict, OffsetDateTime createdAt) {}
     public record Detail(View session, List<Entry> entries) {}
 
@@ -31,7 +31,7 @@ public class TrainingSessions {
             throw new AccountException(409,"새 요청 키로 다시 시작해 주세요.");
         if (jdbc.sql("SELECT count(*) FROM training_session WHERE user_id=? AND status='ACTIVE'").param(user).query(Integer.class).single()>0)
             throw new AccountException(409,"진행 중인 훈련을 먼저 마쳐 주세요.");
-        if (jdbc.sql("SELECT count(*) FROM problem_version WHERE id=? AND ready=true").param(request.problemVersion()).query(Integer.class).single()==0)
+        if (jdbc.sql("SELECT count(*) FROM problem_version WHERE id=? AND ready=true AND diagnostic_only=false AND review_hold=false AND (owner_id IS NULL OR owner_id=? OR shared=true)").param(request.problemVersion()).param(user).query(Integer.class).single()==0)
             throw new AccountException(404,"훈련할 수 있는 문제 버전이 아니에요.");
         jdbc.sql("INSERT INTO training_session (id,user_id,problem_version,goal,active_owner) VALUES (?,?,?,?,?)")
                 .param(id).param(user).param(request.problemVersion()).param(request.goal()).param(user).update();
@@ -57,13 +57,13 @@ public class TrainingSessions {
     public Detail detail(String username, UUID id) {
         UUID user = submissions.owner(username,false);
         View view=find(user,id);
-        var entries=jdbc.sql("SELECT s.id,CASE WHEN s.run_input IS NULL THEN 'SUBMISSION' ELSE 'RUN' END AS kind,j.status,j.verdict,s.created_at FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=? AND s.user_id=? ORDER BY s.created_at DESC,s.id DESC LIMIT 50")
+        var entries=jdbc.sql("SELECT s.id,CASE WHEN s.run_input IS NULL THEN 'SUBMISSION' ELSE 'RUN' END AS kind,j.status,j.verdict,s.created_at FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=? AND s.user_id=? AND s.run_input IS NULL ORDER BY s.created_at DESC,s.id DESC LIMIT 50")
                 .param(id).param(user).query(Entry.class).list();
         return new Detail(view,entries);
     }
     private View find(UUID user, UUID id) {
-        return jdbc.sql("SELECT t.*, (SELECT count(*) FROM submission s WHERE s.training_session_id=t.id AND s.run_input IS NULL) AS submissions, (SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=t.id AND s.run_input IS NULL AND j.verdict='AC') AS accepted, (SELECT count(*) FROM submission s WHERE s.training_session_id=t.id AND s.run_input IS NOT NULL) AS runs, (SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=t.id AND j.status<>'FINISHED') AS pending FROM training_session t WHERE t.id=? AND t.user_id=?")
-                .param(id).param(user).query((r,n)->new View(id,r.getString("problem_version"),r.getString("goal"),r.getString("note"),r.getString("status"),r.getObject("started_at",OffsetDateTime.class),r.getObject("ended_at",OffsetDateTime.class),r.getInt("submissions"),r.getInt("accepted"),r.getInt("runs"),r.getInt("pending")))
+        return jdbc.sql("SELECT t.*,p.review_hold, (SELECT count(*) FROM submission s WHERE s.training_session_id=t.id AND s.run_input IS NULL) AS submissions, (SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=t.id AND s.run_input IS NULL AND j.verdict='AC') AS accepted, (SELECT count(*) FROM submission s WHERE s.training_session_id=t.id AND s.run_input IS NOT NULL) AS runs, (SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=t.id AND j.status<>'FINISHED') AS pending FROM training_session t JOIN problem_version p ON p.id=t.problem_version WHERE t.id=? AND t.user_id=?")
+                .param(id).param(user).query((r,n)->new View(id,r.getString("problem_version"),r.getString("goal"),r.getString("note"),r.getString("status"),r.getObject("started_at",OffsetDateTime.class),r.getObject("ended_at",OffsetDateTime.class),r.getInt("submissions"),r.getInt("accepted"),r.getInt("runs"),r.getInt("pending"),r.getBoolean("review_hold")))
                 .optional().orElseThrow(()->new AccountException(404,"훈련 기록을 찾을 수 없어요."));
     }
 }

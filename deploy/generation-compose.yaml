@@ -1,0 +1,28 @@
+name: gamjaoj-generation
+services:
+  worker:
+    image: ${GENERATION_IMAGE:?Set generation image}
+    restart: unless-stopped
+    init: true
+    user: '65532:65532'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 0.5
+    mem_limit: 768m
+    pids_limit: 96
+    tmpfs:
+      - /tmp:size=128m,mode=1777,nosuid,nodev
+    env_file: ./worker.env
+    volumes:
+      - ./auth:/auth
+      - ./state:/state
+    networks: [generation]
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: '2'}
+networks:
+  generation:
+    name: gamjaoj_generation
+    labels:
+      com.gamjaoj.owner: gamjaoj-generation
