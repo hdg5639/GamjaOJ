@@ -112,6 +112,8 @@ class HybridRuleOnboarding {
             +" Design ONE exact, self-contained algorithmic rule implied by the request for Java 8 standard input/output judging: one test case per input and exactly one deterministic correct output compared token by token."
             +" Choose bounds so an efficient Java 8 solution runs well under one second and every input fits in 16 KB. If the request is infeasible (interactive, floating-point, several valid outputs, randomized), choose the closest feasible deterministic formulation and state that in catalog.description."
             +" contract: complete semantic contract; the public fields alone must fully determine every answer (input format, indexing, output, ties, empty and impossible cases, numeric ranges and limits)."
+            +" State in the contract that every judged input is guaranteed to satisfy the format and constraints (a separate input validator enforces them), so solutions need not detect invalid input."
+            +" rules describe what must be computed, never how: do not prescribe an algorithm, prefix arrays or other intermediate structures; put approach hints only in guidance.teaching."
             +" Every contract action id is lowercase kebab-case matching ^[a-z][a-z0-9-]{0,39}$ (for example range-sum), unique, and reused verbatim as the matching rules id. Every text field is non-empty and under 4000 characters; write a short explicit value such as 'not applicable' instead of leaving one empty."
             +" rules: exactly one Korean normative explanation per contract action, using the same action ids."
             +" catalog: Korean label (at most 40 characters), Korean description, category, 1 to 6 Korean tags without commas, 1 to 5 short Korean rule bullets."
