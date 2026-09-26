@@ -136,7 +136,7 @@ class HybridPublicationIntegrationTest {
     @Test void restartAfterReviewQueuedUsesStoredInputAndOneReservedCall() {
         UUID id=checked(false);publication.advance();
         String before=jdbc.sql("SELECT input_sha256 FROM hybrid_branch WHERE role='CONTENT_REVIEW'").query(String.class).single();
-        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(tx->new HybridPublication(jdbc,checks,event->{}).advance());
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(tx->new HybridPublication(jdbc,checks,event->{},new HybridRuleRegistry(jdbc)).advance());
         var work=execution.claimApi();assertThat(work.request().assignment().inputHash()).isEqualTo(before);
         execution.finish(work.attemptId(),result(accepted(work)),null);publication.advance();
         assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");assertThat(runner.jobs()).isEqualTo(15);

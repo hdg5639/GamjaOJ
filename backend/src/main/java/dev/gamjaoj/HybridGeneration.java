@@ -25,7 +25,8 @@ class HybridGeneration {
                       String publicHash,JsonNode payload,JsonNode usage,String error) {}
     record Progress(UUID id,String pipelineVersion,int revision,String status,int repairRounds,boolean shared,
                     String contractHash,String publicHash,String error,OffsetDateTime acceptedAt,
-                    OffsetDateTime deadlineAt,Map<Role,String> branches,String publishedVersionId,boolean problemHeld,String profileId) {}
+                    OffsetDateTime deadlineAt,Map<Role,String> branches,String publishedVersionId,boolean problemHeld,String profileId,
+                    boolean referenceReused) {}
     private OffsetDateTime now(){return OffsetDateTime.now(ZoneOffset.UTC);}
     private AccountException conflict(){return new AccountException(409,"현재 출제 단계와 맞지 않는 결과예요.");}
     private Job job(UUID id,boolean lock) {
@@ -103,7 +104,8 @@ class HybridGeneration {
         Job j=owned(username,id,false);var states=new EnumMap<Role,String>(Role.class);
         for(Role role:Role.values())states.put(role,"NOT_STARTED");latest(j).forEach((r,b)->states.put(r,b.status));
         return new Progress(id,HybridArtifacts.VERSION,j.revision,j.status,j.repairs,j.shared,j.contractHash,j.publicHash,
-                j.error,j.acceptedAt,j.deadlineAt,Collections.unmodifiableMap(states),jdbc.sql("SELECT published_version_id FROM hybrid_generation WHERE id=?").param(id).query(String.class).optional().orElse(null),jdbc.sql("SELECT count(*) FROM problem_version WHERE id=(SELECT published_version_id FROM hybrid_generation WHERE id=?) AND review_hold=true").param(id).query(Integer.class).single()>0,jdbc.sql("SELECT profile_id FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).optional().orElse(null));
+                j.error,j.acceptedAt,j.deadlineAt,Collections.unmodifiableMap(states),jdbc.sql("SELECT published_version_id FROM hybrid_generation WHERE id=?").param(id).query(String.class).optional().orElse(null),jdbc.sql("SELECT count(*) FROM problem_version WHERE id=(SELECT published_version_id FROM hybrid_generation WHERE id=?) AND review_hold=true").param(id).query(Integer.class).single()>0,jdbc.sql("SELECT profile_id FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).optional().orElse(null),
+                jdbc.sql("SELECT count(*) FROM hybrid_public_request WHERE generation_id=? AND reference_artifact_id IS NOT NULL").param(id).query(Integer.class).single()>0);
     }
     @Transactional
     Assignment claim(UUID id,Role role) {
