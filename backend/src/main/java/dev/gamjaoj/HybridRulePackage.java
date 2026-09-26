@@ -58,17 +58,23 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
             if(!tinyAnswers.containsKey(witness))throw new HybridArtifacts.Invalid("RULE_PACKAGE_WITNESS");
             sources.put(id,text(m.path("source"),65536));witnesses.put(id,new HybridFiniteProfile.Case("witness-"+id,witness,tinyAnswers.get(witness)));
         }
-        var catalog=p.path("catalog");
-        HybridArtifacts.fields(catalog,"label","description","category","tags","rules");
-        text(catalog.path("label"),120);text(catalog.path("description"),600);text(catalog.path("category"),40);
-        if(!catalog.path("tags").isArray()||catalog.path("tags").size()<1||catalog.path("tags").size()>6)throw new HybridArtifacts.Invalid("RULE_PACKAGE_CATALOG");
-        for(var t:catalog.path("tags")){text(t,30);if(t.asText().contains(","))throw new HybridArtifacts.Invalid("RULE_PACKAGE_CATALOG");}
-        if(!catalog.path("rules").isArray()||catalog.path("rules").size()<1||catalog.path("rules").size()>5)throw new HybridArtifacts.Invalid("RULE_PACKAGE_CATALOG");
-        for(var r:catalog.path("rules"))text(r,300);
-        var g=p.path("guidance");HybridArtifacts.fields(g,"author","teaching","reader");
+        var catalog=p.path("catalog");var g=p.path("guidance");
+        metadata(catalog,g,p.path("oracleDomain"),p.path("enumeration"));
         return new HybridRulePackage(versionId,contract,rules.deepCopy(),catalog.deepCopy(),text(p.path("generator"),65536),text(p.path("validator"),65536),
                 tiny,invalid,stress,Collections.unmodifiableMap(sources),Collections.unmodifiableMap(witnesses),
-                text(p.path("oracleDomain"),200),text(p.path("enumeration"),200),text(g.path("author"),1500),text(g.path("teaching"),1500),text(g.path("reader"),1500));
+                p.path("oracleDomain").asText(),p.path("enumeration").asText(),g.path("author").asText(),g.path("teaching").asText(),g.path("reader").asText());
+    }
+    /** Display and guidance limits in UTF-8 bytes (Korean is three bytes per character). */
+    static void metadata(JsonNode catalog,JsonNode guidance,JsonNode oracleDomain,JsonNode enumeration) {
+        HybridArtifacts.fields(catalog,"label","description","category","tags","rules");
+        text(catalog.path("label"),240);text(catalog.path("description"),2000);text(catalog.path("category"),120);
+        if(!catalog.path("tags").isArray()||catalog.path("tags").size()<1||catalog.path("tags").size()>6)throw new HybridArtifacts.Invalid("RULE_PACKAGE_CATALOG");
+        for(var t:catalog.path("tags")){text(t,90);if(t.asText().contains(","))throw new HybridArtifacts.Invalid("RULE_PACKAGE_CATALOG");}
+        if(!catalog.path("rules").isArray()||catalog.path("rules").size()<1||catalog.path("rules").size()>5)throw new HybridArtifacts.Invalid("RULE_PACKAGE_CATALOG");
+        for(var r:catalog.path("rules"))text(r,900);
+        HybridArtifacts.fields(guidance,"author","teaching","reader");
+        for(String k:List.of("author","teaching","reader"))text(guidance.path(k),6000);
+        text(oracleDomain,1500);text(enumeration,1500);
     }
     String hash(JsonNode stored){return JudgeJson.hash(ENGINE+"\n"+versionId+"\n"+JudgeJson.canonical(stored)+"\nwall<=4000;repeat=2;package<=20;answers=oracle-tiny,reference-stress");}
     String answer(String input) {
