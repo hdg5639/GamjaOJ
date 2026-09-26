@@ -20,12 +20,19 @@ class PracticeFollowups {
     private final TrainingSessions training;
     private final GenerationJobs generation;
     private final GenerationSpecDrafts drafts;
-    PracticeFollowups(JdbcClient jdbc,Submissions submissions,TrainingSessions training,GenerationJobs generation,GenerationSpecDrafts drafts){
-        this.jdbc=jdbc;this.submissions=submissions;this.training=training;this.generation=generation;this.drafts=drafts;
+    private final HybridAdmission rules;private final HybridRuleRegistry registry;
+    /** Template marker for problems published from a registered rule version. */
+    static final String RULE="hybrid:";
+    PracticeFollowups(JdbcClient jdbc,Submissions submissions,TrainingSessions training,GenerationJobs generation,GenerationSpecDrafts drafts,HybridAdmission rules,HybridRuleRegistry registry){
+        this.jdbc=jdbc;this.submissions=submissions;this.training=training;this.generation=generation;this.drafts=drafts;this.rules=rules;this.registry=registry;
     }
+    private static boolean rule(String template){return template!=null&&template.startsWith(RULE);}
     private String template(String version){
         if(version.equals("total-v1"))return GenerationTemplate.ID;
         if(version.equals("valid-parentheses-v1"))return GenerationType.PARENTHESES.id;
+        var registered=jdbc.sql("SELECT r.rule_version_id FROM hybrid_generation g JOIN hybrid_public_request r ON r.generation_id=g.id WHERE g.published_version_id=? AND g.status='PUBLISHED' AND r.rule_version_id IS NOT NULL")
+                .param(version).query(String.class).optional();
+        if(registered.isPresent())return RULE+registered.get();
         return jdbc.sql("SELECT template_id FROM generation_job WHERE status='READY' AND ?=CONCAT(CONCAT(CONCAT('generated-',CAST(id AS VARCHAR(36))),'-r'),CAST(revision AS VARCHAR(10)))")
                 .param(version).query(String.class).optional().orElse(null);
     }
@@ -41,6 +48,10 @@ class PracticeFollowups {
     Options options(String username,UUID analysis){
         var source=source(submissions.owner(username,false),analysis);
         var steps=new ArrayList<String>();source.result().path("nextSteps").forEach(step->steps.add(step.asText()));
+        if(rule(source.template())) {
+            String label=registry.version(source.template().substring(RULE.length())).map(HybridRuleRegistry.Version::label).orElse("규칙 고정 문제");
+            return new Options(steps,List.of(new Focus("same-rules","같은 규칙 · 새 상황")),label+" · 같은 규칙으로 재확인");
+        }
         var focuses=source.template()==null?List.of(new Focus("custom","확인한 목표 그대로")):
                 GenerationType.of(source.template()).focuses().stream().filter(f->List.of("basics","overflow","edge-cases","prefix-balance").contains(f)).map(f->new Focus(f,GenerationChoices.label(f))).toList();
         return new Options(steps,focuses,source.template()==null?"자유 출제 · 개별 검증 필요":GenerationType.of(source.template()).title);
@@ -64,6 +75,8 @@ class PracticeFollowups {
         // Free-form output is eligible only when it was generated for this exact confirmed goal.
         return jdbc.sql("SELECT id,package_json FROM problem_version p WHERE ready=true AND diagnostic_only=false AND review_hold=false AND (owner_id IS NULL OR owner_id=? OR shared=true) AND id<>? AND NOT EXISTS (SELECT 1 FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.user_id=? AND s.problem_version=p.id AND s.run_input IS NULL AND j.verdict='AC') ORDER BY id")
                 .param(owner).param(origin).param(owner).query((r,n)->new Candidate(r.getString(1),JudgeJson.parse(r.getString(2)).path("title").asText(),JudgeJson.parse(r.getString(2)).path("statement").asText())).list().stream().filter(p->{
+                    // Same registered rule version, or a free-form fallback generated for this exact round.
+                    if(rule(contract))return contract.equals(template(p.version()))||(requested&&p.version().equals("experimental-check-"+roundId));
                     if(contract==null)return (requested&&p.version().equals("experimental-check-"+roundId)) || jdbc.sql("SELECT count(*) FROM practice_followup_attempt WHERE followup_id=? AND ?=CONCAT('experimental-check-',CAST(generation_id AS VARCHAR(36)))").param(id).param(p.version()).query(Integer.class).single()>0;
                     if(!contract.equals(template(p.version())))return false;
                     if(p.version().equals(GenerationType.of(contract).baseProblem))return true;
@@ -83,7 +96,10 @@ class PracticeFollowups {
                     }
                     UUID roundId=r.getObject("round_id",UUID.class);
                     boolean requested=r.getBoolean("generation_requested");String contract=r.getString("template_id");
-                    String generationStatus=!requested?null:jdbc.sql(contract==null?"SELECT status FROM generation_spec_draft WHERE id=?":"SELECT status FROM generation_job WHERE id=?").param(roundId).query(String.class).optional().orElse("UNAVAILABLE");
+                    String generationStatus=!requested?null:rule(contract)
+                            ?jdbc.sql("SELECT status FROM hybrid_generation WHERE id=?").param(roundId).query(String.class).optional()
+                                    .or(()->jdbc.sql("SELECT status FROM generation_spec_draft WHERE id=?").param(roundId).query(String.class).optional()).orElse("UNAVAILABLE")
+                            :jdbc.sql(contract==null?"SELECT status FROM generation_spec_draft WHERE id=?":"SELECT status FROM generation_job WHERE id=?").param(roundId).query(String.class).optional().orElse("UNAVAILABLE");
                     return new View(id,r.getObject("analysis_id",UUID.class),r.getString("goal"),r.getString("focus"),state,
                             held||session!=null?List.of():candidates(owner,r.getString("source_version"),contract,r.getString("focus"),id,roundId,requested),session,r.getString("target_version"),generationStatus,helped,reviewed,r.getInt("round_number"),attempts(id));
                 }).optional().orElseThrow(()->new AccountException(404,"다음 훈련 기록을 찾을 수 없어요."));
@@ -136,6 +152,15 @@ class PracticeFollowups {
         if(saved.sessionId()!=null)throw new AccountException(409,"이미 훈련을 시작했어요.");
         String contract=jdbc.sql("SELECT template_id FROM practice_followup WHERE id=?").param(id).query(String.class).optional().orElse(null);
         UUID generationId=roundId(id);
+        if(rule(contract)) {
+            // Registered rules generate without free-form authoring; otherwise keep the previous free-form path.
+            String version=contract.substring(RULE.length());
+            if(rules.available(username,version)) {
+                rules.create(username,generationId,JudgeJson.JSON.createObjectNode().put("profileId",version).put("shared",false).put("publishOnSuccess",true));
+                jdbc.sql("UPDATE practice_followup SET generation_requested=true WHERE id=?").param(id).update();return view(owner,id);
+            }
+            contract=null;
+        }
         if(contract!=null){
             generation.create(username,generationId,contract,saved.focus(),saved.analysisId());
             var context=JudgeJson.JSON.createObjectNode().put("summary","사용자가 확인한 다음 연습 목표: "+saved.goal());

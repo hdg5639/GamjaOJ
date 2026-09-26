@@ -329,6 +329,10 @@ class DiagnosticIntegrationTest {
         var confirmed=plans.confirm(user,UUID.randomUUID(),evaluation.id(),0,revised.reviewHash(),"문제 설명에 맞춰 입력 읽기");
         assertThatThrownBy(()->plans.start(other,confirmed.id(),"sum-v1")).isInstanceOf(AccountException.class);
         assertThatThrownBy(()->plans.start(user,confirmed.id(),d.current().problemVersion())).isInstanceOf(AccountException.class);
+        // Registered-rule generation is explicit and unavailable without hybrid admission for this learner.
+        assertThat(revised.rules()).isEmpty();
+        assertThatThrownBy(()->plans.generate(user,confirmed.id(),"bfs-shortest-path-v1")).isInstanceOf(AccountException.class);
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_generation").query(Integer.class).single()).isZero();
         var generating=plans.generate(user,confirmed.id());
         assertThat(generating.generationId()).isEqualTo(confirmed.id());assertThat(generating.generationStatus()).isEqualTo("QUEUED");
         assertThat(generating.generatedVersion()).isNull();

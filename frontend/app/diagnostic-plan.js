@@ -1,7 +1,7 @@
 'use client';
 import {useRef,useState} from 'react';
 export default function DiagnosticPlan({api,row,index,onOpen,onGeneration}) {
-  const [options,setOptions]=useState(null),[plans,setPlans]=useState([]),[goal,setGoal]=useState(''),[selected,setSelected]=useState({});
+  const [options,setOptions]=useState(null),[plans,setPlans]=useState([]),[goal,setGoal]=useState(''),[selected,setSelected]=useState({}),[rule,setRule]=useState({});
   const [busy,setBusy]=useState(false),[error,setError]=useState('');const lock=useRef(false),pending=useRef(null);
   const base='/api/diagnostic-plans',query=`evaluationId=${row.id}&observationIndex=${index}`;
   async function load(){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{
@@ -35,7 +35,11 @@ export default function DiagnosticPlan({api,row,index,onOpen,onGeneration}) {
           <button className="secondary" disabled={busy||!goal.trim()||alreadySaved}>{alreadySaved?'목표 저장됨':pending.current?'같은 목표 저장 다시 확인':'이 목표를 내 학습 계획에 저장'}</button></form>
         {plans.map(plan=><div key={plan.id}><h4>{plan.roundNumber||1}회차 · {plan.goal||'확인할 수 없는 학습 계획'}</h4>
           {plan.status==='READY'&&<div>
-            {!plan.generationId?<><p>맞는 문제가 없다면 확정한 목표로 새 문제 초안을 요청할 수 있어요. 생성 모델을 사용하며, 초안 확인과 기존 검증 단계를 거쳐야 풀 수 있습니다.</p><button className="secondary" disabled={busy} onClick={()=>action(plan,'generate')}>이 목표로 맞춤 문제 생성 요청</button></>:
+            {!plan.generationId?<>
+              {options.rules?.length>0&&<div className="diagnostic-rule-generation"><label>검증된 규칙으로 바로 만들기<select value={rule[plan.id]||''} disabled={busy} onChange={e=>setRule({...rule,[plan.id]:e.target.value})}><option value="">규칙을 선택하세요</option>{options.rules.map(r=><option key={r.id} value={r.id}>{r.label}</option>)}</select></label>
+                <p className="muted">이 목표와 규칙이 맞는지는 직접 확인해 주세요. 자동 추천이 아닙니다. 규칙을 고정해 새 본문으로 만들고, 모든 실행 검증과 최종 검토를 통과해야 풀 수 있습니다{options.rules.find(r=>r.id===rule[plan.id])?.verifiedReference?' · 검증된 정답 코드를 다시 사용합니다':''}.</p>
+                <button className="secondary" disabled={busy||!rule[plan.id]} onClick={()=>action(plan,'generate',{ruleVersionId:rule[plan.id]})}>선택한 규칙으로 문제 생성</button></div>}
+              <p>맞는 문제가 없다면 확정한 목표로 새 문제 초안을 요청할 수 있어요. 생성 모델을 사용하며, 초안 확인과 기존 검증 단계를 거쳐야 풀 수 있습니다.</p><button className="secondary" disabled={busy} onClick={()=>action(plan,'generate')}>이 목표로 맞춤 문제 생성 요청</button></>:
               <><p>이 목표의 생성 요청을 저장했습니다. 초안과 검증 진행은 생성 화면에서 확인하세요.</p><button className="secondary" disabled={busy} onClick={onGeneration}>생성·검증 화면으로</button></>}
             {plan.generatedVersion&&<><p>이 계획에서 요청한 문제의 게시 검증이 완료됐어요. 목표 적합성은 문제 설명을 읽고 확인해 주세요.</p><button disabled={busy} className="primary" onClick={()=>start(plan,plan.generatedVersion)}>생성된 문제로 훈련 시작</button></>}
           </div>}
