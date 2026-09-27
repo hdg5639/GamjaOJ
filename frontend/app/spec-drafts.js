@@ -1,6 +1,7 @@
 'use client';
 import ProblemReview from './problem-review';
 import {useEffect,useRef,useState} from 'react';
+import Pager,{usePage} from './pager';
 const states={FINAL_QUEUED:'최종 검증 계획 대기',FINAL_GENERATING:'전수 영역·최대 입력 검토 중',FINAL_CHECKING:'Runner 최종 검증 중',FINAL_REJECTED:'검증 계획 보완 필요 · 미게시',FINAL_FAILED:'최종 검증 실패 · 미게시',PUBLISHED:'내 문제에 게시됨 · 실험 문제',REVIEW_QUEUED:'독립 검토 대기',REVIEW_GENERATING:'명세·경계 사례 독립 검토 중',REVIEW_CHECKING:'Runner 경계·잘못된 입력·오답 검사 중',REVIEW_CHECKED:'독립 검토·오답 검사 통과 · 미게시',REVIEW_REJECTED:'명세 보완 필요 · 미게시',REVIEW_FAILED:'독립 검토·오답 검사 실패',QUEUED:'초안 작성 대기',GENERATING:'명세 작성 중',DRAFT_READY:'초안 저장 완료 · 검증 전',FAILED:'초안 작성 실패',NEEDS_REVIEW:'작업 중단 · 상태 확인 필요',BUILD_QUEUED:'코드 작성 대기',BUILD_GENERATING:'정답·검증 코드 작성 중',CHECKING:'Runner 예제·입력 대조 중',CHECKED:'예비 실행 검사 통과 · 게시 전',BUILD_FAILED:'코드 작성·예비 검사 실패'};
 const errors={NEEDS_CHATGPT_AUTH:'출제 서비스의 ChatGPT 로그인이 필요해요.',CODEX_TIMEOUT:'작성 제한 시간을 초과했어요.',CODEX_OUTPUT_LIMIT:'생성 결과가 크기 제한을 넘었어요.',CODEX_FAILED_CHECK_MODEL_OR_AUTH:'설정된 모델 호출에 실패했어요. 모델 접근 권한과 로그인 상태를 확인해야 합니다.',CODEX_VERSION_MISMATCH:'출제 서비스 버전을 확인해야 합니다.',CODEX_QUOTA_EXHAUSTED:'출제 모델 사용 한도에 도달했어요. 한도가 회복된 뒤 다시 시도해 주세요.',INVALID_SPEC_DRAFT:'명세 형식 검사를 통과하지 못했어요.',GENERATION_INTERRUPTED:'작성 중 연결이 끊겨 완료 여부를 확인해야 합니다.'};
 const active=items=>items.some(item=>['QUEUED','GENERATING','BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING'].includes(item.status));
@@ -29,6 +30,7 @@ export default function SpecDrafts({api,generationActive,onActive,onOpen}) {
       revision.current++;setItems(current=>current.map(saved=>saved.id===value.id?value:saved));onActive(active([value]));
     }catch(e){setError(e.message);}finally{setBusy(false);}
   }
+  const itemPaging=usePage(items,5);
   return <div className="spec-drafts generation-layout">
     <section className="generation-compose" aria-label="자유 출제 요청"><div className="generation-section-heading"><h3>원하는 문제를 설명해 주세요</h3><a href="#request-generation-results">진행·결과로 이동</a></div>
     <p className="draft-help">자유 출제 · 실험 기능. 알고리즘, 연습할 실수, 원하는 상황을 적어 주세요.</p>
@@ -44,7 +46,7 @@ export default function SpecDrafts({api,generationActive,onActive,onOpen}) {
     {loadError&&<p className="notice error" role="alert">초안 기록을 불러오지 못했어요. 잠시 후 다시 확인합니다. {loadError}</p>}
     {error&&<p className="notice error" role="alert">{error}</p>}
     {!loaded&&!error&&<p role="status">초안 기록을 불러오고 있어요…</p>}
-    <div aria-live="polite">{items.map((item,index)=><details className="generation-job" key={item.id} open={index===0||active([item])||['DRAFT_READY','CHECKED','REVIEW_CHECKED'].includes(item.status)}>
+    <div aria-live="polite">{itemPaging.visible.map((item,index)=><details className="generation-job" key={item.id} open={(itemPaging.offset+index)===0||active([item])||['DRAFT_READY','CHECKED','REVIEW_CHECKED'].includes(item.status)}>
       <summary><strong>{item.spec?.title||'새 문제 초안'}</strong><span className="generation-status">{item.problemHeld?'문제 검토 중 · 새 풀이 보류':states[item.status]||item.status}</span></summary><div className="generation-job-body">
       <p className="draft-help">요청: {item.request}</p>
       {item.error&&<p>{errors[item.error]||'작성 또는 예비 검사를 완료하지 못했어요.'} 기존 요청은 기록에 남아 있습니다.</p>}
@@ -73,6 +75,6 @@ export default function SpecDrafts({api,generationActive,onActive,onOpen}) {
         <h4>경계값 검사 계획</h4><ul>{item.spec.boundaryClasses.map((value,index)=><li key={index}>{value}</li>)}</ul>
         <h4>오답 구분 계획</h4><ul>{item.spec.mutantIdeas.map((value,index)=><li key={index}>{value}</li>)}</ul>
       </details>}
-    </div></details>)}</div>
+    </div></details>)}</div><Pager paging={itemPaging} label="자유 출제 결과 페이지"/>
     </section></div>;
 }

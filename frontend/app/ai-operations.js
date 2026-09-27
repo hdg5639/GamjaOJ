@@ -3,6 +3,7 @@ import HybridGeneration from './hybrid-generation';
 import SpecDrafts from './spec-drafts';
 import ProblemReview from './problem-review';
 import { useEffect, useRef, useState } from 'react';
+import Pager,{usePage} from './pager';
 const states={THEME_FAILED:'소재 준비 실패',QUEUED:'생성 대기',GENERATING:'문제 작성 중',AWAITING_REVIEW:'검증 시작 대기',VALIDATING:'테스트 검증 중',READY:'풀이 준비 완료',FAILED:'검증 실패',NEEDS_AUTH:'생성 서비스 연결 확인 필요',NEEDS_REVIEW:'생성 중단 · 서비스 확인 필요'};
 const themeStates={QUEUED:'새 소재 준비 대기',RUNNING:'새 소재 구상 중',HELD_DISABLED:'테마 API 연결 대기',HELD_BUDGET:'테마 API 예산 대기',FAILED:'테마 생성 실패',UNKNOWN:'테마 호출 결과 확인 필요'};
 const activeStates=['QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING'];
@@ -72,6 +73,7 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags'}) {
   async function resume(job){setBusy(true);setError('');try{
     await api('/api/generation/'+job.id+'/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({artifactHash:job.artifactHash,approve:true})});await refresh();
   }catch(e){setError(e.message);}finally{setBusy(false);}}
+  const jobPaging=usePage(jobs,5);
   return <section className="ai-operations" aria-label="내 문제 생성">
     <header className="generation-header"><h2>다음 연습을 직접 설계해 보세요.</h2>
       <p className="muted">연습할 내용을 고르고, 검증을 마친 나만의 문제를 풀어보세요.</p></header>
@@ -135,7 +137,7 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags'}) {
     {!loaded&&!error&&<p role="status">생성 기록을 불러오고 있어요…</p>}
     {!loaded&&error&&<button className="secondary" onClick={()=>refresh().catch(e=>setError(e.message))}>다시 불러오기</button>}
     {loaded&&jobs.length===0&&<p>아직 만든 문제가 없어요. 연습 포인트를 선택해 첫 문제를 만들어 보세요.</p>}
-    <div aria-live="polite">{jobs.map((job,index)=><details className="generation-job" key={job.id} open={index===0||activeStates.includes(job.status)||job.status==='THEME_FAILED'}>
+    <div aria-live="polite">{jobPaging.visible.map((job,index)=><details className="generation-job" key={job.id} open={(jobPaging.offset+index)===0||activeStates.includes(job.status)||job.status==='THEME_FAILED'}>
       <summary><strong>{job.artifacts?.title||'새 연습 문제'}</strong><span className="generation-status">{job.problemHeld?'문제 검토 중':job.status==='QUEUED'&&themeStates[job.theme?.status]||states[job.status]||job.status}</span></summary><div className="generation-job-body">
       <p className="draft-help">{job.preview?.contractTitle||(job.preview?.templateId==='parentheses-v1'?'올바른 괄호':'')}</p>
       {job.preview?.structure&&<p className="draft-help">{job.preview.structure.category} · {job.preview.structure.reused?'내 검증 구조 활용 · 본문과 힌트 새로 작성':'새 구조 작성'} · 모든 테스트 재검증</p>}
@@ -155,7 +157,7 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags'}) {
       {job.status==='FAILED'&&<p>정답과 테스트의 검증을 통과하지 못해 문제를 추가하지 않았어요. 새 문제를 요청할 수 있습니다.</p>}
       {job.error==='STRUCTURE_EVIDENCE_REVOKED'&&job.status!=='READY'&&<p className="notice">원본 검증 근거가 보류되어 이 문제의 게시도 중단했어요. 기존 기록은 유지됩니다.</p>}
       {job.error&&<details><summary>진행 정보</summary><p>{job.error}</p></details>}
-    </div></details>)}</div>
+    </div></details>)}</div><Pager paging={jobPaging} label="태그 출제 결과 페이지"/>
     </section></div></div>
   </section>;
 }

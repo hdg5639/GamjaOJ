@@ -191,3 +191,14 @@ test('member rule registration submits once, shows qualification progress and to
   await page.getByRole('button',{name:'다른 회원에게 공개'}).click();
   await expect(page.getByText('다른 회원에게 공개',{exact:false}).first()).toBeVisible();
 });
+test('generation history pages five results at a time',async({page})=>{
+  const jobs=Array.from({length:7},(_,i)=>({...makeJob(`00000000-0000-4000-8000-00000000000${i}`,'PUBLISHED'),profileId:'zero-one-items-v1'}));
+  await fixture(page,async(route,path)=>{if(path==='/api/generation/hybrid'){await route.fulfill({json:jobs});return true;}});
+  const results=page.locator('.generation-results');
+  await expect(results.locator('details.generation-job')).toHaveCount(5);
+  await expect(results.getByRole('navigation')).toContainText('1 / 2');
+  await results.getByRole('button',{name:'다음',exact:true}).click();
+  await expect(results.locator('details.generation-job')).toHaveCount(2);
+  await expect(results.getByRole('navigation')).toContainText('2 / 2');
+  await expect(results.getByRole('button',{name:'다음',exact:true})).toBeDisabled();
+});

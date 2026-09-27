@@ -347,3 +347,9 @@ input,select,textarea { border-color:#ccd9d3; }
 .hybrid-stages li { display: flex; justify-content: space-between; gap: 1rem; padding: .45rem 0; border-bottom: 1px solid var(--line); }
 .hybrid-stages strong { font-size: .85rem; white-space: nowrap; }
 .hybrid-generation .notice button { margin-top: .5rem; }
+
+/* Paging for bounded history and generation lists. */
+.pager { display:flex; align-items:center; justify-content:center; gap:.75rem; margin:.75rem 0; flex-wrap:wrap; }
+.pager span { min-width:4rem; text-align:center; font-variant-numeric:tabular-nums; }
+/* Long execution output and code scroll inside their block instead of stretching the page. */
+.run-detail pre, .training-detail pre, .submission-detail pre { max-height:24rem; overflow:auto; }
