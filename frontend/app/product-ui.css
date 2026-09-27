@@ -369,3 +369,9 @@ input,select,textarea { border-color:#ccd9d3; }
 .diagnostic-habit[data-tone="WATCH"] .diagnostic-tone:first-child { background:#fff4d6; color:#7a5600; }
 .diagnostic-habit[data-tone="RISK"] .diagnostic-tone:first-child { background:#fde8e6; color:#a1271b; }
 .diagnostic-tone[data-kind="repeated"] { background:#e8eefc; color:#2a4a9a; }
+/* Account deletion stays collapsed under settings; the destructive action is visually distinct. */
+.account-deletion { margin-top:18px; border-top:1px solid var(--line); padding-top:12px; }
+.account-deletion summary { cursor:pointer; color:var(--muted); }
+.account-deletion form { display:grid; gap:10px; margin-top:10px; }
+button.danger { background:#b3261e; color:#fff; border:1px solid #b3261e; border-radius:8px; padding:8px 14px; font-weight:650; }
+button.danger:disabled { opacity:.6; }

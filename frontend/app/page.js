@@ -78,6 +78,16 @@ export default function Home() {
     finally { setBusy(false); }
   }
 
+  async function withdraw(event) {
+    event.preventDefault(); setBusy(true); setError(''); setMessage('');
+    const fields = Object.fromEntries(new FormData(event.currentTarget));
+    try {
+      await api('/api/me/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+      setUser(null); setSettings(false); setMode('login'); setMessage('탈퇴가 완료됐어요. 계정과 개인 기록을 모두 삭제했어요.');
+    } catch (e) { setError(e.message); if (e.status === 401) setUser(null); }
+    finally { setBusy(false); }
+  }
+
   async function save(event) {
     event.preventDefault(); setBusy(true); setError(''); setMessage('');
     const fields = Object.fromEntries(new FormData(event.currentTarget));
@@ -124,6 +134,16 @@ export default function Home() {
             <label>연습하고 싶은 목표<textarea name="trainingGoal" defaultValue={user.trainingGoal} maxLength={120} rows={3} placeholder="예: DFS 방문 상태 복원, DP 점화식 세우기" /></label>
             <button className="primary" disabled={busy}>{busy ? '저장 중…' : '내 설정 저장'}</button>
           </form>
+          <details className="account-deletion">
+            <summary>회원 탈퇴</summary>
+            <p>탈퇴하면 계정과 개인 기록을 바로 삭제하며 되돌릴 수 없어요. 제출·실행 기록, 훈련, 진단과 평가, AI 요청, 생성 요청, 비공개 문제와 규칙이 모두 지워져요.</p>
+            <p>다른 회원에게 공유한 문제·규칙과 다른 회원이 이미 푼 문제는 그 회원들의 기록을 위해 작성자 표시 없이 남아요. 진행 중인 채점·출제·규칙 등록이 있으면 끝난 뒤 탈퇴할 수 있어요.</p>
+            <form onSubmit={withdraw}>
+              <label>비밀번호<input name="password" type="password" required maxLength={72} autoComplete="current-password" /></label>
+              <label>확인을 위해 아이디 <strong>{user.username}</strong> 입력<input name="confirmation" required maxLength={24} autoComplete="off" pattern={user.username} title="아이디를 그대로 입력해 주세요." /></label>
+              <button className="danger" disabled={busy}>{busy ? '처리 중…' : '계정 영구 삭제'}</button>
+            </form>
+          </details>
 
         </> : <>
           <div className="tabs" role="group" aria-label="로그인 또는 가입">
