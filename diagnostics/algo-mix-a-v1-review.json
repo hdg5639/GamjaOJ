@@ -1,0 +1,30 @@
+{
+  "bankId": "algo-mix-a-v1",
+  "artifactSha256": "6b00edd68cfd3d5a5470a0c9049537f14ae680ec34d3dbfd9e743cbd8d126da0",
+  "decision": "APPROVED_LIMITED_PILOT",
+  "reviewerType": "AI_ASSISTED_CONTENT_REVIEW",
+  "reviewDate": "2026-09-27",
+  "scope": "Twenty fixed questions in ten easy/medium category pairs; optional pilot, learner selects categories.",
+  "checks": [
+    "Markdown tests byte-identical to package files and manifest SHA-256; Java reference equals package solution",
+    "Korean statements, constraints, samples and output specifications inspected; U+2212 normalized to ASCII minus",
+    "143 fixed outputs recomputed by package Python oracles (not the references); all inputs pass its validator",
+    "Dedicated Runner host with worker host lock: correct Java/C++/Python solutions AC on all fixed and generated tests",
+    "Dedicated Runner host: every wrong solution passes the sample and ends WA on a private test in all three languages",
+    "Dedicated Runner host: slow solutions AC on 12 package small random cases and TLE on generated large input",
+    "Large correct wall time maximum Java 495 ms, C++ 254 ms, Python 1052 ms; generators byte-identical across languages",
+    "Rubric observable skills, unobservable limits, interpretation rules and alternative valid strategies",
+    "Full 20-item evidence with five Java attempts per item estimated at 369 KB, inside the 512 KiB limit"
+  ],
+  "limitations": [
+    "No independent human review or learner calibration completed",
+    "Oracles, references and tests share one author; agreement is not an external answer key",
+    "Difficulty labels and the 100-120 minute workload are provisional estimates; no mastery or measurement claim",
+    "Related category pairs are not independent habit evidence",
+    "No B-bank, reassessment or improvement claim; no exhaustive originality search"
+  ],
+  "reviewChanges": [
+    "Statement U+2212 minus signs normalized to ASCII in 11 statements (six output specifications printed a non-matching -1)",
+    "Per-test design notes (testNotes) not staged in rubric"
+  ]
+}

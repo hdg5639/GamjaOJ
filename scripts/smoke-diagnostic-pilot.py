@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Exercise the released eight-question pilot over HTTPS and the dedicated Runner; no model calls."""
+"""Exercise a released diagnostic bank over HTTPS and the dedicated Runner.
+
+No model calls unless --evaluate is given; then one completed-session evaluation is requested and awaited.
+"""
 import os
 import argparse
 import importlib.util
@@ -17,9 +20,12 @@ helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
 ssh,sql=helper.ssh,helper.sql
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--reassess',action='store_true');parser.add_argument('--language',choices=['JAVA','CPP','PYTHON'],default='JAVA');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--reassess',action='store_true');parser.add_argument('--language',choices=['JAVA','CPP','PYTHON'],default='JAVA')
+    parser.add_argument('--bank',type=Path,default=Path(__file__).resolve().parents[1]/'diagnostics/core-a-v2.json')
+    parser.add_argument('--attempts',type=int,choices=range(1,6),default=1,help='Formal attempts per item: wrong solutions first, reference last')
+    parser.add_argument('--evaluate',action='store_true',help='Request the completed-session evaluation (spends model budget)');args=parser.parse_args()
     references=json.loads((Path(__file__).resolve().parents[1]/'tests/fixtures/diagnostic-language-references.json').read_text())
-    bank=json.loads((Path(__file__).resolve().parents[1]/'diagnostics/core-a-v2.json').read_text())
+    bank=json.loads(args.bank.read_text());count=len(bank['items'])
     base=ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env").rstrip('/')
     invitation=ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
     client=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()));client.addheaders=[('User-Agent','GamjaOJ-Smoke/1.0')]
@@ -40,7 +46,7 @@ def main():
         assert call('/api/auth/signup','POST',dict(username=username,password=password,nickname='Pilot verification',inviteCode=invitation))[0]==201
         assert call('/api/auth/login','POST',dict(username=username,password=password),form=True)[0]==204
         catalog=call('/api/diagnostics/banks')[1]
-        entry=next(b for b in catalog if b['id']==bank['id']);assert entry['questionCount']==8 and len(entry['categories'])==4
+        entry=next(b for b in catalog if b['id']==bank['id']);assert entry['questionCount']==count and len(entry['categories'])==count//2
         assert set(entry)=={'id','categories','questionCount'}
         assert all(not p['version'].startswith('diagnostic-') for p in call('/api/problems')[1])
         key=str(uuid.uuid4());body=dict(bankId=bank['id'],categories=entry['categories'])
@@ -48,27 +54,34 @@ def main():
         assert call('/api/diagnostics','POST',body,key)[1]['id']==saved['id'];session=saved['id']
         def solve(saved,content):
             session=saved['id']
-            for item in content['items']:
-                question=saved['current'];assert question['problemVersion']==item['problem']['version']
+            by_version={item['problem']['version']:item for item in content['items']}
+            for _ in content['items']:
+                question=saved['current'];item=by_version[question['problemVersion']]
                 assert set(question)=={'itemId','problemVersion','title','statement','sampleInput','sampleOutput','languages'}
-                payload=dict(problemVersion=question['problemVersion'],diagnosticItemId=question['itemId'],source=item['reference'] if args.language=='JAVA' else references[question['problemVersion']][args.language],language=args.language)
-                request=str(uuid.uuid4());status,submitted=call('/api/submissions','POST',payload,request);assert status==202
-                assert call('/api/submissions','POST',payload,request)[1]['id']==submitted['id']
-                deadline=time.monotonic()+120
-                while time.monotonic()<deadline:
-                    result=call('/api/submissions/'+submitted['id'])[1]
-                    if result['status']=='FINISHED':break
-                    time.sleep(1)
-                else:raise AssertionError('Diagnostic judging timed out')
-                assert result['language']==args.language
-                assert result['execution']['id']==args.language
-                assert result['verdict']=='AC',(question['problemVersion'],result['verdict'])
+                correct=item['reference'] if args.language=='JAVA' else item['languages'][args.language]['correct'] if 'languages' in item else references[question['problemVersion']][args.language]
+                wrong=item['languages'][args.language]['wrong'] if 'languages' in item else item['mutant'] if args.language=='JAVA' else None
+                sources=[wrong]*(attempts-1)+[correct]
+                if None in sources:raise SystemExit('No wrong solution for '+args.language+' in this bank')
+                for index,source in enumerate(sources):
+                    payload=dict(problemVersion=question['problemVersion'],diagnosticItemId=question['itemId'],source=source,language=args.language)
+                    request=str(uuid.uuid4());status,submitted=call('/api/submissions','POST',payload,request);assert status==202
+                    assert call('/api/submissions','POST',payload,request)[1]['id']==submitted['id']
+                    deadline=time.monotonic()+120
+                    while time.monotonic()<deadline:
+                        result=call('/api/submissions/'+submitted['id'])[1]
+                        if result['status']=='FINISHED':break
+                        time.sleep(1)
+                    else:raise AssertionError('Diagnostic judging timed out')
+                    assert result['language']==args.language
+                    assert result['execution']['id']==args.language
+                    expected='AC' if index==len(sources)-1 else 'WA'
+                    assert result['verdict']==expected,(question['problemVersion'],index,result['verdict'])
                 saved=call('/api/diagnostics/'+session)[1]
-                print('PASS:',question['problemVersion'],'AC and automatic advance',flush=True)
+                print('PASS:',question['problemVersion'],f'{len(sources)-1} WA then AC and automatic advance',flush=True)
             return saved
-        saved=solve(saved,bank)
+        attempts=args.attempts;saved=solve(saved,bank)
         assert saved['status']=='COMPLETED' and saved['current'] is None
-        assert all(i['status']=='PASSED' and i['attempts']==1 for i in saved['items'])
+        assert all(i['status']=='PASSED' and i['attempts']==attempts for i in saved['items'])
         options=call('/api/diagnostics/'+session+'/reassessments')[1]
         assert all(set(option)=={'id','categories','questionCount'} for option in options)
         if args.reassess:
@@ -79,14 +92,25 @@ def main():
             status,next_session=call('/api/diagnostics/'+session+'/reassessments','POST',body,key);assert status==200
             assert next_session['sourceSessionId']==session
             assert call('/api/diagnostics/'+session+'/reassessments','POST',body,key)[1]['id']==next_session['id']
-            completed=solve(next_session,target);assert completed['status']=='COMPLETED'
+            attempts=1;completed=solve(next_session,target);assert completed['status']=='COMPLETED'
             assert all(i['status']=='PASSED' and i['attempts']==1 for i in completed['items'])
             assert call('/api/diagnostics/'+session+'/reassessments')[1]==[]
             assert call('/api/diagnostics/'+session+'/reassessments','POST',body,str(uuid.uuid4()))[0]==409
             print('PASS: A -> B correspondence, eight B AC, replay, prior exposure refusal and reserved catalog',flush=True)
         assert sql(f"SELECT count(*) FROM ai_task a JOIN app_user u ON u.id=a.user_id WHERE u.username='{username}'")=='0'
-        assert sql(f"SELECT count(*) FROM judge_attempt a JOIN submission s ON s.id=a.submission_id WHERE s.diagnostic_item_id IN (SELECT id FROM diagnostic_item WHERE session_id='{session}') AND a.status='COMPLETED'")=='8'
-        print('PASS: eight-question HTTPS pilot, private catalog, one attempt/item, private reassessment options, zero AI tasks',flush=True)
+        assert sql(f"SELECT count(*) FROM judge_attempt a JOIN submission s ON s.id=a.submission_id WHERE s.diagnostic_item_id IN (SELECT id FROM diagnostic_item WHERE session_id='{session}') AND a.status='COMPLETED'")==str(count*args.attempts)
+        print(f'PASS: {count}-question HTTPS pilot, private catalog, {args.attempts} attempt(s)/item, private reassessment options, zero AI tasks',flush=True)
+        if args.evaluate:
+            status,evaluation=call('/api/diagnostics/'+session+'/evaluations','POST');assert status==200,(status,evaluation)
+            size=sql(f"SELECT octet_length(evidence_json)||' '||(evidence_json::json->>'sourceCompaction' IS NOT NULL) FROM diagnostic_evaluation WHERE id='{uuid.UUID(evaluation['id'])}'")
+            print('evaluation evidence bytes, compacted:',size,'status:',evaluation['status'],flush=True)
+            deadline=time.monotonic()+600
+            while evaluation['status'] in ('QUEUED','RUNNING') and time.monotonic()<deadline:
+                time.sleep(5);evaluation=next(e for e in call('/api/diagnostics/'+session+'/evaluations')[1] if e['id']==evaluation['id'])
+            usage=sql(f"SELECT coalesce(string_agg(a.status||' '||coalesce(a.error_code,'')||' usd='||coalesce(a.actual_usd::text,'?')||' usage='||coalesce(a.usage_json,'?'),'; '),'none') FROM ai_attempt a JOIN diagnostic_evaluation e ON e.ai_task_id=a.task_id WHERE e.id='{uuid.UUID(evaluation['id'])}'")
+            interpretation=evaluation.get('interpretation') or {}
+            print('evaluation:',evaluation['status'],evaluation.get('errorCode'),'observations:',len(interpretation.get('observations',[])),'attempts:',usage,flush=True)
+            Path('.state').mkdir(exist_ok=True);Path('.state/diagnostic-evaluation-smoke.json').write_text(json.dumps(evaluation,ensure_ascii=False,indent=1))
     finally:
         sql(f"DELETE FROM spring_session WHERE principal_name='{username}'; DELETE FROM app_user WHERE username='{username}';")
 
