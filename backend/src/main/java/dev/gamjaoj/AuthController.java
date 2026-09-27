@@ -15,7 +15,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 @RestController
 public class AuthController {
     private final Accounts accounts;
-    public AuthController(Accounts accounts) { this.accounts = accounts; }
+    private final AccountDeletion deletion;
+    public AuthController(Accounts accounts, AccountDeletion deletion) { this.accounts = accounts; this.deletion = deletion; }
 
     public record Signup(
             @NotBlank @Pattern(regexp="[a-z0-9_]{3,24}") String username,
@@ -42,6 +43,16 @@ public class AuthController {
     @PatchMapping("/api/me")
     public Accounts.Profile preferences(Principal principal, @Valid @RequestBody Preferences request) {
         return accounts.update(principal.getName(), request);
+    }
+
+    public record Deletion(@NotBlank @Size(max=72) String password,@NotBlank @Size(max=24) String confirmation) {}
+    /** Hard deletion; the caller's session ends with it. */
+    @PostMapping("/api/me/delete")
+    public AccountDeletion.Result delete(Principal principal,@Valid @RequestBody Deletion request,jakarta.servlet.http.HttpServletRequest http) {
+        var result=deletion.delete(principal.getName(),request.password(),request.confirmation());
+        var session=http.getSession(false);if(session!=null)session.invalidate();
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        return result;
     }
 
     @GetMapping("/healthz")
