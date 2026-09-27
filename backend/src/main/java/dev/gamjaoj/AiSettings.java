@@ -14,8 +14,9 @@ public class AiSettings {
     boolean enabled() { return Boolean.parseBoolean(value("AI_API_ENABLED","false")); }
     String key() { return value("OPENAI_API_KEY", ""); }
     BigDecimal budget() { return new BigDecimal(value("AI_MONTHLY_BUDGET_USD","10")); }
+    /** "*" opens operator features (stronger re-analysis, service budget view) to every signed-in user. */
     boolean operator(String name) {
-        return Arrays.stream(value("AI_OPERATOR_USERS", "").split(",")).map(String::trim).filter(s->!s.isEmpty()).anyMatch(name::equals);
+        return Arrays.stream(value("AI_OPERATOR_USERS", "").split(",")).map(String::trim).filter(s->!s.isEmpty()).anyMatch(entry->entry.equals("*")||entry.equals(name));
     }
     void requireOperator(String name) { if (!operator(name)) throw new AccountException(403,"운영자만 요청할 수 있어요."); }
     record Model(String model, String effort, BigDecimal inputRate, BigDecimal cachedRate, BigDecimal outputRate,

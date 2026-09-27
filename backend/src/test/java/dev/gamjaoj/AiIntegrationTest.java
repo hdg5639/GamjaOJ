@@ -110,6 +110,15 @@ class AiIntegrationTest {
         worker.tick();worker.tick();verify(provider,times(1)).feedback(argThat(s->s.model().equals("gpt-5.6-terra")),anyString());
         assertThat(tasks.detail("alice",task.id()).errorCode()).isEqualTo("REQUEST_REJECTED");
     }
+    @Test void wildcardOperatorListOpensStrongAnalysisToEveryUser() {
+        var own=submission(bob,null);
+        assertThatThrownBy(()->tasks.request("bob",own,"ANALYSIS","",true)).isInstanceOf(AccountException.class);
+        TestPropertyValues.of("AI_OPERATOR_USERS=*").applyTo(environment);
+        try {
+            assertThat(tasks.request("bob",own,"ANALYSIS","",true).model()).isEqualTo("gpt-5.6-terra");
+            assertThat(tasks.budget("bob").limitUsd()).isNotNull();
+        } finally { TestPropertyValues.of("AI_OPERATOR_USERS=alice").applyTo(environment); }
+    }
     @Test void eightyPercentIsPersistentOperatorNotice() {
         TestPropertyValues.of("AI_MONTHLY_BUDGET_USD=0.004").applyTo(environment);
         tasks.request("alice",submission,"ANALYSIS","",false);tasks.claim();
