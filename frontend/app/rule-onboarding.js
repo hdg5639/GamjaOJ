@@ -7,10 +7,12 @@ const labels={QUEUED:'대기',AUTHORING:'규칙·코드 작성 중',AUTHORED:'�
 const running=['QUEUED','AUTHORING','AUTHORED','ORACLE','QUALIFYING'];
 const reasons={REFERENCE_ORACLE_DISAGREEMENT:'정답 코드와 독립 검증 코드의 결과가 달랐어요.',MUTANT_SURVIVED:'일부러 틀리게 만든 코드를 작은 입력으로 걸러내지 못했어요.',DUPLICATE_RULE_CONTRACT:'이미 등록된 규칙과 같아요.',ONBOARDING_BUDGET_CAP:'이 요청의 예산 한도를 넘었어요.',MONTHLY_BUDGET_EXHAUSTED:'이번 달 AI 예산이 부족해요.',STRESS_RESOURCE_MARGIN:'최대 입력에서 실행 시간 기준을 넘었어요.',LARGE_TESTS_NOT_DISCRIMINATING:'대형 입력이 느린 풀이와 효율적인 풀이를 구분하지 못했어요.',SLOW_SOLUTION_INCORRECT:'비교용 느린 풀이가 작은 입력에서 틀렸어요.',DOMAIN_VALIDATOR_REJECTED:'작성된 입력 일부가 입력 조건 검사를 통과하지 못했어요.',ONBOARDING_DEADLINE_EXCEEDED:'처리 기한 안에 마치지 못했어요.'};
 
-export default function RuleOnboarding({api,onRegistered}) {
+export default function RuleOnboarding({api,onRegistered,draft}) {
   const [enabled,setEnabled]=useState(null),[items,setItems]=useState([]),[rules,setRules]=useState([]);
   const [text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const pending=useRef(null),live=useRef(false),known=useRef(new Set());
+  const pending=useRef(null),live=useRef(false),known=useRef(new Set()),form=useRef(null);
+  // A diagnosis draft only fills the box; the learner reviews it and submits explicitly.
+  useEffect(()=>{if(!draft||pending.current)return;setText(draft.text);form.current?.scrollIntoView({block:'center'});form.current?.querySelector('textarea')?.focus();},[draft?.key]);
   async function refresh(){
     try{
       const [list,mine]=await Promise.all([api('/api/rules/onboarding'),api('/api/rules/mine')]);
@@ -44,7 +46,8 @@ export default function RuleOnboarding({api,onRegistered}) {
     <p className="draft-help">목록에 없는 알고리즘 유형을 설명하면 AI가 규칙·정답 코드·검증 자료를 만들고, 별도로 작성한 완전탐색 검증 코드와 실행 검증을 모두 통과한 경우에만 내 규칙으로 등록합니다. 요청당 AI 예산은 최대 $1, 처리 기한은 20분이며 실패해도 자동으로 다시 시도하지 않습니다.</p>
     {enabled===false&&<p className="notice">지금은 새 규칙을 등록할 수 없어요.</p>}
     {error&&<p className="notice error" role="alert">{error}</p>}
-    <form onSubmit={submit}>
+    {draft&&text===draft.text&&<p className="notice" role="status">진단 결과에서 가져온 초안이에요. 내용을 확인하고 필요하면 고친 뒤 요청해 주세요.</p>}
+    <form onSubmit={submit} ref={form}>
       <label className="field">만들고 싶은 규칙<textarea rows={4} maxLength={1000} value={text} disabled={busy||!enabled||!!pending.current} onChange={e=>setText(e.target.value)} placeholder="예: 구간 합 질의를 빠르게 처리하는 누적 합 문제"/></label>
       <button className="secondary" disabled={busy||!enabled||busyWork||(!pending.current&&text.trim().length<10)}>{pending.current?'같은 요청 다시 확인':'이 설명으로 규칙 등록 요청'}</button>
       {busyWork&&<p className="draft-help" role="status">진행 중인 등록이 끝나면 새로 요청할 수 있어요.</p>}

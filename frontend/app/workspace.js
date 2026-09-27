@@ -42,7 +42,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     const sync=()=>{const value=window.location.hash.slice(1)||'home';if(['home','practice','catalog','diagnostic','training','generation','mypage'].includes(value))updateScreen(value);};
     sync();window.addEventListener('popstate',sync);return()=>window.removeEventListener('popstate',sync);
   },[]);
-  const [generationMode,setGenerationMode]=useState('tags');
+  const [generationMode,setGenerationMode]=useState('tags'),[ruleDraft,setRuleDraft]=useState(null);
   const [tool, setTool] = useState('run');
   const [resultsOpen, setResultsOpen] = useState(false);
   const [resultSize, setResultSize] = useState(360);
@@ -301,12 +301,12 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       {['home','catalog'].includes(screen)&&<button className="primary" onClick={()=>setScreen('generation')}>+ 문제 만들기</button>}
     </div>
     {screen==='mypage'&&<div className="training-view"><MyPage api={api} user={user} problems={problems} onChoose={chooseProblem} onDiagnostic={()=>setScreen('diagnostic')}/></div>}
-    <div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{screen === 'diagnostic' && <DiagnosticPanel user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>
+    <div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{screen === 'diagnostic' && <DiagnosticPanel user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onRuleDraft={text=>{setRuleDraft({text,key:crypto.randomUUID()});setGenerationMode('hybrid');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>
     <div className="catalog-view" hidden={!['home','catalog'].includes(screen)}><ProblemCatalog home={['home','catalog'].includes(screen)} onNavigate={setScreen} api={api} onChanged={value=>{setProblems(items=>items.map(p=>p.version===value.version?value:p));window.dispatchEvent(new Event('gamjaoj-problems-changed'));}} problems={problems} loaded={loaded} error={error}
       selectedVersion={version} locked={busy || !!pending} onChoose={chooseProblem} /></div>
     <div className="training-view" hidden={screen !== 'training'}>{screen === 'training' && <AiBudget api={api} />}{loaded&&<FollowupPanel api={api} onOpen={openTraining} onGeneration={()=>setScreen('generation')} locked={busy||!!pending}/>}
     {loaded && <SessionPanel user={user} problem={problem} sessions={sessions} onChange={updateSessions} activity={activity} api={api} />}</div>
-    <div className="training-view" hidden={screen !== 'generation'}>{screen === 'generation' && <AiOperations api={api} userId={user.id} initialMode={generationMode} onOpen={async generatedVersion => {
+    <div className="training-view" hidden={screen !== 'generation'}>{screen === 'generation' && <AiOperations api={api} userId={user.id} initialMode={generationMode} ruleDraft={ruleDraft} onOpen={async generatedVersion => {
       if (busy || pending) throw new Error('진행 중인 제출을 먼저 마쳐 주세요.');
       const items=await api('/api/problems');setProblems(items);chooseProblem(generatedVersion);
     }} />}</div>

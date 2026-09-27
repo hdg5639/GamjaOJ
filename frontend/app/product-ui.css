@@ -355,3 +355,17 @@ input,select,textarea { border-color:#ccd9d3; }
 .run-detail pre, .training-detail pre, .submission-detail pre { max-height:24rem; overflow:auto; }
 /* Diagnostic statements keep their authored paragraphs (input, constraints, output). */
 .diagnostic-statement { white-space:pre-line; }
+/* Diagnostic per-category profile: one card per field, habits tagged by tone. */
+.diagnostic-profile { margin:12px 0 18px; }
+.diagnostic-profile-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; }
+.diagnostic-profile-card { border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; background:var(--surface); }
+.diagnostic-profile-card[data-selected="false"] { background:var(--canvas); color:var(--muted); }
+.diagnostic-profile-card h4 { margin:0 0 6px; }
+.diagnostic-profile-items { margin:0 0 8px; padding-left:18px; }
+.diagnostic-habit { border-top:1px solid var(--line); padding-top:8px; margin-top:8px; }
+.diagnostic-habit p { margin:4px 0; }
+.diagnostic-tone { display:inline-block; font-size:12px; font-weight:650; padding:1px 8px; border-radius:999px; margin-right:6px; background:var(--subtle); color:var(--ink); }
+.diagnostic-habit[data-tone="STRENGTH"] .diagnostic-tone:first-child { background:#e3f4ec; color:var(--green); }
+.diagnostic-habit[data-tone="WATCH"] .diagnostic-tone:first-child { background:#fff4d6; color:#7a5600; }
+.diagnostic-habit[data-tone="RISK"] .diagnostic-tone:first-child { background:#fde8e6; color:#a1271b; }
+.diagnostic-tone[data-kind="repeated"] { background:#e8eefc; color:#2a4a9a; }

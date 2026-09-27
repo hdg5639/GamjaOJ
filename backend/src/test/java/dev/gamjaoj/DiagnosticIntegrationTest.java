@@ -66,6 +66,10 @@ class DiagnosticIntegrationTest {
                     .param(bank).param(n).param(n==0?"EASY":"MEDIUM").param(version).param("{\"privateRubric\":true}").update();
         }
     }
+    static com.fasterxml.jackson.databind.node.ObjectNode habit(com.fasterxml.jackson.databind.node.ObjectNode observation) {
+        observation.put("pattern","입력을 읽지 않고 고정 값을 출력합니다.").put("risk","예제 외 입력에서는 항상 틀립니다.").put("tone","RISK").putArray("alsoSeenIn");
+        return observation;
+    }
     Diagnostics.View start() { return diagnostics.start(user,UUID.randomUUID(),bank); }
     SubmissionController.Request request(Diagnostics.Question q) { return new SubmissionController.Request(q.problemVersion(),SOURCE,null,q.itemId()); }
     Submissions.View submit(Diagnostics.Question q) { return submissions.submit(user,UUID.randomUUID(),request(q)); }
@@ -251,8 +255,8 @@ class DiagnosticIntegrationTest {
         org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=true","OPENAI_API_KEY=test-only").applyTo(environment);
         var evaluation=evaluations.request(user,d.id());var work=ai.claim();assertThat(work).isNotNull();
         var output=JudgeJson.JSON.createObjectNode().put("summary","관측한 문항의 기본 동작을 확인했습니다.").put("uncertainty","다른 분야는 미평가입니다.").put("requiredScope","OBSERVED_ITEMS_ONLY");
-        var observation=output.putArray("observations").addObject().put("submissionId",submission.id().toString()).put("quote","System.out.println(3)")
-                .put("interpretation","고정된 값을 출력합니다. 일반 입력 처리는 추가 확인이 필요합니다.").put("confidence","SUPPORTED").put("nextAction","ASSESS").put("recommendation","입력을 읽는 별도 문항으로 확인하세요.");
+        var observation=habit(output.putArray("observations").addObject().put("submissionId",submission.id().toString()).put("quote","System.out.println(3)")
+                .put("interpretation","고정된 값을 출력합니다. 일반 입력 처리는 추가 확인이 필요합니다.").put("confidence","SUPPORTED").put("nextAction","ASSESS").put("recommendation","입력을 읽는 별도 문항으로 확인하세요."));
         assertThat(DiagnosticEvaluationContract.valid(output,JudgeJson.parse(work.input()))).isTrue();
         observation.put("quote","not present");assertThat(DiagnosticEvaluationContract.valid(output,JudgeJson.parse(work.input()))).isFalse();observation.put("quote","System.out.println(3)");
         var usage=JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}");
@@ -312,14 +316,72 @@ class DiagnosticIntegrationTest {
         for(var attempts:ids)for(int n:List.of(0,3,4))expected.add(attempts.get(n).toString());
         assertThat(allowed).containsExactlyElementsOf(expected); // item IDs and omitted sources are not citable
         var output=JudgeJson.JSON.createObjectNode().put("summary","요약").put("uncertainty","일부 제출 코드는 축약되었습니다.").put("requiredScope","OBSERVED_ITEMS_ONLY");
-        var observation=output.putArray("observations").addObject().put("submissionId",ids.get(0).get(3).toString()).put("quote","System.out.println(3)")
-                .put("interpretation","고정 값을 출력합니다.").put("confidence","SUPPORTED").put("nextAction","ASSESS").put("recommendation","입력 처리를 확인하세요.");
+        var observation=habit(output.putArray("observations").addObject().put("submissionId",ids.get(0).get(3).toString()).put("quote","System.out.println(3)")
+                .put("interpretation","고정 값을 출력합니다.").put("confidence","SUPPORTED").put("nextAction","ASSESS").put("recommendation","입력 처리를 확인하세요."));
         assertThat(DiagnosticEvaluationContract.valid(output,evidence)).isTrue();
         observation.put("submissionId",ids.get(0).get(1).toString());
         assertThat(DiagnosticEvaluationContract.valid(output,evidence)).isFalse();
         assertThat(DiagnosticEvaluationContract.violation(output,evidence)).isEqualTo("OBSERVATION_0_UNKNOWN_SUBMISSION");
         observation.put("submissionId",ids.get(0).get(0).toString()).put("quote","System.out.println(4)");
         assertThat(DiagnosticEvaluationContract.violation(output,evidence)).isEqualTo("OBSERVATION_0_QUOTE_NOT_IN_SOURCE");
+    }
+    @Autowired DiagnosticProfiles profiles;
+    @Test void profileGroupsObservationsByCitedCategoryMarksCrossCategoryRepeatsAndUnselectedFields() {
+        String mixed="mixed-"+UUID.randomUUID();
+        jdbc.sql("INSERT INTO diagnostic_bank(id,reviewed) VALUES (?,true)").param(mixed).update();
+        var categories=List.of("bfs","bfs","dp","dp","greedy","greedy");
+        for(int n=0;n<categories.size();n++) {
+            String version=mixed+"-"+n;
+            var p=(ObjectNode)JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id='sum-v1'").query(String.class).single());p.put("version",version);
+            String json=JudgeJson.canonical(p);
+            jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,diagnostic_only) SELECT ?,?,?,runtime_image,runner_policy,true,true FROM problem_version WHERE id='sum-v1'")
+                    .param(version).param(json).param(JudgeJson.hash(json)).update();
+            jdbc.sql("INSERT INTO diagnostic_bank_item(bank_id,position,category,difficulty,problem_version,rubric_json) VALUES (?,?,?,?,?,?)")
+                    .param(mixed).param(n).param(categories.get(n)).param(n%2==0?"EASY":"MEDIUM").param(version).param("{\"privateRubric\":true}").update();
+        }
+        var d=diagnostics.start(user,UUID.randomUUID(),mixed,List.of("bfs","dp"));
+        var byCategory=new java.util.HashMap<String,UUID>();
+        for(int n=0;n<4;n++) {
+            var q=diagnostics.detail(user,d.id()).current();var saved=submit(q);finish("AC");
+            byCategory.putIfAbsent(jdbc.sql("SELECT category FROM diagnostic_item WHERE id=?").param(q.itemId()).query(String.class).single(),saved.id());
+        }
+        org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=true","OPENAI_API_KEY=test-only").applyTo(environment);
+        var evaluation=evaluations.request(user,d.id());var work=ai.claim();var input=JudgeJson.parse(work.input());
+        var output=JudgeJson.JSON.createObjectNode().put("summary","요약").put("uncertainty","범위 제한").put("requiredScope","OBSERVED_ITEMS_ONLY");
+        var observation=habit(output.putArray("observations").addObject().put("submissionId",byCategory.get("bfs").toString()).put("quote","System.out.println(3)")
+                .put("interpretation","고정 출력").put("confidence","SUPPORTED").put("nextAction","PRACTICE").put("recommendation","입력 처리 연습"));
+        observation.withArray("alsoSeenIn").add(byCategory.get("dp").toString());
+        assertThat(DiagnosticEvaluationContract.violation(output,input)).isNull();
+        observation.put("tone","BAD");assertThat(DiagnosticEvaluationContract.violation(output,input)).isEqualTo("OBSERVATION_0_TONE");observation.put("tone","RISK");
+        observation.withArray("alsoSeenIn").add(byCategory.get("bfs").toString());
+        assertThat(DiagnosticEvaluationContract.violation(output,input)).isEqualTo("OBSERVATION_0_ALSO_SEEN_UNKNOWN"); // self citation
+        observation.withArray("alsoSeenIn").remove(1);observation.remove("pattern");
+        assertThat(DiagnosticEvaluationContract.violation(output,input)).isEqualTo("OBSERVATION_0_SHAPE");
+        observation.put("pattern","입력을 읽지 않고 고정 값을 출력합니다.");
+        var enumIds=new java.util.ArrayList<String>();
+        DiagnosticEvaluationContract.schema(input).path("properties").path("observations").path("items").path("properties").path("alsoSeenIn").path("items").path("enum").forEach(v->enumIds.add(v.asText()));
+        assertThat(enumIds).hasSize(4).contains(byCategory.get("dp").toString());
+        ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
+        var profile=profiles.profile(user,d.id(),evaluation.id());
+        assertThat(profile.categories()).extracting(DiagnosticProfiles.Category::id).containsExactly("bfs","dp","greedy");
+        var bfs=profile.categories().get(0);var dp=profile.categories().get(1);var greedy=profile.categories().get(2);
+        assertThat(bfs.selected()).isTrue();assertThat(bfs.items()).hasSize(2);
+        assertThat(bfs.observations()).singleElement().satisfies(o->{assertThat(o.index()).isZero();assertThat(o.tone()).isEqualTo("RISK");assertThat(o.repeated()).isTrue();});
+        assertThat(dp.observations()).isEmpty();assertThat(dp.alsoSeen()).containsExactly(0);
+        assertThat(greedy.selected()).isFalse();assertThat(greedy.items()).isEmpty();
+        assertThatThrownBy(()->profiles.profile(other,d.id(),evaluation.id())).isInstanceOf(AccountException.class);
+        assertThat(plans.options(user,evaluation.id(),0).category()).isEqualTo("bfs");
+    }
+    @Test void ruleKeywordsMatchCatalogNamesOnlyForTheSameFamily() {
+        var bfs=new HybridAdmission.Profile("r1","BFS · 무방향 그래프 최단 거리","",List.of(),false,"그래프 탐색",List.of("BFS","최단 거리"));
+        var knapsack=new HybridAdmission.Profile("r2","0/1 배낭 · 물건 선택","",List.of(),false,"동적 계획법",List.of("0/1 배낭"));
+        var dijkstra=new HybridAdmission.Profile("r3","다익스트라 · 가중치 최단 거리","",List.of(),false,"최단 경로",List.of("다익스트라"));
+        var rules=List.of(bfs,knapsack,dijkstra);
+        assertThat(DiagnosticProfiles.matchingRules("bfs",rules)).containsExactly("r1");
+        assertThat(DiagnosticProfiles.matchingRules("dp",rules)).containsExactly("r2");
+        assertThat(DiagnosticProfiles.matchingRules("graph",rules)).containsExactly("r1","r3"); // "그래프 탐색" names a graph family
+        assertThat(DiagnosticProfiles.matchingRules("mst",rules)).isEmpty();
+        assertThat(DiagnosticProfiles.matchingRules("unknown",rules)).isEmpty();
     }
     @Test void skippedOnlyEvaluationNeverQueuesModelAndUnknownUsageIsPreserved() {
         var d=start();diagnostics.skip(user,d.id(),d.current().itemId());diagnostics.skip(user,d.id(),diagnostics.detail(user,d.id()).current().itemId());
@@ -353,8 +415,8 @@ class DiagnosticIntegrationTest {
         var evaluation=evaluations.request(user,d.id());var work=ai.claim();
         var output=JudgeJson.JSON.createObjectNode().put("summary","관측 범위 내 연습 제안").put("uncertainty","추가 근거 필요").put("requiredScope","OBSERVED_ITEMS_ONLY");
         var observations=output.putArray("observations");
-        for(String action:List.of("PRACTICE","ASSESS"))observations.addObject().put("submissionId",submitted.id().toString()).put("quote","System.out.println(3)")
-                .put("interpretation","입력 처리를 확인할 필요가 있습니다.").put("confidence","UNCERTAIN").put("nextAction",action).put("recommendation","입력 처리 연습");
+        for(String action:List.of("PRACTICE","ASSESS"))habit(observations.addObject().put("submissionId",submitted.id().toString()).put("quote","System.out.println(3)")
+                .put("interpretation","입력 처리를 확인할 필요가 있습니다.").put("confidence","UNCERTAIN").put("nextAction",action).put("recommendation","입력 처리 연습"));
         ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
         var original=plans.options(user,evaluation.id(),0);
         assertThat(original.problems()).noneMatch(p->p.version().startsWith("fixture-"));
