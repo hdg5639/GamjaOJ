@@ -5,9 +5,9 @@ import dynamic from 'next/dynamic';
 import {useEditorSizing,ResizeHandle,EditorSizing,splitScale} from './editor-sizing';
 import DiagnosticEvaluation from './diagnostic-evaluation';
 import DiagnosticReassessment from './diagnostic-reassessment';
+import {categoryLabels as categories,bankTitle} from './diagnostic-categories';
 const Editor=dynamic(()=>import('./code-editor'),{ssr:false});
 const starter='import java.util.*;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner input = new Scanner(System.in);\n    }\n}\n';
-const categories={'implementation':'구현','arrays-strings':'배열·문자열','basic-data-structures':'기초 자료구조','basic-search':'기초 탐색'};
 const outcomes={OPEN:'아직 완료하지 않음',PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀'};
 export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration}) {
   const [size,changeSize,resetSize]=useEditorSizing(user.id,'diagnostic',50,390);
@@ -105,8 +105,9 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
     {!session&&loaded&&<>
       <p>문제당 정식 제출은 최대 5회이며, 정답 또는 5회 소진 시 다음 문항으로 넘어갑니다. 직접 실행은 횟수 제한이 없으며, 동시에 실행할 수 있는 작업 수는 제한됩니다.</p>
       {!banks.length&&<p className="notice">검토가 끝난 진단 문항을 준비하고 있어요. 지금은 일반 문제를 자유롭게 연습할 수 있어요.</p>}
-      {banks.map(bank=><fieldset key={bank.id} disabled={busy||!!request}><legend>{bank.id.startsWith('core-a-')?'핵심 시범 진단 A':'분야별 진단'} · {bank.questionCount}문항</legend>
+      {banks.map(bank=><fieldset key={bank.id} disabled={busy||!!request}><legend>{bankTitle(bank.id)} · {bank.questionCount}문항</legend>
         {bank.id.startsWith('core-a-')&&<p>구현·배열/문자열·기초 자료구조·기초 탐색을 확인하는 시범 진단입니다. 하·중 난이도는 잠정 분류이며, 완료 시간과 학습 효과는 아직 실측 검증되지 않았습니다. 전체 분야의 숙련도를 판정하지 않습니다.</p>}
+        {bank.id.startsWith('algo-mix-a-')&&<p>배열·문자열부터 BFS·DFS·백트래킹·DP·이분 탐색·그리디·최단 경로·최소 신장 트리까지 분야별 하·중 문항으로 풀이 과정과 코드 습관을 관찰합니다. 원하는 분야만 골라 시작할 수 있어요. 전체를 한 언어로 푸는 데 약 100~120분을 예상하지만 실측 전 추정이며, 숙련도 점수를 매기지 않습니다.</p>}
         {bank.categories.map(c=><label key={c}><input type="checkbox" checked={(scope[bank.id]||bank.categories).includes(c)} onChange={e=>setScope({...scope,[bank.id]:e.target.checked?[...(scope[bank.id]||bank.categories),c]:(scope[bank.id]||bank.categories).filter(x=>x!==c)})}/>{categories[c]||c} · 하·중 2문항</label>)}
         <button className="primary" disabled={!(scope[bank.id]||bank.categories).length} onClick={()=>mutate('/api/diagnostics',{bankId:bank.id,categories:scope[bank.id]||bank.categories},true)}>선택한 {(scope[bank.id]||bank.categories).length*2}문항 시작</button>
       </fieldset>)}

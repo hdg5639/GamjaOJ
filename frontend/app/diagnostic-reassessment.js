@@ -1,6 +1,6 @@
 'use client';
 import {useRef,useState} from 'react';
-const labels={'implementation':'구현','arrays-strings':'배열·문자열','basic-data-structures':'기초 자료구조','basic-search':'기초 탐색'};
+import {categoryLabels as labels} from './diagnostic-categories';
 export default function DiagnosticReassessment({api,session,busy,onStart}) {
   const [banks,setBanks]=useState(null),[scope,setScope]=useState({}),[loading,setLoading]=useState(false),[error,setError]=useState(''),[trained,setTrained]=useState([]);
   const lock=useRef(false);

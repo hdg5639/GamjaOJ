@@ -82,3 +82,49 @@ class DiagnosticBankRunnerTests(unittest.TestCase):
 
 class DiagnosticPilotRunnerTests(DiagnosticBankRunnerTests):
     data=staticmethod(pilot_bank)
+
+
+ALGO_MIX=ROOT/'diagnostics/private/algo-mix-a-v1.json'
+
+
+@unittest.skipUnless(ALGO_MIX.exists(),'private bank artifact is kept outside the public repository')
+class AlgoMixBankTests(unittest.TestCase):
+    """Imported member-authored bank: structure, privacy of verification material and private staging."""
+    def setUp(self):
+        self.data=json.loads(ALGO_MIX.read_text())
+
+    def test_statements_use_ascii_minus_matching_expected_outputs(self):
+        for item in self.data['items']:
+            self.assertNotIn('\u2212',item['problem']['statement'],item['problem']['version'])
+            self.assertNotIn('testNotes',item['rubric'])
+
+    def test_ten_categories_with_exact_pairs_and_contract_limits(self):
+        from runner.judge import validate_problem
+        pairs={}
+        for item in self.data['items']:
+            validate_problem(item['problem'])
+            pairs.setdefault(item['category'],[]).append(item['difficulty'])
+            p=item['problem']
+            self.assertTrue(p['version'].startswith('diagnostic-algo-mix-a-v1-') and len(p['version'])<=80)
+            self.assertEqual('T01',p['tests'][0]['id'])
+            self.assertTrue(all(len(t['input'].encode())<=65536 and len(t['output'].encode())<=65536 for t in p['tests']))
+            # Only statement-level fields reach the staged package; verification material stays outside it.
+            self.assertEqual(set(p)-{'generated'},{'version','title','statement','output_policy','tests'})
+            for field in ('skills','positiveEvidence','negativeEvidence','unobservable','evidencePolicy'):
+                self.assertTrue(item['rubric'][field])
+            self.assertNotIn('**',p['statement']);self.assertNotIn('| Java 8',p['statement'])
+        self.assertEqual({k:sorted(v) for k,v in pairs.items()},{c:['EASY','MEDIUM'] for c in
+            ['arrays-strings','basic-data-structures','bfs','dfs','backtracking','dp','binary-search','greedy','graph','mst']})
+        generated=[i for i in self.data['items'] if 'generated' in i['problem']]
+        self.assertEqual(3,len(generated))
+        self.assertEqual(143,sum(len(i['problem']['tests']) for i in self.data['items']))
+        for item in generated:
+            self.assertEqual(item['reference'],item['problem']['generated']['reference'])
+            self.assertEqual(['11','12'],[t['seed'] for t in item['problem']['generated']['tests']])
+
+    def test_staging_stays_unreviewed(self):
+        spec=importlib.util.spec_from_file_location('stage_bank',ROOT/'scripts/stage-diagnostic-bank.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        sql=module.stage(self.data)
+        self.assertIn("VALUES ('algo-mix-a-v1',false)",sql)
+        self.assertNotIn('"languages"',sql);self.assertNotIn('"slow"',sql);self.assertNotIn('"mutants"',sql)

@@ -90,3 +90,26 @@ the completed-source reassessment UI; reviewed mapping targets are omitted from 
 and the real Runner, with no model call. `GAMJAOJ_EXPECT_B_PILOT=1 scripts/test-browser-auth.sh`
 checks actual category selection, B entry and a positive external-exposure report. Both clean only
 their own synthetic user. Release progress is recorded only in Implementation Status.
+
+## Algo Mix A v1
+
+`private/algo-mix-a-v1.json` is converted from the user-supplied package by `import_markdown_bank.py`
+(20 items: ten categories, one EASY and one MEDIUM each; 143 fixed and 6 generated tests). The package
+and the converted artifact stay outside Git (`diagnostics/private/` is ignored): the repository is
+public and the artifact holds hidden tests, solutions, generators and seeds. Only the review record
+with the artifact SHA-256 is committed; keep the artifact with the private DB backup. The candidate keeps C++/Python solutions, slow solutions and generators for
+verification only; staging reads problem, category, difficulty and rubric.
+
+```sh
+python3 diagnostics/import_markdown_bank.py --markdown <package>/banks/algo-mix-a-v1.md --package <package> --output diagnostics/private/algo-mix-a-v1.json
+python3 diagnostics/verify_bank_runner.py --bank diagnostics/private/algo-mix-a-v1.json --output .state/algo-mix-verify.json
+python3 scripts/stage-diagnostic-bank.py --bank diagnostics/private/algo-mix-a-v1.json --output /tmp/algo-mix-stage.sql
+python3 scripts/release-diagnostic-bank.py --bank diagnostics/private/algo-mix-a-v1.json --review diagnostics/algo-mix-a-v1-review.json --output /tmp/algo-mix-release.sql
+python3 scripts/smoke-diagnostic-pilot.py --bank diagnostics/private/algo-mix-a-v1.json --language PYTHON
+```
+
+`verify_bank_runner.py` runs the real Runner code and pinned images: correct solutions AC with large-test
+time gates, wrong solutions WA after passing the sample, slow solutions TLE only on generated input, and
+byte-identical generators across languages. On a Runner host it shares the worker's exclusive host lock.
+`algo-mix-a-v1-review.{json,md}` records the AI-assisted review and the two review changes (ASCII minus
+in statements; per-test design notes not staged).

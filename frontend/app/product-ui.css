@@ -353,3 +353,5 @@ input,select,textarea { border-color:#ccd9d3; }
 .pager span { min-width:4rem; text-align:center; font-variant-numeric:tabular-nums; }
 /* Long execution output and code scroll inside their block instead of stretching the page. */
 .run-detail pre, .training-detail pre, .submission-detail pre { max-height:24rem; overflow:auto; }
+/* Diagnostic statements keep their authored paragraphs (input, constraints, output). */
+.diagnostic-statement { white-space:pre-line; }
