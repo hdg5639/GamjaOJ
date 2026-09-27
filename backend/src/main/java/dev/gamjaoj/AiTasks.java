@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AiTasks {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(AiTasks.class);
     private final JdbcClient jdbc;
     private final Submissions submissions;
     private final AiSettings config;
@@ -178,6 +179,10 @@ public class AiTasks {
         JsonNode output=result==null?null:result.value();
         boolean theme=JudgeJson.parse(work.input()).path("kind").asText().equals("THEME");
         boolean diagnostic=JudgeJson.parse(work.input()).path("kind").asText().equals("DIAGNOSTIC");
+        if (output!=null && diagnostic) {
+            String violation=DiagnosticEvaluationContract.violation(output,JudgeJson.parse(work.input()));
+            if (violation!=null) log.warn("Diagnostic evaluation output rejected: attempt={} check={}",work.attemptId(),violation);
+        }
         if (output!=null && !(theme?GenerationThemes.valid(output):diagnostic?DiagnosticEvaluationContract.valid(output,JudgeJson.parse(work.input())):validFeedback(output))) { error=theme?"INVALID_THEME":diagnostic?"INVALID_DIAGNOSTIC_EVIDENCE":"INVALID_FEEDBACK";output=null; }
         String status=output!=null?"COMPLETED":actual==null?"UNKNOWN":"FAILED";
         jdbc.sql("UPDATE ai_attempt SET status=?,actual_usd=?,usage_json=?,request_id=?,response_id=?,provider_model=?,error_code=?,finished_at=CURRENT_TIMESTAMP WHERE id=?")

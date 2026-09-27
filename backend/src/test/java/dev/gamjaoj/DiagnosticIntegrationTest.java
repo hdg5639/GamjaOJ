@@ -312,6 +312,9 @@ class DiagnosticIntegrationTest {
         assertThat(DiagnosticEvaluationContract.valid(output,evidence)).isTrue();
         observation.put("submissionId",ids.get(0).get(1).toString());
         assertThat(DiagnosticEvaluationContract.valid(output,evidence)).isFalse();
+        assertThat(DiagnosticEvaluationContract.violation(output,evidence)).isEqualTo("OBSERVATION_0_UNKNOWN_SUBMISSION");
+        observation.put("submissionId",ids.get(0).get(0).toString()).put("quote","System.out.println(4)");
+        assertThat(DiagnosticEvaluationContract.violation(output,evidence)).isEqualTo("OBSERVATION_0_QUOTE_NOT_IN_SOURCE");
     }
     @Test void skippedOnlyEvaluationNeverQueuesModelAndUnknownUsageIsPreserved() {
         var d=start();diagnostics.skip(user,d.id(),d.current().itemId());diagnostics.skip(user,d.id(),diagnostics.detail(user,d.id()).current().itemId());
