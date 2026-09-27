@@ -61,8 +61,21 @@ public class DiagnosticEvaluations {
         }
         if(evidence.isEmpty())throw new AccountException(409,"완료하거나 건너뛴 문항이 생기면 부분 결과를 확인할 수 있어요.");
         input.set("coverage",coverage.deepCopy());
-        String json=JudgeJson.canonical(input),hash=JudgeJson.hash(json);
-        if(json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>262144)
+        String json=JudgeJson.canonical(input);
+        if(bytes(json)>EVIDENCE_LIMIT) {
+            // Deterministic, declared reduction: keep each item's first and last two sources; others keep verdict and hashes only.
+            for(var item:evidence) {
+                var attempts=item.path("submissions");
+                for(int i=1;i<attempts.size()-2;i++) {
+                    var attempt=(com.fasterxml.jackson.databind.node.ObjectNode)attempts.get(i);
+                    attempt.remove("source");attempt.put("sourceOmitted",true);
+                }
+            }
+            input.put("sourceCompaction","FIRST_AND_LAST_TWO_PER_ITEM");
+            json=JudgeJson.canonical(input);
+        }
+        String hash=JudgeJson.hash(json);
+        if(bytes(json)>EVIDENCE_LIMIT)
             throw new AccountException(413,"평가 근거가 한 번에 처리할 수 있는 크기를 넘었어요. 제출 기록은 보존되어 있어요.");
         var old=jdbc.sql("SELECT id FROM diagnostic_evaluation WHERE session_id=? AND evidence_sha256=?").param(session).param(hash).query(UUID.class).optional();
         if(old.isPresent())return find(owner,old.get());
@@ -117,4 +130,6 @@ public class DiagnosticEvaluations {
                             stale||held||hidden||result==null?null:JudgeJson.parse(result),r.getString("error_code"),stale||held||hidden?List.of():corrections(id));
                 }).optional().orElseThrow(()->new AccountException(404,"진단 평가를 찾을 수 없어요."));
     }
+    static final int EVIDENCE_LIMIT=524288;
+    private static int bytes(String json){return json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;}
 }

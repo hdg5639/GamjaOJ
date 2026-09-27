@@ -281,6 +281,38 @@ class DiagnosticIntegrationTest {
         assertThat(evaluations.list(user,d.id()).get(0).status()).isEqualTo("HELD_REVIEW");
         assertThat(evaluations.list(user,d.id()).get(0).interpretation()).isNull();
     }
+    @Test void oversizedEvidenceKeepsFirstAndLastTwoSourcesAndRejectsOmittedCitations() {
+        var d=start();var ids=new java.util.ArrayList<List<UUID>>();
+        for(int item=0;item<2;item++) {
+            var q=diagnostics.detail(user,d.id()).current();var attempts=new java.util.ArrayList<UUID>();
+            for(int n=0;n<5;n++) {
+                String large="public class Main { public static void main(String[] args) { System.out.println(3); } } // attempt "+item+"-"+n+" "+"x".repeat(60000);
+                attempts.add(submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(q.problemVersion(),large,null,q.itemId())).id());finish("WA");
+            }
+            ids.add(attempts);
+        }
+        assertThat(diagnostics.detail(user,d.id()).status()).isEqualTo("COMPLETED");
+        var evaluation=evaluations.request(user,d.id());
+        String json=jdbc.sql("SELECT evidence_json FROM diagnostic_evaluation WHERE id=?").param(evaluation.id()).query(String.class).single();
+        assertThat(json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length).isLessThanOrEqualTo(DiagnosticEvaluations.EVIDENCE_LIMIT);
+        var evidence=JudgeJson.parse(json);
+        assertThat(evidence.path("sourceCompaction").asText()).isEqualTo("FIRST_AND_LAST_TWO_PER_ITEM");
+        for(int item=0;item<2;item++) {
+            var attempts=evidence.path("items").get(item).path("submissions");assertThat(attempts).hasSize(5);
+            for(int n=0;n<5;n++) {
+                var attempt=attempts.get(n);assertThat(attempt.path("submissionId").asText()).isEqualTo(ids.get(item).get(n).toString());
+                boolean kept=n==0||n>=3;
+                assertThat(attempt.has("source")).isEqualTo(kept);assertThat(attempt.path("sourceOmitted").asBoolean()).isEqualTo(!kept);
+                assertThat(attempt.path("verdict").asText()).isEqualTo("WA");assertThat(attempt.path("sourceHash").asText()).hasSize(64);
+            }
+        }
+        var output=JudgeJson.JSON.createObjectNode().put("summary","요약").put("uncertainty","일부 제출 코드는 축약되었습니다.").put("requiredScope","OBSERVED_ITEMS_ONLY");
+        var observation=output.putArray("observations").addObject().put("submissionId",ids.get(0).get(3).toString()).put("quote","System.out.println(3)")
+                .put("interpretation","고정 값을 출력합니다.").put("confidence","SUPPORTED").put("nextAction","ASSESS").put("recommendation","입력 처리를 확인하세요.");
+        assertThat(DiagnosticEvaluationContract.valid(output,evidence)).isTrue();
+        observation.put("submissionId",ids.get(0).get(1).toString());
+        assertThat(DiagnosticEvaluationContract.valid(output,evidence)).isFalse();
+    }
     @Test void skippedOnlyEvaluationNeverQueuesModelAndUnknownUsageIsPreserved() {
         var d=start();diagnostics.skip(user,d.id(),d.current().itemId());diagnostics.skip(user,d.id(),diagnostics.detail(user,d.id()).current().itemId());
         assertThat(evaluations.request(user,d.id()).status()).isEqualTo("FACTS_ONLY");

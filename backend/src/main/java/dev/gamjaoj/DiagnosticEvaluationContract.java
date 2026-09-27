@@ -16,6 +16,8 @@ final class DiagnosticEvaluationContract {
         uncertainty and distinguish supported code observations from hypotheses. Recommendations use
         ASSESS when more evidence is needed, PRACTICE for supported narrow skills. Do not claim a wrong
         line caused WA based on verdict alone. No tools or external sources. Keep summary scope-limited.
+        A submission marked sourceOmitted was reduced to verdict and hashes to fit the evidence limit:
+        never cite it or guess its code; mention the reduction in uncertainty when it limits a finding.
         """;
     static final JsonNode SCHEMA=JudgeJson.parse("""
         {"type":"object","properties":{
@@ -33,7 +35,7 @@ final class DiagnosticEvaluationContract {
         for(String key:List.of("summary","uncertainty"))if(!text(output,key,6000))return false;
         if(!output.path("observations").isArray()||output.path("observations").size()>12)return false;
         Map<String,String> sources=new HashMap<>();
-        for(var item:input.path("items"))for(var s:item.path("submissions"))sources.put(s.path("submissionId").asText(),s.path("source").asText());
+        for(var item:input.path("items"))for(var s:item.path("submissions"))if(s.path("source").isTextual())sources.put(s.path("submissionId").asText(),s.path("source").asText());
         for(var o:output.path("observations")) {
             if(!o.isObject()||o.size()!=6)return false;
             for(String key:List.of("submissionId","quote","interpretation","confidence","nextAction","recommendation"))if(!text(o,key,3000))return false;
