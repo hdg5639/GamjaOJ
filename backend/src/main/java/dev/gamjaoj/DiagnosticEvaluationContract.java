@@ -30,20 +30,27 @@ final class DiagnosticEvaluationContract {
           "requiredScope":{"type":"string","enum":["OBSERVED_ITEMS_ONLY"]}},
           "required":["summary","uncertainty","observations","requiredScope"],"additionalProperties":false}
         """);
-    static boolean valid(JsonNode output,JsonNode input) {
-        if(!output.isObject()||output.size()!=4||!output.path("requiredScope").asText().equals("OBSERVED_ITEMS_ONLY"))return false;
-        for(String key:List.of("summary","uncertainty"))if(!text(output,key,6000))return false;
-        if(!output.path("observations").isArray()||output.path("observations").size()>12)return false;
+    static boolean valid(JsonNode output,JsonNode input) { return violation(output,input)==null; }
+    /** First failed check as a content-free code (never output text), or null when the output is valid. */
+    static String violation(JsonNode output,JsonNode input) {
+        if(!output.isObject()||output.size()!=4)return "SHAPE";
+        if(!output.path("requiredScope").asText().equals("OBSERVED_ITEMS_ONLY"))return "SCOPE";
+        for(String key:List.of("summary","uncertainty"))if(!text(output,key,6000))return "TEXT_"+key;
+        if(!output.path("observations").isArray())return "OBSERVATIONS_SHAPE";
+        if(output.path("observations").size()>12)return "OBSERVATION_COUNT_"+output.path("observations").size();
         Map<String,String> sources=new HashMap<>();
         for(var item:input.path("items"))for(var s:item.path("submissions"))if(s.path("source").isTextual())sources.put(s.path("submissionId").asText(),s.path("source").asText());
+        int index=0;
         for(var o:output.path("observations")) {
-            if(!o.isObject()||o.size()!=6)return false;
-            for(String key:List.of("submissionId","quote","interpretation","confidence","nextAction","recommendation"))if(!text(o,key,3000))return false;
+            String at="OBSERVATION_"+index+++"_";
+            if(!o.isObject()||o.size()!=6)return at+"SHAPE";
+            for(String key:List.of("submissionId","quote","interpretation","confidence","nextAction","recommendation"))if(!text(o,key,3000))return at+"TEXT_"+key;
             String source=sources.get(o.path("submissionId").asText());
-            if(source==null||!source.contains(o.path("quote").asText()))return false;
-            if(!List.of("SUPPORTED","UNCERTAIN").contains(o.path("confidence").asText())||!List.of("ASSESS","PRACTICE").contains(o.path("nextAction").asText()))return false;
+            if(source==null)return at+"UNKNOWN_SUBMISSION";
+            if(!source.contains(o.path("quote").asText()))return at+"QUOTE_NOT_IN_SOURCE";
+            if(!List.of("SUPPORTED","UNCERTAIN").contains(o.path("confidence").asText())||!List.of("ASSESS","PRACTICE").contains(o.path("nextAction").asText()))return at+"ENUM";
         }
-        return true;
+        return null;
     }
     private static boolean text(JsonNode node,String key,int limit) {
         return node.path(key).isTextual()&&!node.path(key).asText().isBlank()&&node.path(key).asText().length()<=limit;
