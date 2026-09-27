@@ -1,4 +1,5 @@
 import {ensureSyntaxTree, syntaxTree} from '@codemirror/language';
+import {afterDot} from './member-completion-source';
 
 const catalogs = {
   CPP: {
@@ -31,6 +32,7 @@ export function nativeNameCompletion(language) {
     }
     const word=context.matchBefore(/[\p{ID_Continue}]+/u);
     if(!word&&!context.explicit)return null;
+    if(afterDot(state,word?.from??pos))return null; // members come from memberCompletionSource
     let names=caches[language].get(tree);
     if(!names){
       names=[];

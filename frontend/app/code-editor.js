@@ -13,6 +13,7 @@ import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { tags } from '@lezer/highlight';
 import { javaNameCompletion } from './java-completion';
 import {cppNameCompletion,pythonNameCompletion} from './native-completion';
+import {memberCompletionSource} from './member-completion-source';
 
 const externalChange = Annotation.define();
 // Declaration roles come from the Java syntax tree, not regexes over strings/comments.
@@ -102,7 +103,7 @@ export default function CodeEditor({ id = 'source', label = 'Main.java', languag
         indentOnInput(), bracketMatching(), closeBrackets(), foldGutter(), highlightSelectionMatches(),
         syntaxHighlighting(colors), theme,
         tooltips({tooltipSpace:()=>({left:8,top:8,right:document.documentElement.clientWidth-8,bottom:window.innerHeight-8})}),
-        autocompletion({override:[language==='JAVA'?javaNameCompletion:language==='CPP'?cppNameCompletion:pythonNameCompletion], defaultKeymap:false, activateOnTyping:true, selectOnOpen:true}),
+        autocompletion({override:[memberCompletionSource(language),language==='JAVA'?javaNameCompletion:language==='CPP'?cppNameCompletion:pythonNameCompletion], defaultKeymap:false, activateOnTyping:true, selectOnOpen:true}),
         editable.current.of([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled)]),
         EditorView.contentAttributes.of({ 'aria-label': label, 'aria-description': 'Ctrl+Space 후보 열기, 방향키 선택, Enter 확정, Esc 닫기. 스페이스는 공백, Tab은 들여쓰기.',
           'aria-multiline': 'true', spellcheck: 'false', autocapitalize: 'off', autocorrect: 'off' }),
