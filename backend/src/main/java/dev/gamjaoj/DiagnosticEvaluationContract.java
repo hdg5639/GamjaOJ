@@ -30,7 +30,8 @@ final class DiagnosticEvaluationContract {
         submissions whose code visibly contains the same construct (empty when none). A pattern
         counts as repeated only when alsoSeenIn names a different question. Cover each assessed
         category with one or two observations when its code allows; prefer patterns that affect
-        correctness or efficiency over style.
+        correctness or efficiency over style. Write pattern and risk as short Korean phrases; keep
+        code identifiers as written but do not use English prose words.
         """;
     static final JsonNode SCHEMA=JudgeJson.parse("""
         {"type":"object","properties":{

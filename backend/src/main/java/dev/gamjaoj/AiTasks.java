@@ -84,7 +84,7 @@ public class AiTasks {
     public UUID diagnostic(UUID owner,UUID session,JsonNode input) {
         var base=config.model(false);
         var model=new AiSettings.Model(base.model(),base.effort(),base.inputRate(),base.cachedRate(),base.outputRate(),base.pricingVersion(),
-                8192,"diagnostic-v4","diagnostic-v3");
+                8192,"diagnostic-v5","diagnostic-v3");
         String configuration=json(model),payload=JudgeJson.canonical(input),cache=JudgeJson.hash(configuration+":"+payload);
         var old=jdbc.sql("SELECT id FROM ai_task WHERE user_id=? AND cache_key=?").param(owner).param(cache).query(UUID.class).optional();
         if(old.isPresent())return old.get();
