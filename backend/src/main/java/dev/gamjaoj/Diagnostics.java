@@ -173,6 +173,15 @@ public class Diagnostics {
         if(!saved.status().equals("COMPLETED"))jdbc.sql("UPDATE diagnostic_session SET status=? WHERE id=?").param(target).param(id).update();
         return view(user,id);
     }
+    /** Ends an open session: every unfinished item is recorded as SKIPPED (unassessed, never weak). */
+    @Transactional
+    public View finish(String name,UUID session) {
+        UUID user=owner(name); View saved=view(user,session);
+        if(saved.status().equals("COMPLETED"))return saved; // Replay after completion is a no-op.
+        if(saved.items().stream().anyMatch(i->i.pending()>0))throw new AccountException(409,"진행 중인 정식 채점이 끝난 뒤 진단을 끝내 주세요.");
+        jdbc.sql("UPDATE diagnostic_item SET status='SKIPPED' WHERE session_id=? AND status='OPEN'").param(session).update();
+        return view(user,session);
+    }
     @Transactional
     public View skip(String name,UUID session,UUID item) {
         UUID user=owner(name); View saved=view(user,session);

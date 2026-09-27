@@ -13,7 +13,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
   const [size,changeSize,resetSize]=useEditorSizing(user.id,'diagnostic',50,390);
   const [banks,setBanks]=useState([]),[sessions,setSessions]=useState([]),[session,setSession]=useState(null);
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false);
-  const [language,setLanguage]=useState('JAVA');
+  const [language,setLanguage]=useState('JAVA'),[finishing,setFinishing]=useState(false);
   const [source,setSource]=useState(starter),[input,setInput]=useState(''),[result,setResult]=useState(null),[banner,setBanner]=useState('');
   const [request,setRequest]=useState(null),[records,setRecords]=useState([]),[record,setRecord]=useState(null);
   const [scope,setScope]=useState({});
@@ -96,8 +96,13 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
       {!current&&<div><h2>{session?'진단 진행':'나에게 맞는 시작점 찾기'}</h2>{!session&&<p className="muted">내 약점을 몰라도 시작할 수 있어요. 원하는 분야만 풀고, 언제든 일반 연습으로 돌아가세요.</p>}</div>}
       {session&&<div className="diagnostic-session-status"><span>{session.items.filter(i=>i.status!=='OPEN').length} / {session.items.length}문항 완료 · {session.status==='PAUSED'?'일시정지':session.status==='COMPLETED'?'진단 종료':'진행 중'}</span><progress className="diagnostic-progress" aria-label="진단 완료 문항" max={session.items.length||1} value={session.items.filter(i=>i.status!=='OPEN').length}/></div>}
       <div className="diagnostic-session-actions">{session&&session.status!=='COMPLETED'&&<button className="secondary" disabled={busy||!!request} onClick={()=>mutate(`/api/diagnostics/${session.id}/state`,{status:session.status==='PAUSED'?'ACTIVE':'PAUSED'})}>{session.status==='PAUSED'?'진단 이어서 풀기':'일시정지'}</button>}
+      {session&&session.status!=='COMPLETED'&&!finishing&&<button className="secondary" disabled={busy||!!request} onClick={()=>setFinishing(true)}>진단 끝내기</button>}
       <button className="secondary" onClick={onPractice}>일반 연습으로</button>
       <button className="secondary" disabled={busy} onClick={()=>refresh().catch(e=>setError(e.message))}>목록 새로고침</button></div>
+      {session&&session.status!=='COMPLETED'&&finishing&&<div className="notice" role="group" aria-label="진단 끝내기 확인">
+        <p>남은 {session.items.filter(i=>i.status==='OPEN').length}문항은 건너뜀으로 기록하고 이 진단을 끝냅니다. 건너뛴 문항은 약점이 아니라 미평가로 남고, 끝낸 뒤에는 이 진단을 다시 이어서 풀 수 없어요. 푼 문항의 기록과 평가 요청은 그대로 사용할 수 있어요.</p>
+        <button className="primary" disabled={busy||!!request} onClick={async()=>{await mutate(`/api/diagnostics/${session.id}/finish`,{});setFinishing(false);}}>남은 문항 건너뛰고 끝내기</button>
+        <button className="secondary" disabled={busy} onClick={()=>setFinishing(false)}>계속 풀기</button></div>}
     </div>
     {error&&<p role="alert" className="notice error">{error}</p>}
     {!loaded&&<p role="status">진단 목록을 불러오는 중…</p>}

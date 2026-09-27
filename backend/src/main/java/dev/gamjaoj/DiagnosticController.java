@@ -49,6 +49,9 @@ class DiagnosticController {
     @PostMapping("/{id}/state") Diagnostics.View state(Principal user,@PathVariable UUID id,@Valid @RequestBody State body) {
         return diagnostics.state(user.getName(),id,body.status());
     }
+    @PostMapping("/{id}/finish") Diagnostics.View finish(Principal user,@PathVariable UUID id) {
+        return diagnostics.finish(user.getName(),id);
+    }
     @PostMapping("/{id}/items/{item}/skip") Diagnostics.View skip(Principal user,@PathVariable UUID id,@PathVariable UUID item) {
         return diagnostics.skip(user.getName(),id,item);
     }
