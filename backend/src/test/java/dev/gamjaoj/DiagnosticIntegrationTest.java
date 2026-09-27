@@ -126,6 +126,20 @@ class DiagnosticIntegrationTest {
         assertThat(diagnostics.detail(user,d.id()).status()).isEqualTo("COMPLETED");
         assertThat(submissions.detail(user,first.id()).source()).isEqualTo(SOURCE);
     }
+    @Test void finishingPausedSessionSkipsRemainingItemsAndAllowsNewSession() {
+        var d=start();var q=d.current();submit(q);
+        assertThatThrownBy(()->diagnostics.finish(user,d.id())).isInstanceOf(AccountException.class); // pending judge
+        finish("WA");
+        diagnostics.state(user,d.id(),"PAUSED");
+        assertThatThrownBy(()->diagnostics.start(user,UUID.randomUUID(),bank)).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->diagnostics.finish(other,d.id())).isInstanceOf(AccountException.class);
+        var done=diagnostics.finish(user,d.id());
+        assertThat(done.status()).isEqualTo("COMPLETED");
+        assertThat(done.items()).extracting(Diagnostics.Item::status).containsExactly("SKIPPED","SKIPPED");
+        assertThat(done.items().get(0).attempts()).isEqualTo(1); // recorded attempt is preserved
+        assertThat(diagnostics.finish(user,d.id()).status()).isEqualTo("COMPLETED");
+        assertThat(diagnostics.start(user,UUID.randomUUID(),bank).status()).isEqualTo("ACTIVE");
+    }
     @Test void pauseResumeSkipAndOrdinaryPracticeRemainIndependent() {
         var d=start();var q=d.current();submit(q);
         diagnostics.state(user,d.id(),"PAUSED");finish("AC");
