@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
+import Pager,{usePage} from './pager';
 import RuleOnboarding from './rule-onboarding';
 
 const activeStates=['QUEUED','DESIGNING','BUILDING','VALIDATING','REVIEWING'];
@@ -73,6 +74,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
     finally{busyRef.current=false;if(live.current)setBusy(false);}
   }
   const profile=options?.profiles?.find(item=>item.id===profileId);
+  const jobPaging=usePage(jobs,5);
   const profileLabel=id=>options?.profiles?.find(item=>item.id===id)?.label||(id==='dijkstra-shortest-path-v1'?'다익스트라 · 가중치 최단 거리':id==='bfs-shortest-path-v1'?'BFS · 무방향 그래프 최단 거리':id&&id!=='zero-one-items-v1'?'규칙 고정 연습 문제':'0/1 배낭 · 물건 선택');
   return <div className="generation-layout hybrid-generation">
     <section className="generation-compose" aria-labelledby="hybrid-heading">
@@ -104,7 +106,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
       {listError&&<p className="notice error" role="alert">진행 상태를 새로 확인하지 못했어요. {listError} <button className="secondary" onClick={refresh} disabled={busy}>상태 다시 확인</button></p>}
       {!loaded&&!listError&&<p role="status">출제 기록을 불러오고 있어요…</p>}
       {loaded&&!jobs.length&&<p>아직 요청한 문제가 없어요.</p>}
-      <div aria-live="polite">{jobs.map((job,index)=><details key={job.id} className="generation-job" open={index===0||active(job)}>
+      <div aria-live="polite">{jobPaging.visible.map((job,index)=><details key={job.id} className="generation-job" open={(jobPaging.offset+index)===0||active(job)}>
         <summary><strong>{profileLabel(job.profileId)}</strong><span className="generation-status">{job.problemHeld?'게시 후 검토 보류':job.status==='HELD'&&handoffs.includes(job.error)?'다음 단계 준비 중':states[job.status]||'진행 상태 확인 필요'}</span></summary>
         <div className="generation-job-body">
           <p className="draft-help">{new Date(job.acceptedAt).toLocaleString('ko-KR')} · {job.shared?'다른 회원에게 공개':'나만 보기'}</p>
@@ -117,6 +119,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
           {job.problemHeld&&<p>이 문제는 게시 후 검토 중이에요. 검토가 끝날 때까지 새 풀이를 시작할 수 없습니다.</p>}
         </div>
       </details>)}</div>
+      <Pager paging={jobPaging} label="규칙 고정 출제 결과 페이지"/>
     </section>
   </div>;
 }

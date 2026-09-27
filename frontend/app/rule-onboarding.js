@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
+import Pager,{usePage} from './pager';
 
 const labels={QUEUED:'대기',AUTHORING:'규칙·코드 작성 중',AUTHORED:'독립 검증 코드 준비',ORACLE:'독립 검증 코드 작성 중',QUALIFYING:'실행 검증 중',ACTIVE:'등록 완료',HELD:'검증 보류',FAILED:'등록 실패',CANCELLED:'취소됨',DEADLINE_EXCEEDED:'처리 기한 초과'};
 const running=['QUEUED','AUTHORING','AUTHORED','ORACLE','QUALIFYING'];
@@ -23,6 +24,7 @@ export default function RuleOnboarding({api,onRegistered}) {
     api('/api/rules/onboarding/options').then(v=>{if(live.current)setEnabled(!!v.enabled);}).catch(()=>{if(live.current)setEnabled(false);});
     refresh();return()=>{live.current=false;};},[]);
   const busyWork=items.some(i=>running.includes(i.status));
+  const itemPaging=usePage(items,5),rulePaging=usePage(rules,5);
   useEffect(()=>{if(!busyWork)return;const timer=setInterval(refresh,5000);return()=>clearInterval(timer);},[busyWork]);
   async function submit(event){
     event.preventDefault();if(busy)return;
@@ -47,15 +49,16 @@ export default function RuleOnboarding({api,onRegistered}) {
       <button className="secondary" disabled={busy||!enabled||busyWork||(!pending.current&&text.trim().length<10)}>{pending.current?'같은 요청 다시 확인':'이 설명으로 규칙 등록 요청'}</button>
       {busyWork&&<p className="draft-help" role="status">진행 중인 등록이 끝나면 새로 요청할 수 있어요.</p>}
     </form>
-    {items.length>0&&<ul className="rule-onboarding-list">{items.map(item=><li key={item.id}>
+    {items.length>0&&<ul className="rule-onboarding-list">{itemPaging.visible.map(item=><li key={item.id}>
       <p><strong>{labels[item.status]||item.status}</strong> · {item.label||item.request.slice(0,60)}</p>
       {item.status==='QUALIFYING'&&<p className="draft-help">실행 검증 {Object.values(item.checks||{}).filter(v=>['AC','OK','WA'].includes(v)).length}건 완료</p>}
       {['HELD','FAILED','DEADLINE_EXCEEDED'].includes(item.status)&&<p className="draft-help">{reasons[item.error]||'검증 조건을 충족하지 못해 등록하지 않았어요.'}{item.failedCheck?` (실패한 검사: ${item.failedCheck})`:''} 사용한 AI 비용: ${Number(item.spentUsd||0).toFixed(3)}</p>}
       {running.includes(item.status)&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/onboarding/${item.id}/cancel`,{method:'POST'})}>이 등록 취소</button>}
     </li>)}</ul>}
-    {rules.length>0&&<><h4>내가 등록한 규칙</h4><ul className="rule-onboarding-list">{rules.map(rule=><li key={rule.id}>
+    <Pager paging={itemPaging} label="규칙 등록 요청 페이지"/>
+    {rules.length>0&&<><h4>내가 등록한 규칙</h4><ul className="rule-onboarding-list">{rulePaging.visible.map(rule=><li key={rule.id}>
       <p><strong>{rule.label}</strong> · {rule.category} · {rule.status==='ACTIVE'?(rule.shared?'다른 회원에게 공개':'나만 사용'):'사용 중지'}</p>
       {rule.status==='ACTIVE'&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/${rule.id}/sharing`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({shared:!rule.shared})})}>{rule.shared?'공개 해제':'다른 회원에게 공개'}</button>}
-    </li>)}</ul></>}
+    </li>)}</ul><Pager paging={rulePaging} label="내 규칙 페이지"/></>}
   </section>;
 }

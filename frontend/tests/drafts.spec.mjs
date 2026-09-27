@@ -385,8 +385,13 @@ test('side panel bounds, collapsed histories and read-only record preserve the d
   await expect(history).not.toHaveAttribute('open','');
   await history.locator('summary').click();
   await expect(history.locator('li')).toHaveCount(10);
-  await history.getByRole('button',{name:'기록 10개 더 보기'}).click();
-  await expect(history.locator('li')).toHaveCount(20);
+  await expect(history.getByRole('navigation')).toContainText('1 /');
+  await history.getByRole('button',{name:'다음',exact:true}).click();
+  await expect(history.locator('li')).toHaveCount(10);
+  await expect(history.getByRole('navigation')).toContainText('2 /');
+  await expect(history.getByRole('button',{name:'이전',exact:true})).toBeEnabled();
+  await history.getByRole('button',{name:'이전',exact:true}).click();
+  await expect(history.getByRole('navigation')).toContainText('1 /');
   await history.locator('li button').first().click();
   await expect(history).not.toHaveAttribute('open','');
   await expect(page.locator('#submission-heading')).toBeInViewport();
