@@ -23,7 +23,9 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--reassess',action='store_true');parser.add_argument('--language',choices=['JAVA','CPP','PYTHON'],default='JAVA')
     parser.add_argument('--bank',type=Path,default=Path(__file__).resolve().parents[1]/'diagnostics/core-a-v2.json')
     parser.add_argument('--attempts',type=int,choices=range(1,6),default=1,help='Formal attempts per item: wrong solutions first, reference last')
-    parser.add_argument('--evaluate',action='store_true',help='Request the completed-session evaluation (spends model budget)');args=parser.parse_args()
+    parser.add_argument('--evaluate',action='store_true',help='Request the completed-session evaluation (spends model budget)')
+    parser.add_argument('--keep',action='store_true',help='Keep the synthetic account for a manual browser check; credentials go to .state only')
+    args=parser.parse_args()
     references=json.loads((Path(__file__).resolve().parents[1]/'tests/fixtures/diagnostic-language-references.json').read_text())
     bank=json.loads(args.bank.read_text());count=len(bank['items'])
     base=ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env").rstrip('/')
@@ -120,6 +122,10 @@ def main():
                   'rule matches',{c['id']:len(c['ruleIds']) for c in profile['categories'] if c['ruleIds']},flush=True)
             Path('.state/diagnostic-profile-smoke.json').write_text(json.dumps(profile,ensure_ascii=False,indent=1))
     finally:
-        sql(f"DELETE FROM spring_session WHERE principal_name='{username}'; DELETE FROM app_user WHERE username='{username}';")
+        if args.keep:
+            Path('.state').mkdir(exist_ok=True);Path('.state/kept-account.json').write_text(json.dumps({'base':base,'username':username,'password':password}))
+            print('kept synthetic account',username,'(credentials in .state/kept-account.json; delete it after the check)',flush=True)
+        else:
+            sql(f"DELETE FROM spring_session WHERE principal_name='{username}'; DELETE FROM app_user WHERE username='{username}';")
 
 if __name__=='__main__':main()

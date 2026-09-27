@@ -7,7 +7,8 @@ const difficulty={EASY:'하',MEDIUM:'중'};
 /** Rule request text the learner reviews and edits before submitting; never sent automatically. */
 export function ruleDraft(category,observation) {
   const label=categoryLabels[category]||category;
-  return `${label} 연습 문제 규칙. 진단에서 관찰된 코드 습관: ${observation.pattern} 이 습관이 문제가 되는 경우(${observation.risk})를 테스트로 구분할 수 있어야 한다.`.slice(0,1000);
+  const sentence=text=>text.trim().replace(/[.。]$/,'');
+  return `${label} 연습 문제 규칙.\n진단에서 관찰된 코드 습관: ${sentence(observation.pattern)}.\n이 습관이 문제가 되는 경우: ${sentence(observation.risk)}.\n위 경우를 테스트로 구분할 수 있어야 한다.`.slice(0,1000);
 }
 export default function DiagnosticProfile({api,sessionId,row,onObservation,onRuleDraft}) {
   const [profile,setProfile]=useState(null),[error,setError]=useState('');
