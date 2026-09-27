@@ -15,7 +15,11 @@ public class Submissions {
     private final JdbcClient jdbc;
     private final boolean enabled;
     private final Diagnostics diagnostics;
-    public Submissions(JdbcClient jdbc, @Value("${gamjaoj.submissions-enabled:false}") boolean enabled, Diagnostics diagnostics) {
+    private final String executionMode;
+    /** RUNNER_USER_EXECUTION_MODE=FUNCTIONAL lets learner submissions/runs share Runner slots (each sandbox stays CPU/memory capped). */
+    public Submissions(JdbcClient jdbc, @Value("${gamjaoj.submissions-enabled:false}") boolean enabled, Diagnostics diagnostics,
+                       @Value("${RUNNER_USER_EXECUTION_MODE:EXCLUSIVE}") String executionMode) {
+        this.executionMode = "FUNCTIONAL".equals(executionMode) ? "FUNCTIONAL" : "EXCLUSIVE";
         this.jdbc = jdbc; this.enabled = enabled; this.diagnostics=diagnostics;
     }
     public record Problem(String version, String title, String statement, String sampleInput,
@@ -112,7 +116,7 @@ public class Submissions {
             jdbc.sql("UPDATE submission SET run_input=?,run_package=?,run_package_sha256=? WHERE id=?")
                     .param(input).param(json).param(JudgeJson.hash(json)).param(id).update();
         }
-        jdbc.sql("INSERT INTO judge_job (submission_id) VALUES (?)").param(id).update();
+        jdbc.sql("INSERT INTO judge_job (submission_id,execution_mode) VALUES (?,?)").param(id).param(executionMode).update();
         return find(user, id, true);
     }
 

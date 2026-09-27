@@ -50,6 +50,26 @@ class SubmissionIntegrationTest {
         return submissions.submit(name, key, new SubmissionController.Request("sum-v1", SOURCE));
     }
     @Autowired TransientRuns transientRuns;
+    @Autowired Diagnostics diagnostics;
+    @Autowired org.springframework.context.ApplicationEventPublisher events;
+    @Test void configuredSlotsLetLearnerSubmissionsShareTheRunnerButExclusiveWorkStillDrains() {
+        var parallel=new Submissions(jdbc,true,diagnostics,"FUNCTIONAL");var wide=new JudgeQueue(jdbc,events,3);
+        var jobs=new java.util.ArrayList<Submissions.View>();
+        for(String user:List.of(alice,alice,bob,bob))jobs.add(parallel.submit(user,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE)));
+        for(var job:jobs)assertThat(jdbc.sql("SELECT execution_mode FROM judge_job WHERE submission_id=?").param(job.id()).query(String.class).single()).isEqualTo("FUNCTIONAL");
+        var claimed=new java.util.ArrayList<JudgeQueue.Assignment>();
+        for(int i=0;i<3;i++)claimed.add(wide.claim(UUID.randomUUID()).orElseThrow());
+        assertThat(claimed).extracting(JudgeQueue.Assignment::executionMode).containsOnly("FUNCTIONAL");
+        assertThat(wide.claim(UUID.randomUUID())).isEmpty(); // fourth waits for a free slot
+        // The default bean keeps the previous two-slot cap and exclusive learner work.
+        assertThat(submit(alice,UUID.randomUUID())).isNotNull();
+        assertThat(jdbc.sql("SELECT count(*) FROM judge_job WHERE execution_mode='EXCLUSIVE'").query(Integer.class).single()).isEqualTo(1);
+        queue.complete(claimed.get(0).submissionId(),claimed.get(0).token(),report(claimed.get(0)));
+        var fourth=wide.claim(UUID.randomUUID()).orElseThrow();assertThat(fourth.submissionId()).isEqualTo(jobs.get(3).id());
+        for(var a:List.of(claimed.get(1),claimed.get(2),fourth))queue.complete(a.submissionId(),a.token(),report(a));
+        assertThat(wide.claim(UUID.randomUUID()).orElseThrow().executionMode()).isEqualTo("EXCLUSIVE");
+        assertThat(wide.claim(UUID.randomUUID())).isEmpty(); // exclusive runs alone
+    }
     @Test void personalHistoryFiltersBeforePaginationAndExcludesCustomRuns() throws Exception {
         mvc.perform(get("/api/my/summary")).andExpect(status().isUnauthorized());
         var base=submit(alice,UUID.randomUUID());

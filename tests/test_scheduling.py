@@ -3,7 +3,9 @@ import tempfile
 import threading
 import unittest
 
-from runner.scheduling import execution_lock
+import os
+from unittest.mock import patch
+from runner.scheduling import execution_lock, functional_slots
 from runner.judge import CompileCache
 
 
@@ -62,3 +64,34 @@ class SchedulingTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=4) as pool:
             list(pool.map(use,range(4)))
         self.assertLessEqual(len(cache.entries),4)
+
+
+class ConfiguredSlotTests(unittest.TestCase):
+    def test_slot_count_comes_from_environment_with_bounds(self):
+        with patch.dict(os.environ, {"GAMJAOJ_FUNCTIONAL_SLOTS": "8"}):
+            self.assertEqual(8, functional_slots())
+        for value, expected in (("0", 1), ("99", 16), ("x", 2)):
+            with patch.dict(os.environ, {"GAMJAOJ_FUNCTIONAL_SLOTS": value}):
+                self.assertEqual(expected, functional_slots())
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(2, functional_slots())
+
+    def test_three_configured_slots_run_together(self):
+        with tempfile.TemporaryDirectory() as directory, ThreadPoolExecutor(max_workers=4) as pool, patch.dict(os.environ, {"GAMJAOJ_FUNCTIONAL_SLOTS": "3"}):
+            release = threading.Event(); entered = [threading.Event() for _ in range(3)]; slots = []
+            def functional(index):
+                with execution_lock('FUNCTIONAL', directory) as slot:
+                    slots.append(slot); entered[index].set()
+                    if not release.wait(5): raise AssertionError('release missing')
+            futures = [pool.submit(functional, i) for i in range(3)]
+            try:
+                self.assertTrue(all(e.wait(2) for e in entered))
+                self.assertEqual({0, 1, 2}, set(slots))
+                fourth = threading.Event()
+                def extra():
+                    with execution_lock('FUNCTIONAL', directory): fourth.set()
+                waiting = pool.submit(extra)
+                self.assertFalse(fourth.wait(.1))
+            finally:
+                release.set()
+            for f in futures + [waiting]: f.result(timeout=5)
