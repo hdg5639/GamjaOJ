@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -127,3 +128,43 @@ class WorkerRecoveryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AttemptRetentionTests(unittest.TestCase):
+    def test_old_finished_attempts_are_pruned_but_undelivered_and_recent_ones_stay(self):
+        import os, time
+        from pathlib import Path
+        class Api:
+            def post(self, *args): return None
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            worker = Worker(Api(), state)
+            old = time.time() - 8 * 86400
+            def attempt(token, age):
+                run = state / "attempts" / token / "runs" / "r1"
+                run.mkdir(parents=True)
+                (state / "attempts" / token / "assignment.json").write_text("{}")
+                (run / "Main.java").write_text("class Main {}")
+                for path in [run / "Main.java", run, run.parent, state / "attempts" / token / "assignment.json", state / "attempts" / token]:
+                    os.utime(path, (age, age))
+            attempt("finished-old", old)
+            attempt("undelivered-old", old)
+            attempt("recent", time.time())
+            (state / "pending").mkdir(exist_ok=True)
+            (state / "pending" / "undelivered-old.json").write_text("{}")
+            for name in ("done-old.delivered", "stale-old.stale"):
+                (state / "pending" / name).write_text("{}"); os.utime(state / "pending" / name, (old, old))
+            (state / "pending" / "done-new.delivered").write_text("{}")
+            # A fresh file inside an old directory keeps the attempt (still being written).
+            attempt("old-dir-new-file", old); (state / "attempts" / "old-dir-new-file" / "runs" / "r1" / "result.json").write_text("{}")
+            self.assertEqual(3, worker.prune(days=7))
+            self.assertEqual({"undelivered-old", "recent", "old-dir-new-file"}, {p.name for p in (state / "attempts").iterdir()})
+            self.assertEqual({"undelivered-old.json", "done-new.delivered"}, {p.name for p in (state / "pending").iterdir()})
+
+    def test_retention_days_are_bounded(self):
+        from unittest.mock import patch
+        import runner.worker as module
+        for value, expected in (("7", 7), ("0", 1), ("999", 365), ("x", 7)):
+            with patch.dict(os.environ, {"GAMJAOJ_ATTEMPT_RETENTION_DAYS": value}):
+                self.assertEqual(expected, module.retention_days())
+

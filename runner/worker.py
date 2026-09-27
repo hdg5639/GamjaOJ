@@ -6,7 +6,9 @@ import json
 import logging
 import os
 from pathlib import Path
+import shutil
 import signal
+import time
 import threading
 import urllib.error
 import urllib.request
@@ -17,6 +19,21 @@ from runner.telemetry import Timings
 from runner.judge import POLICY, RUN_POLICY, runtime_policies, ROOT, Runner, CompileCache, GeneratedCache, docker
 
 LOG = logging.getLogger("gamjaoj.worker")
+
+
+def retention_days():
+    """Days to keep finished attempt files (they hold submitted source); GAMJAOJ_ATTEMPT_RETENTION_DAYS, 1..365."""
+    try:
+        return min(max(int(os.environ.get("GAMJAOJ_ATTEMPT_RETENTION_DAYS", "7")), 1), 365)
+    except ValueError:
+        return 7
+
+
+def newest_mtime(path):
+    newest = path.stat().st_mtime
+    for base, _, files in os.walk(path):
+        newest = max([newest, Path(base).stat().st_mtime] + [(Path(base) / name).stat().st_mtime for name in files])
+    return newest
 
 
 def atomic_json(path, value):
@@ -151,6 +168,30 @@ class Worker:
             renewer.join(timeout=16)
         return True
 
+    def prune(self, now=None, days=None):
+        """Delete attempt directories and delivered/stale results older than the retention period.
+        An undelivered result (pending/<token>.json) keeps its attempt; running attempts are always recent."""
+        cutoff = (now or time.time()) - (days or retention_days()) * 86400
+        undelivered = {p.stem for p in (self.state / "pending").glob("*.json")}
+        removed = 0
+        for attempt in (self.state / "attempts").glob("*"):
+            try:
+                if attempt.is_dir() and attempt.name not in undelivered and newest_mtime(attempt) < cutoff:
+                    shutil.rmtree(attempt)
+                    removed += 1
+            except FileNotFoundError:
+                continue
+        for result in list((self.state / "pending").glob("*.delivered")) + list((self.state / "pending").glob("*.stale")):
+            try:
+                if result.stat().st_mtime < cutoff:
+                    result.unlink()
+                    removed += 1
+            except FileNotFoundError:
+                continue
+        if removed:
+            LOG.info("pruned %d attempt files older than %d days", removed, days or retention_days())
+        return removed
+
     def cleanup_attempt(self, token):
         # Only a resumed attempt's labelled containers, never another project's resources.
         for container in docker("ps", "-aq", "--filter", "label=com.gamjaoj.role=sandbox",
@@ -210,6 +251,17 @@ def main():
                 if not worked:
                     stopping.wait(2)
 
+        def pruner():
+            while not stopping.is_set():
+                for worker in workers:
+                    try:
+                        worker.prune()
+                    except Exception as error:
+                        LOG.error("attempt pruning failed: %s", type(error).__name__)
+                stopping.wait(3600)
+
+        if not args.once:
+            threading.Thread(target=pruner, daemon=True).start()
         threads = [threading.Thread(target=loop, args=(worker,)) for worker in workers]
         for thread in threads:
             thread.start()
