@@ -111,6 +111,14 @@ def main():
             interpretation=evaluation.get('interpretation') or {}
             print('evaluation:',evaluation['status'],evaluation.get('errorCode'),'observations:',len(interpretation.get('observations',[])),'attempts:',usage,flush=True)
             Path('.state').mkdir(exist_ok=True);Path('.state/diagnostic-evaluation-smoke.json').write_text(json.dumps(evaluation,ensure_ascii=False,indent=1))
+            status,profile=call('/api/diagnostics/'+session+'/evaluations/'+evaluation['id']+'/profile');assert status==200,(status,profile)
+            mapped=sorted(o['index'] for c in profile['categories'] for o in c['observations'])
+            assert mapped==list(range(len(interpretation.get('observations',[])))),('unmapped observations',mapped)
+            assert {c['id'] for c in profile['categories'] if c['selected']}=={i['category'] for i in bank['items']}
+            tones={t:sum(o['tone']==t for c in profile['categories'] for o in c['observations']) for t in ('STRENGTH','WATCH','RISK')}
+            print('profile: categories',len(profile['categories']),'tones',tones,'repeated',sum(o['repeated'] for c in profile['categories'] for o in c['observations']),
+                  'rule matches',{c['id']:len(c['ruleIds']) for c in profile['categories'] if c['ruleIds']},flush=True)
+            Path('.state/diagnostic-profile-smoke.json').write_text(json.dumps(profile,ensure_ascii=False,indent=1))
     finally:
         sql(f"DELETE FROM spring_session WHERE principal_name='{username}'; DELETE FROM app_user WHERE username='{username}';")
 

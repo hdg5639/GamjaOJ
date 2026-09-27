@@ -13,7 +13,11 @@ import org.springframework.web.bind.annotation.*;
 class DiagnosticController {
     private final Diagnostics diagnostics;
     private final DiagnosticEvaluations evaluations;
-    DiagnosticController(Diagnostics diagnostics,DiagnosticEvaluations evaluations) { this.diagnostics=diagnostics;this.evaluations=evaluations; }
+    private final DiagnosticProfiles profiles;
+    DiagnosticController(Diagnostics diagnostics,DiagnosticEvaluations evaluations,DiagnosticProfiles profiles) { this.diagnostics=diagnostics;this.evaluations=evaluations;this.profiles=profiles; }
+    @GetMapping("/{id}/evaluations/{evaluation}/profile") DiagnosticProfiles.Profile profile(Principal user,@PathVariable UUID id,@PathVariable UUID evaluation) {
+        return profiles.profile(user.getName(),id,evaluation);
+    }
     @PostMapping("/{id}/evaluations") DiagnosticEvaluations.View evaluate(Principal user,@PathVariable UUID id) {
         return evaluations.request(user.getName(),id);
     }

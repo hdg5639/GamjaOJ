@@ -17,7 +17,7 @@ class HybridAdmission {
         this.jdbc=jdbc;this.execution=execution;this.jobs=jobs;this.settings=settings;this.submissions=submissions;this.drafts=drafts;this.registry=registry;
     }
     /** verifiedReference: a previously published implementation of these exact rules can be reused. */
-    record Profile(String id,String label,String description,List<String> rules,boolean verifiedReference) {}
+    record Profile(String id,String label,String description,List<String> rules,boolean verifiedReference,String category,List<String> tags) {}
     private boolean reuseEnabled(){return Boolean.parseBoolean(settings.value("HYBRID_REFERENCE_REUSE_ENABLED","false"));}
     private UUID viewer(String user){return jdbc.sql("SELECT id FROM app_user WHERE username=?").param(user).query(UUID.class).optional().orElse(null);}
     /** Registered packages always reuse their qualified implementation; built-ins follow the reuse flag. */
@@ -25,8 +25,9 @@ class HybridAdmission {
     private List<Profile> profiles(String user) {
         return registry.selectable(viewer(user)).stream().map(v->{
             var rules=new ArrayList<String>();v.catalog().path("rules").forEach(r->rules.add(r.asText()));
+            var tags=new ArrayList<String>();v.catalog().path("tags").forEach(t->tags.add(t.asText()));
             return new Profile(v.id(),v.label(),v.catalog().path("description").asText(),List.copyOf(rules),
-                    reuse(v)&&registry.qualifiedReference(v.id()).isPresent());
+                    reuse(v)&&registry.qualifiedReference(v.id()).isPresent(),v.category(),List.copyOf(tags));
         }).toList();
     }
     record Options(boolean enabled,String message,List<Profile> profiles) {}

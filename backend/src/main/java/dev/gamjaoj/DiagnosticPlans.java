@@ -16,11 +16,13 @@ public class DiagnosticPlans {
     private final GenerationSpecDrafts drafts;
     private final Diagnostics diagnostics;
     private final HybridAdmission rules;
-    DiagnosticPlans(JdbcClient jdbc,Submissions submissions,TrainingSessions training,DiagnosticEvaluations evaluations,GenerationSpecDrafts drafts,Diagnostics diagnostics,HybridAdmission rules) {
-        this.jdbc=jdbc;this.submissions=submissions;this.training=training;this.evaluations=evaluations;this.drafts=drafts;this.diagnostics=diagnostics;this.rules=rules;
+    private final DiagnosticProfiles profiles;
+    DiagnosticPlans(JdbcClient jdbc,Submissions submissions,TrainingSessions training,DiagnosticEvaluations evaluations,GenerationSpecDrafts drafts,Diagnostics diagnostics,HybridAdmission rules,DiagnosticProfiles profiles) {
+        this.jdbc=jdbc;this.submissions=submissions;this.training=training;this.evaluations=evaluations;this.drafts=drafts;this.diagnostics=diagnostics;this.rules=rules;this.profiles=profiles;
     }
-    /** rules: registered rule versions this learner may generate from now; chosen explicitly, never inferred. */
-    public record Options(String reviewHash,JsonNode observation,List<DiagnosticEvaluations.Correction> corrections,List<Submissions.Problem> problems,List<HybridAdmission.Profile> rules) {}
+    /** rules: registered rule versions this learner may generate from now; chosen explicitly, never inferred.
+     *  category/matchingRules: the cited item's category and rules whose catalog names that family (a name match only). */
+    public record Options(String reviewHash,JsonNode observation,List<DiagnosticEvaluations.Correction> corrections,List<Submissions.Problem> problems,List<HybridAdmission.Profile> rules,String category,List<String> matchingRules) {}
     public record Plan(UUID id,UUID evaluationId,int observationIndex,String goal,String status,UUID sessionId,String problemVersion,UUID generationId,String generationStatus,String generatedVersion,UUID reviewedSubmissionId,Boolean usedHelp,UUID previousPlanId,int roundNumber) {}
     private JsonNode review(DiagnosticEvaluations.View evaluation,int index) {
         if(!evaluation.status().equals("COMPLETED")||evaluation.interpretation()==null||index<0||index>=evaluation.interpretation().path("observations").size())
@@ -35,10 +37,12 @@ public class DiagnosticPlans {
     public Options options(String username,UUID evaluation,int index) {
         var saved=evaluations.detail(username,evaluation);var snapshot=review(saved,index);
         boolean practice=snapshot.path("observation").path("nextAction").asText().equals("PRACTICE");
+        var selectable=practice?rules.selectable(username):List.<HybridAdmission.Profile>of();
+        String category=profiles.category(saved.sessionId(),snapshot.path("observation").path("submissionId").asText()).orElse(null);
         return new Options(JudgeJson.hash(JudgeJson.canonical(snapshot)),snapshot.path("observation"),
                 saved.corrections().stream().filter(c->c.observationIndex()==index).toList(),
                 practice?submissions.problems(username).stream().filter(p->!p.problemHeld()).toList():List.of(),
-                practice?rules.selectable(username):List.of());
+                selectable,category,category==null?List.of():DiagnosticProfiles.matchingRules(category,selectable));
     }
     @Transactional
     public Plan confirm(String username,UUID id,UUID evaluation,int index,String hash,String goal) {

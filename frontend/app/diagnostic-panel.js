@@ -9,7 +9,7 @@ import {categoryLabels as categories,bankTitle} from './diagnostic-categories';
 const Editor=dynamic(()=>import('./code-editor'),{ssr:false});
 const starter='import java.util.*;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner input = new Scanner(System.in);\n    }\n}\n';
 const outcomes={OPEN:'아직 완료하지 않음',PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀'};
-export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration}) {
+export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration,onRuleDraft}) {
   const [size,changeSize,resetSize]=useEditorSizing(user.id,'diagnostic',50,390);
   const [banks,setBanks]=useState([]),[sessions,setSessions]=useState([]),[session,setSession]=useState(null);
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false);
@@ -130,7 +130,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
       {result&&<div role="status" className="notice"><strong>{session.items.find(i=>i.id===result.diagnosticItemId)?.position+1||''}번 문항 {result.input==null?'제출 결과':'실행 결과'}: {result.verdict||'채점 중'}</strong>{result.compileMessage&&<pre>{result.compileMessage}</pre>}{result.input!=null&&<><pre>{result.stdout}</pre><pre>{result.stderr}</pre></>}</div>}
       {session.status==='COMPLETED'&&<p className="notice">진단을 마쳤어요. 판정 기록을 확인하고 아래에서 종합 평가를 요청할 수 있어요.</p>}
       {session.status==='COMPLETED'&&<DiagnosticReassessment key={`reassessment-${session.id}`} api={api} session={session} busy={busy||!!request} onStart={mutate}/> }
-      <DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} />
+      <DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} />
       <details><summary>문항별 진행과 제출 기록</summary><ul>{session.items.map(i=><li key={i.id}>{i.position+1}. {categories[i.category]||i.category} · {i.externallySeen?'본 적 있음 · 평가 근거에서 제외':outcomes[i.status]} · 제출 {i.attempts}회{session.sourceSessionId&&session.status==='COMPLETED'&&!i.externallySeen&&<button className="secondary" disabled={busy||!!request} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${i.id}/exposure`,{},true)}>{i.position+1}번 문항 · 이전에 본 문제로 정정</button>}</li>)}</ul><p>미완료·건너뛴 문항은 약점으로 판정하지 않습니다.</p>{session.sourceSessionId&&session.status==='COMPLETED'&&<p>이전에 본 문제로 정정하면 기존 판정은 유지하고 해당 문항을 새 평가 근거에서 제외합니다. 이전 해석과 계획은 보류되며, 위에서 평가를 다시 요청할 수 있어요. 정정은 되돌리지 않습니다.</p>}<button onClick={history}>최근 제출 기록 불러오기</button>{records.filter(r=>!current||r.problemVersion===current.problemVersion).map(r=><button className="secondary" key={r.id} onClick={()=>api(`/api/submissions/${r.id}`).then(setRecord).catch(e=>setError(e.message))}>{r.verdict||'채점 중'} · {recordLanguageLabel(r)} · {new Date(r.createdAt).toLocaleString()}</button>)}{record&&(!current||record.problemVersion===current.problemVersion)&&<><p>{recordLanguageLabel(record)} · {limitText(record.execution)}</p><pre aria-label="제출 당시 코드">{record.source}</pre></>}</details>
       {session.status==='COMPLETED'&&<button className="secondary" onClick={()=>{active.current=null;setSession(null);setBanner('');setRecords([]);setRecord(null);}}>다른 진단 보기</button>}
     </>}

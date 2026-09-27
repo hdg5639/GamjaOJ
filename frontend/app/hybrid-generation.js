@@ -11,7 +11,7 @@ const states={QUEUED:'출제 대기',DESIGNING:'규칙 준비 중',BUILDING:'문
 const stages=[['CONTRACT','규칙 확정'],['CORE','코드 작성'],['PRESENTATION','본문 작성'],['READER','독립 검토'],['VALIDATION','실행 검증'],['CONTENT_REVIEW','최종 검토']];
 const branchStates={NOT_STARTED:'대기',QUEUED:'대기',BLOCKED:'대기',RUNNING:'진행 중',EARLY:'먼저 진행 중',SUCCEEDED:'완료',CHECKED:'완료',FAILED:'실패',CANCELLED:'중단'};
 
-export default function HybridGeneration({userId,api,onOpen,onActive,visible,otherActive}) {
+export default function HybridGeneration({userId,api,onOpen,onActive,visible,otherActive,ruleDraft}) {
   const [profileId,setProfileId]=useState('zero-one-items-v1');
   const [options,setOptions]=useState(null),[jobs,setJobs]=useState([]),[loaded,setLoaded]=useState(false);
   const [optionsError,setOptionsError]=useState(''),[listError,setListError]=useState(''),[error,setError]=useState('');
@@ -98,7 +98,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
         <button className="primary" disabled={busy||(!pending&&(!options?.enabled||!profile||!consent||running||otherActive||!loaded))}>{busy?'처리 중…':pending?'기존 요청 확인':'이 규칙으로 생성·게시'}</button>
       </form>
       {error&&<p className="notice error" role="alert">{error}</p>}
-      <RuleOnboarding api={api} onRegistered={loadOptions}/>
+      <RuleOnboarding api={api} onRegistered={loadOptions} draft={ruleDraft}/>
     </section>
     <section className="generation-results" aria-labelledby="hybrid-generation-results">
       <h3 id="hybrid-generation-results" tabIndex={-1} ref={results}>진행·결과</h3>
