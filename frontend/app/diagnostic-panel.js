@@ -6,6 +6,7 @@ import {useEditorSizing,ResizeHandle,EditorSizing,splitScale} from './editor-siz
 import DiagnosticEvaluation from './diagnostic-evaluation';
 import DiagnosticReassessment from './diagnostic-reassessment';
 import {categoryLabels as categories,bankTitle} from './diagnostic-categories';
+import ResetCode from './reset-code';
 const Editor=dynamic(()=>import('./code-editor'),{ssr:false});
 const starter='import java.util.*;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner input = new Scanner(System.in);\n    }\n}\n';
 const outcomes={OPEN:'아직 완료하지 않음',PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀'};
@@ -122,6 +123,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
       {current&&<div className="diagnostic-workspace" style={{'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}><article data-expanded={problemExpanded}><h2 ref={heading} tabIndex={-1}>{current.title}</h2><p>{categories[item.category]||item.category} · {item.difficulty==='EASY'?'하':'중'} · 제출 {item.attempts}/5{item.pending?' · 채점 중':''}</p><button className="diagnostic-problem-toggle secondary" aria-expanded={problemExpanded} aria-controls="diagnostic-problem-content" onClick={()=>setProblemExpanded(value=>!value)}>{problemExpanded?'문제 접기':'문제 보기'}</button><div id="diagnostic-problem-content"><p className="diagnostic-statement">{current.statement}</p><h3>예제 입력</h3><pre>{current.sampleInput}</pre><h3>예제 출력</h3><pre>{current.sampleOutput}</pre></div></article>
         <ResizeHandle className="diagnostic-resizer" label="진단 문제와 편집기 비율" value={size.ratio} min={20} max={70} step={2} scale={splitScale} onChange={ratio=>changeSize({ratio})}/>
         <div className="diagnostic-code-column"><label className="language-choice">언어<select aria-label="진단 언어" value={language} disabled={disabled||!!item.pending} onChange={e=>changeLanguage(e.target.value)}>{(current.languages||[languageInfo.JAVA]).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+        <ResetCode disabled={disabled||!!item.pending} onReset={()=>edit(language==='JAVA'?starter:starters[language])}/>
         <p className="muted">{limitText(current.languages?.find(l=>l.id===language))} · 언어를 바꿔도 제출 횟수는 유지됩니다.</p>
         <div className="diagnostic-editor" style={{height:size.height}}><Editor key={`${current.itemId}:${language}`} language={language} id="diagnostic-source" label={`진단 ${language==='JAVA'?'Java':languageInfo[language].label} 코드`} value={source} disabled={disabled} onChange={edit} onSubmit={()=>{if(!disabled&&!item.pending)mutate('/api/submissions',body,true);}} onLimit={()=>setError('코드는 64 KiB 이내로 작성해 주세요.')}/></div>
           <ResizeHandle label="진단 편집기 높이 조절" orientation="horizontal" value={size.height} min={160} max={1000} step={20} onChange={height=>changeSize({height})}/>

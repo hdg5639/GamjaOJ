@@ -7,6 +7,7 @@ import {useEditorSizing,ResizeHandle,EditorSizing,splitScale} from './editor-siz
 import DiagnosticPanel from './diagnostic-panel';
 import RecordHistory from './record-history';
 import MyPage from './my-page';
+import ResetCode from './reset-code';
 import SessionPanel from './session-panel';
 import ProblemCatalog from './problem-catalog';
 import NavIcon from './nav-icon';
@@ -338,7 +339,8 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
             : `${activeSession.problemVersion} 훈련은 유지 중이에요. 현재 문제의 제출은 자유 풀이로 저장돼요.`}
         </p>}
         <div className="code-heading"><span>{inspected?languageInfo[recordLanguage(inspected)].file:lang.file}</span>
-          <label className="language-choice">언어<select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label></div>
+          <label className="language-choice">언어<select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+          {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(starters[language]);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</div>
         <p className="draft-help">{inspected?`${recordLanguageLabel(inspected)} · ${limitText(inspected.execution)}`:limitText(problem.languages?.find(l=>l.id===language))}</p>
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         <div className="editor-views" style={size.height==null?undefined:{flex:`0 0 ${size.height}px`,height:size.height}}><div className="editor-view" hidden={!!inspected}>
