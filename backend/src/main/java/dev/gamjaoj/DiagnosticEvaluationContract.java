@@ -18,6 +18,8 @@ final class DiagnosticEvaluationContract {
         line caused WA based on verdict alone. No tools or external sources. Keep summary scope-limited.
         A submission marked sourceOmitted was reduced to verdict and hashes to fit the evidence limit:
         never cite it or guess its code; mention the reduction in uncertainty when it limits a finding.
+        submissionId is the cited submission's submissionId, never an itemId; quote is copied verbatim
+        from that submission's source (same characters and whitespace, a single contiguous span).
         """;
     static final JsonNode SCHEMA=JudgeJson.parse("""
         {"type":"object","properties":{
@@ -30,6 +32,13 @@ final class DiagnosticEvaluationContract {
           "requiredScope":{"type":"string","enum":["OBSERVED_ITEMS_ONLY"]}},
           "required":["summary","uncertainty","observations","requiredScope"],"additionalProperties":false}
         """);
+    /** Per-evidence schema: submissionId may only name a submission whose source was sent (never an item ID). */
+    static JsonNode schema(JsonNode input) {
+        var schema=SCHEMA.deepCopy();
+        var ids=((com.fasterxml.jackson.databind.node.ObjectNode)schema.path("properties").path("observations").path("items").path("properties").path("submissionId")).putArray("enum");
+        for(var item:input.path("items"))for(var s:item.path("submissions"))if(s.path("source").isTextual())ids.add(s.path("submissionId").asText());
+        return schema;
+    }
     static boolean valid(JsonNode output,JsonNode input) { return violation(output,input)==null; }
     /** First failed check as a content-free code (never output text), or null when the output is valid. */
     static String violation(JsonNode output,JsonNode input) {

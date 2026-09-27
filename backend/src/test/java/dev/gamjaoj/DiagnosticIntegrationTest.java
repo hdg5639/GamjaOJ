@@ -306,6 +306,11 @@ class DiagnosticIntegrationTest {
                 assertThat(attempt.path("verdict").asText()).isEqualTo("WA");assertThat(attempt.path("sourceHash").asText()).hasSize(64);
             }
         }
+        var allowed=new java.util.ArrayList<String>();
+        DiagnosticEvaluationContract.schema(evidence).path("properties").path("observations").path("items").path("properties").path("submissionId").path("enum").forEach(v->allowed.add(v.asText()));
+        var expected=new java.util.ArrayList<String>();
+        for(var attempts:ids)for(int n:List.of(0,3,4))expected.add(attempts.get(n).toString());
+        assertThat(allowed).containsExactlyElementsOf(expected); // item IDs and omitted sources are not citable
         var output=JudgeJson.JSON.createObjectNode().put("summary","요약").put("uncertainty","일부 제출 코드는 축약되었습니다.").put("requiredScope","OBSERVED_ITEMS_ONLY");
         var observation=output.putArray("observations").addObject().put("submissionId",ids.get(0).get(3).toString()).put("quote","System.out.println(3)")
                 .put("interpretation","고정 값을 출력합니다.").put("confidence","SUPPORTED").put("nextAction","ASSESS").put("recommendation","입력 처리를 확인하세요.");

@@ -24,7 +24,7 @@ class ResponsesFeedbackProvider implements AiProvider {
     public OpenAiResponses.Result feedback(AiSettings.Model settings,String input) {
         if(JudgeJson.parse(input).path("kind").asText().equals("DIAGNOSTIC"))
             return new OpenAiResponses(config.key()).generate(settings.model(),settings.effort(),DiagnosticEvaluationContract.INSTRUCTIONS,input,
-                    "diagnostic_evaluation",DiagnosticEvaluationContract.SCHEMA,settings.maxOutputTokens());
+                    "diagnostic_evaluation",DiagnosticEvaluationContract.schema(JudgeJson.parse(input)),settings.maxOutputTokens());
         if(JudgeJson.parse(input).path("kind").asText().equals("THEME"))
             return new OpenAiResponses(config.key()).generate(settings.model(),settings.effort(),GenerationThemes.INSTRUCTIONS,input,
                     "generation_theme",GenerationThemes.SCHEMA,settings.maxOutputTokens());

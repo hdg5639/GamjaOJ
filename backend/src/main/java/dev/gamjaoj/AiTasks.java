@@ -84,7 +84,7 @@ public class AiTasks {
     public UUID diagnostic(UUID owner,UUID session,JsonNode input) {
         var base=config.model(false);
         var model=new AiSettings.Model(base.model(),base.effort(),base.inputRate(),base.cachedRate(),base.outputRate(),base.pricingVersion(),
-                8192,"diagnostic-v2","diagnostic-v1");
+                8192,"diagnostic-v3","diagnostic-v2");
         String configuration=json(model),payload=JudgeJson.canonical(input),cache=JudgeJson.hash(configuration+":"+payload);
         var old=jdbc.sql("SELECT id FROM ai_task WHERE user_id=? AND cache_key=?").param(owner).param(cache).query(UUID.class).optional();
         if(old.isPresent())return old.get();
@@ -150,7 +150,7 @@ public class AiTasks {
         boolean theme=JudgeJson.parse(input).path("kind").asText().equals("THEME");
         boolean diagnostic=JudgeJson.parse(input).path("kind").asText().equals("DIAGNOSTIC");
         long inputBound=input.getBytes(StandardCharsets.UTF_8).length+(theme?GenerationThemes.INSTRUCTIONS:diagnostic?DiagnosticEvaluationContract.INSTRUCTIONS:ResponsesFeedbackProvider.INSTRUCTIONS).getBytes(StandardCharsets.UTF_8).length
-                +(theme?GenerationThemes.SCHEMA:diagnostic?DiagnosticEvaluationContract.SCHEMA:ResponsesFeedbackProvider.SCHEMA).toString().getBytes(StandardCharsets.UTF_8).length+4096L;
+                +(theme?GenerationThemes.SCHEMA:diagnostic?DiagnosticEvaluationContract.schema(JudgeJson.parse(input)):ResponsesFeedbackProvider.SCHEMA).toString().getBytes(StandardCharsets.UTF_8).length+4096L;
         BigDecimal reserve=model.inputRate().multiply(BigDecimal.valueOf(inputBound))
                 .add(model.outputRate().multiply(BigDecimal.valueOf(model.maxOutputTokens()))).movePointLeft(6).setScale(8,RoundingMode.CEILING);
         Budget budget=budget();
