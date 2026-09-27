@@ -1,5 +1,6 @@
 import { javaStandardNames } from './java-standard-completion';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
+import { afterDot } from './member-completion-source';
 
 const identifier = /[\p{ID_Continue}$]+/u;
 const cached = new WeakMap();
@@ -43,6 +44,7 @@ export function javaNameCompletion(context) {
   }
   const word = context.matchBefore(identifier);
   if (!word && !context.explicit) return null;
+  if (afterDot(state, word?.from ?? pos)) return null; // members come from memberCompletionSource
   let names = cached.get(tree);
   if (!names) {
     names = [];
