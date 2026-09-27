@@ -162,10 +162,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-dir", type=Path, default=ROOT / ".state/worker")
     parser.add_argument("--once", action="store_true")
-    parser.add_argument("--slots", type=int, choices=(1, 2), default=1)
+    parser.add_argument("--slots", type=int, choices=range(1, 17), default=1, metavar="1-16")
     args = parser.parse_args()
-    if args.slots == 1 and (args.state_dir / 'slots/1/identity.json').exists():
-        parser.error('This state has two persistent slots; use --slots 2 to preserve recovery of both identities')
+    # Never drop a persistent slot identity: its unfinished attempts must remain recoverable.
+    existing = [int(p.parent.name) for p in (args.state_dir / 'slots').glob('*/identity.json') if p.parent.name.isdigit()]
+    if existing and max(existing) >= args.slots:
+        parser.error(f'This state has {max(existing) + 1} persistent slots; use --slots {max(existing) + 1} or more to preserve recovery')
     os.umask(0o077)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)

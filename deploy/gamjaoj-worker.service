@@ -7,13 +7,16 @@ Type=simple
 WorkingDirectory=%h/gamjaoj-worker/current
 EnvironmentFile=%h/gamjaoj-worker/worker.env
 Environment=GAMJAOJ_DOCKER_CONTROL=engine
-ExecStart=/usr/bin/python3 -m runner.worker --state-dir %h/gamjaoj-worker/state --slots 2
+# 8 slots x 0.5 CPU sandboxes on the 6-core / 8 GB Runner VM; the server caps assignments with RUNNER_FUNCTIONAL_SLOTS.
+Environment=GAMJAOJ_FUNCTIONAL_SLOTS=8
+ExecStart=/usr/bin/python3 -m runner.worker --state-dir %h/gamjaoj-worker/state --slots 8
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=150
 UMask=0077
-MemoryMax=256M
-CPUQuota=50%
+# Coordinator only (sandboxes run under dockerd): compile/generated caches plus per-slot large-test buffers.
+MemoryMax=768M
+CPUQuota=100%
 
 [Install]
 WantedBy=default.target

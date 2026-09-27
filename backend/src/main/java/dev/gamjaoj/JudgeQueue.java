@@ -14,7 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class JudgeQueue {
     private final JdbcClient jdbc;
     private final org.springframework.context.ApplicationEventPublisher events;
-    public JudgeQueue(JdbcClient jdbc,org.springframework.context.ApplicationEventPublisher events) { this.jdbc = jdbc;this.events=events; }
+    private final int functionalSlots;
+    /** functionalSlots must match the Runner host's GAMJAOJ_FUNCTIONAL_SLOTS; the host lock is the physical cap. */
+    public JudgeQueue(JdbcClient jdbc,org.springframework.context.ApplicationEventPublisher events,
+                      @org.springframework.beans.factory.annotation.Value("${RUNNER_FUNCTIONAL_SLOTS:2}") int functionalSlots) {
+        this.jdbc = jdbc;this.events=events;this.functionalSlots=Math.max(1,Math.min(16,functionalSlots));
+    }
     record Job(UUID submissionId, String status, int attempt, UUID token, UUID workerId,
                OffsetDateTime leaseUntil, String verdict, String resultJson, String resultSha256, String executionMode) {}
     public record Assignment(UUID submissionId, int attempt, UUID token, String source,
@@ -48,11 +53,11 @@ public class JudgeQueue {
                 .param(now).query(UUID.class).optional();
         if (next.isEmpty()) return Optional.empty();
         Job old = job(next.get());
-        // A waiting user or resource check drains both slots. Do not skip the queue head.
+        // An exclusive job at the queue head drains every functional slot. Do not skip the queue head.
         var active = jdbc.sql("SELECT execution_mode FROM judge_job WHERE status='RUNNING' AND lease_until>?")
                 .param(now).query(String.class).list();
         if (!active.isEmpty() && (!old.executionMode().equals("FUNCTIONAL")
-                || active.size() >= 2 || active.stream().anyMatch(mode -> !mode.equals("FUNCTIONAL"))))
+                || active.size() >= functionalSlots || active.stream().anyMatch(mode -> !mode.equals("FUNCTIONAL"))))
             return Optional.empty();
         if (old.attempt() > 0) jdbc.sql("UPDATE judge_attempt SET status='SUPERSEDED',finished_at=? WHERE submission_id=? AND attempt=?")
                 .param(now).param(old.submissionId()).param(old.attempt()).update();
