@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 const solveLabels={SOLVED:'해결',ATTEMPTED:'제출했지만 미해결',UNATTEMPTED:'미제출'};
-const levels={UNRATED:'미분류',EASY:'하',MEDIUM:'중',HARD:'상'};
+const levels={UNRATED:'미분류',EASY:'하',MEDIUM:'중',HARD:'상',EXPERT:'최상'};
 
 export default function ProblemCatalog({ problems, loaded, error, selectedVersion, locked, onChoose, api, onChanged, home=false, onNavigate }) {
   const [query,setQuery]=useState(''),[scope,setScope]=useState('all'),[category,setCategory]=useState(''),[difficulty,setDifficulty]=useState(''),[tag,setTag]=useState(''),[solve,setSolve]=useState('');

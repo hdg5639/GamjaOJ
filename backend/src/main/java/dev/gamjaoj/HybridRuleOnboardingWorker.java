@@ -27,17 +27,18 @@ class ResponsesRuleOnboardingProvider implements RuleOnboardingProvider {
 /** One onboarding model call at a time; Runner qualification advances on judge completion wakeups. */
 @Component
 class HybridRuleOnboardingWorker {
-    private final HybridRuleOnboarding onboarding;private final RuleOnboardingProvider provider;private final AiSettings config;
+    private final HybridRuleOnboarding onboarding;private final RuleOnboardingProvider provider;private final AiSettings config;private final HybridRuleFollowup followup;
     private final AtomicBoolean running=new AtomicBoolean();
     private final ExecutorService executor=Executors.newSingleThreadExecutor(r->{var t=new Thread(r,"rule-onboarding");t.setDaemon(true);return t;});
-    HybridRuleOnboardingWorker(HybridRuleOnboarding onboarding,RuleOnboardingProvider provider,AiSettings config){this.onboarding=onboarding;this.provider=provider;this.config=config;}
+    HybridRuleOnboardingWorker(HybridRuleOnboarding onboarding,RuleOnboardingProvider provider,AiSettings config,HybridRuleFollowup followup){this.onboarding=onboarding;this.provider=provider;this.config=config;this.followup=followup;}
     @TransactionalEventListener(phase=TransactionPhase.AFTER_COMMIT)
     void changed(HybridExecution.Wakeup event){wake();}
     @Scheduled(fixedDelayString="${AI_POLL_MS:5000}",initialDelayString="${AI_POLL_MS:5000}")
     void tick(){wake();}
     void wake() {
         if(!Boolean.parseBoolean(config.value("HYBRID_RULE_ONBOARDING_WORKER_ENABLED","true"))||!running.compareAndSet(false,true))return;
-        try{executor.submit(()->{try{onboarding.advance();while(runOnce()){onboarding.advance();}}
+        try{executor.submit(()->{try{onboarding.advance();while(runOnce()){onboarding.advance();}
+                try{followup.advance();}catch(RuntimeException failure){org.slf4j.LoggerFactory.getLogger(getClass()).warn("Rule followup generation step failed; retried on the next tick",failure);}}
             catch(RuntimeException failure){org.slf4j.LoggerFactory.getLogger(getClass()).warn("Rule onboarding step failed; retried on the next tick",failure);}
             finally{running.set(false);}});}
         catch(RejectedExecutionException closed){running.set(false);}

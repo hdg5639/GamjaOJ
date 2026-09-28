@@ -15,7 +15,7 @@ class ProblemCatalog {
     ProblemCatalog(JdbcClient jdbc,Submissions submissions){this.jdbc=jdbc;this.submissions=submissions;}
     record Settings(@NotNull Boolean shared, @NotBlank @Size(max=80) String category,
                     @NotNull @Size(max=6) List<@NotBlank @Size(max=80) String> tags,
-                    @NotNull @Pattern(regexp="UNRATED|EASY|MEDIUM|HARD") String difficulty) {}
+                    @NotNull @Pattern(regexp="UNRATED|EASY|MEDIUM|HARD|EXPERT") String difficulty) {}
     @PutMapping("/api/problems/{version}/catalog-settings")
     @Transactional
     Submissions.Problem save(Principal user,@PathVariable String version,@Valid @RequestBody Settings request) {
