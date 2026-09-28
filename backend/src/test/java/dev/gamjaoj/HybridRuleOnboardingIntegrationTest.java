@@ -167,6 +167,16 @@ class HybridRuleOnboardingIntegrationTest {
         v=view(id);assertThat(v.status()).isEqualTo("HELD");assertThat(v.error()).isEqualTo("MUTANT_SURVIVED");assertThat(v.repairs()).isEqualTo(1);
         assertThat(HybridRuleOnboarding.repairable("DUPLICATE_RULE_CONTRACT")).isFalse();assertThat(HybridRuleOnboarding.repairable("RUNNER_CE")).isTrue();
     }
+    @Test void restartReleasesAnInterruptedCallInsteadOfBlockingUntilTheDeadline() throws Exception {
+        doAnswer(c->{throw new IllegalStateException("process stopped before the provider returned");}).when(provider).generate(any());
+        UUID id=request();
+        var call=onboarding.claimCall();assertThat(call).isNotNull(); // claimed but never finished: the process "restarts" here
+        assertThat(onboarding.claimCall()).isNull(); // one running call blocks every other claim
+        onboarding.releaseInterruptedCalls();
+        var v=view(id);assertThat(v.status()).isEqualTo("HELD");assertThat(v.error()).isEqualTo("INTERRUPTED_BY_RESTART");
+        assertThat(jdbc.sql("SELECT status FROM ai_attempt WHERE id=?").param(call.attemptId()).query(String.class).single()).isEqualTo("ONBOARD_UNKNOWN");
+        UUID next=request();assertThat(onboarding.claimCall()).isNotNull();assertThat(view(next).status()).isEqualTo("AUTHORING");
+    }
     @Test void authorSchemaPinsKebabCaseActionIdsAndRejectedCandidateIsKeptForDiagnosis() throws Exception {
         var schema=HybridRuleOnboarding.authorSchema();
         assertThat(schema.path("properties").path("contract").path("properties").path("actions").path("items").path("properties").path("id").path("pattern").asText()).isEqualTo("^[a-z][a-z0-9-]{0,39}$");

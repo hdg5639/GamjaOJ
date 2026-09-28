@@ -558,6 +558,15 @@ class HybridRuleOnboarding {
         stop(id,"ACTIVE",null);
     }
     /** Expiry and interrupted calls; unknown usage stays reserved and is never retried automatically. */
+    /** A model call cannot survive a restart: release it now instead of blocking every onboarding until its deadline. */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    @Transactional
+    public void releaseInterruptedCalls() {
+        lock();
+        var ids=jdbc.sql("SELECT DISTINCT c.onboarding_id FROM hybrid_rule_onboarding_call c JOIN ai_attempt a ON a.id=c.attempt_id WHERE a.status='ONBOARD_RUNNING'").query(UUID.class).list();
+        jdbc.sql("UPDATE ai_attempt SET status='ONBOARD_UNKNOWN',error_code='INTERRUPTED_USAGE_UNKNOWN' WHERE status='ONBOARD_RUNNING' AND id IN (SELECT attempt_id FROM hybrid_rule_onboarding_call)").update();
+        for(UUID id:ids)stop(id,"HELD","INTERRUPTED_BY_RESTART");
+    }
     @Transactional
     void recover() {
         lock();
