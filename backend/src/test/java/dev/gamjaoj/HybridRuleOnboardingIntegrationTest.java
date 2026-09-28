@@ -35,6 +35,7 @@ class HybridRuleOnboardingIntegrationTest {
     List<HybridFiniteProfile.Case> tiny=HybridFiniteProfile.valid();
     @BeforeEach void setup() {
         env.getPropertySources().addFirst(new MapPropertySource("onboarding-test",overrides));overrides.clear();
+        overrides.put("HYBRID_RULE_ONBOARDING_REPAIRS","0"); // existing cases check the immediate hold; the repair case enables one round
         jdbc.sql("DELETE FROM hybrid_rule_onboarding").update();jdbc.sql("DELETE FROM hybrid_execution_check").update();jdbc.sql("DELETE FROM submission").update();
         jdbc.sql("DELETE FROM hybrid_generation").update();jdbc.sql("DELETE FROM problem_version WHERE id LIKE 'rule-qualify-%'").update();
         jdbc.sql("DELETE FROM ai_attempt").update();jdbc.sql("DELETE FROM app_user").update();
@@ -147,6 +148,24 @@ class HybridRuleOnboardingIntegrationTest {
         followup.advance(); // rule-based admission is disabled in this environment: the refusal is recorded, not retried forever
         var v=view(id);assertThat(v.followupGenerationId()).isNull();assertThat(v.followupError()).isNotBlank();
         assertThat(jdbc.sql("SELECT count(*) FROM hybrid_generation WHERE id=?").param(HybridRuleFollowup.generationId(id)).query(Integer.class).single()).isZero();
+    }
+    @Test void failedQualificationIsSentBackToTheAuthorOnceWithTheFailedCheck() throws Exception {
+        var calls=new ArrayList<HybridRuleOnboarding.Call>();
+        doAnswer(c->{var call=c.getArgument(0,HybridRuleOnboarding.Call.class);calls.add(call);
+            if(call.role().equals("ORACLE"))return result(JudgeJson.JSON.createObjectNode().put("oracleSource","public class Main{public static void main(String[] a){}}"));
+            return result(author());}).when(provider).generate(any());
+        overrides.put("HYBRID_RULE_ONBOARDING_REPAIRS","1");
+        UUID id=request();worker.runOnce();worker.runOnce();
+        drain(false,true);onboarding.advance(); // mutant-a survives on every tiny input
+        var v=view(id);assertThat(v.status()).isEqualTo("QUEUED");assertThat(v.repairs()).isEqualTo(1);
+        assertThat(worker.runOnce()).isTrue();
+        var repair=JudgeJson.parse(calls.get(2).input()).path("repair");
+        assertThat(repair.path("failure").path("code").asText()).isEqualTo("MUTANT_SURVIVED");
+        assertThat(repair.path("previousPackage").path("reference").asText()).isNotBlank();
+        assertThat(calls.get(2).instructions()).contains("If repair is present");
+        worker.runOnce();drain(false,true);onboarding.advance(); // the same failure again: the single repair is spent
+        v=view(id);assertThat(v.status()).isEqualTo("HELD");assertThat(v.error()).isEqualTo("MUTANT_SURVIVED");assertThat(v.repairs()).isEqualTo(1);
+        assertThat(HybridRuleOnboarding.repairable("DUPLICATE_RULE_CONTRACT")).isFalse();assertThat(HybridRuleOnboarding.repairable("RUNNER_CE")).isTrue();
     }
     @Test void authorSchemaPinsKebabCaseActionIdsAndRejectedCandidateIsKeptForDiagnosis() throws Exception {
         var schema=HybridRuleOnboarding.authorSchema();
