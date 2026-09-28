@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 class HybridRuleOnboarding {
     static final String PIPELINE="RULE_ONBOARDING_V1";
+    /** Tiny plus stress inputs (at most 3) share one validator plan, and the Runner accepts at most 20 tests per plan. */
+    static final int AUTHOR_MAX_TINY=17,RUNNER_MAX_TESTS=20;
     private static final Set<String> ACTIVE=Set.of("QUEUED","AUTHORING","AUTHORED","ORACLE","QUALIFYING");
     record View(UUID id,String status,String error,String request,OffsetDateTime createdAt,OffsetDateTime deadlineAt,
                 String versionId,String label,BigDecimal spentUsd,Map<String,String> checks,String failedCheck,
@@ -145,7 +147,7 @@ class HybridRuleOnboarding {
             +" validator: Java 8 public class Main that reads one candidate input and prints VALID or INVALID; it must reject malformed or extra tokens and out-of-range values without crashing."
             +" reference: an efficient correct Java 8 public class Main solution. authorNotes: algorithm and correctness, complexity, edge cases."
             +" mutants: exactly two plausible wrong Java 8 solutions with different realistic mistakes; each must compile, terminate normally and print a well-formed answer, yet be wrong on at least one tiny input."
-            +" tinyInputs: 8 to 24 distinct valid inputs from a small domain where exhaustive brute force is trivial, covering edge cases; describe that domain in oracleDomain.inputDomain and the brute-force method in oracleDomain.enumeration."
+            +" tinyInputs: 8 to 17 distinct valid inputs from a small domain where exhaustive brute force is trivial, covering edge cases; describe that domain in oracleDomain.inputDomain and the brute-force method in oracleDomain.enumeration."
             +" Every tinyInput, stressInput and largeGenerator output must satisfy every constraint exactly, so the validator prints VALID for each; recheck counts, ranges and token layout against the contract."
             +" invalidInputs: 3 to 10 inputs violating the format or constraints (an empty input is allowed). stressInputs: 1 to 3 valid literal inputs of at most 2000 characters each that stress edge cases and value ranges; never write long repeated literals, large inputs come only from largeGenerator."
             +" largeGenerator: Java 8 public class Main that reads a signed long seed and prints exactly ONE valid maximum-size input (at most 8 MB), deterministic for the seed, built with a StringBuilder or PrintWriter, that makes slowSolution exceed 5 seconds."
@@ -190,7 +192,7 @@ class HybridRuleOnboarding {
         return obj("contract",contract,"rules",arr(obj("id",ruleId(),"text",str()),1,16),
                 "catalog",obj("label",str(),"description",str(),"category",str(),"tags",arr(str(),1,6),"rules",arr(str(),1,5)),
                 "generator",str(),"validator",str(),"reference",str(),"largeGenerator",str(),"slowSolution",str(),"authorNotes",obj("algorithm",str(),"complexity",str(),"edgeCases",str()),
-                "mutants",arr(obj("idea",str(),"source",str()),2,2),"tinyInputs",arr(str(),8,24),"invalidInputs",arr(str(),3,10),
+                "mutants",arr(obj("idea",str(),"source",str()),2,2),"tinyInputs",arr(str(),8,AUTHOR_MAX_TINY),"invalidInputs",arr(str(),3,10),
                 "stressInputs",arr(str(),1,3),"oracleDomain",obj("inputDomain",str(),"enumeration",str()),
                 "guidance",obj("author",str(),"teaching",str(),"reader",str()));
     }
@@ -308,7 +310,7 @@ class HybridRuleOnboarding {
         for(String f:List.of("generator","validator","reference","largeGenerator","slowSolution"))source(a.path(f));
         if(a.path("mutants").size()!=2)throw new HybridArtifacts.Invalid("RULE_PACKAGE_MUTANTS");
         for(var m:a.path("mutants"))source(m.path("source"));
-        inputs(a.path("tinyInputs"),HybridRulePackage.MIN_TINY,HybridRulePackage.MAX_TINY,1024,"RULE_TINY_INPUTS");
+        inputs(a.path("tinyInputs"),HybridRulePackage.MIN_TINY,AUTHOR_MAX_TINY,1024,"RULE_TINY_INPUTS");
         inputs(a.path("invalidInputs"),2,HybridRulePackage.MAX_INVALID,1024,"RULE_INVALID_INPUTS",true);
         inputs(a.path("stressInputs"),1,HybridRulePackage.MAX_STRESS,4096,"RULE_STRESS_INPUTS");
         // The same display/guidance limits the stored package enforces, checked before any Runner work.
@@ -357,6 +359,7 @@ class HybridRuleOnboarding {
         var t=p.putArray("tests");for(var c:tests)t.addObject().put("id",c[0]).put("input",c[1]).put("output",c[2]);return p;
     }
     private void queue(UUID generation,UUID branch,String role,String source,ObjectNode plan,boolean run,boolean exclusive) {
+        if(plan.path("tests").size()>RUNNER_MAX_TESTS)throw new IllegalArgumentException("RUNNER_PLAN_TOO_LARGE");
         String payload=JudgeJson.canonical(plan),hash=JudgeJson.hash(payload),sourceHash=JudgeJson.hash(source);UUID id=UUID.randomUUID();
         jdbc.sql("INSERT INTO submission(id,user_id,problem_version,source_code,source_sha256,idempotency_key,runtime_image,runner_policy,run_input,run_package,run_package_sha256,hybrid_branch_id) SELECT ?,g.owner_id,?,?,?,?,p.runtime_image,?,?,?,?,? FROM hybrid_generation g JOIN problem_version p ON p.id=? WHERE g.id=?")
                 .param(id).param(version(branch)).param(source).param(sourceHash).param(id).param(run?"java8-run-v1":"java8-judge-v1")

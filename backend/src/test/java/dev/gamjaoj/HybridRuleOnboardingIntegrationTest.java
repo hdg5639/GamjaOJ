@@ -199,6 +199,13 @@ class HybridRuleOnboardingIntegrationTest {
         drain(false,false);onboarding.advance();
         assertThat(view(id).error()).isEqualTo("DOMAIN_VALIDATOR_REJECTED");assertThat(view(id).failedCheck()).isEqualTo("q-valid · tiny-0 WA");
     }
+    @Test void moreTinyInputsThanOneRunnerPlanHoldsBeforeRunnerWork() throws Exception {
+        var a=author();var t=(com.fasterxml.jackson.databind.node.ArrayNode)a.path("tinyInputs");
+        for(int n=0;t.size()<=HybridRuleOnboarding.AUTHOR_MAX_TINY;n++)t.add((n+1)+" "+(n+2)+"\n1 1\n");
+        provide(a);UUID id=request();worker.runOnce();
+        assertThat(view(id).status()).isEqualTo("HELD");assertThat(view(id).error()).isEqualTo("RULE_TINY_INPUTS");
+        assertThat(jdbc.sql("SELECT count(*) FROM judge_job").query(Integer.class).single()).isZero();
+    }
     @Test void easyProblemsDoNotNeedATimingOutSlowSolution() throws Exception {
         provide(author());slowVerdict="AC";UUID id=UUID.randomUUID();
         mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",id).contentType("application/json")
