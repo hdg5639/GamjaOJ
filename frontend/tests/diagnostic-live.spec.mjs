@@ -17,7 +17,6 @@ test('isolated real diagnostic lifecycle, process restart and Docker judging',as
   await page.getByLabel('아이디',{exact:true}).fill(username);
   await page.getByLabel('비밀번호',{exact:true}).fill(password);
   await page.getByLabel('비밀번호 확인',{exact:true}).fill(password);
-  await page.getByLabel('초대코드',{exact:true}).fill(process.env.INVITE_CODE);
   await page.getByRole('button',{name:'가입하기',exact:true}).click();
   await expect(page.getByText(/가입했어요/)).toBeVisible();
   await page.getByLabel('아이디',{exact:true}).fill(username);

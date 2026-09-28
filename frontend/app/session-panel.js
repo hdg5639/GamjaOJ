@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Pager,{usePage} from './pager';
 import AiFeedback from './ai-feedback';
+import {verdictText} from './verdicts';
 
 const summary = item => `정식 제출 ${item.submissions}회 · 정답 ${item.accepted}회 · 처리 중 ${item.pending}개`;
 export default function SessionPanel({ user, problem, sessions, onChange, activity, api }) {
@@ -108,10 +109,10 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
       {detail.session.note && <pre aria-label="저장된 마무리 메모">{detail.session.note}</pre>}
       <p className="draft-help">최근 작업 최대 50개를 표시해요. 훈련 종료 후 마지막 정식 제출의 분석을 요청하며, API 비활성·예산 부족 시 보류해요. 코드를 열어 개인 피드백을 확인할 수 있어요.</p>
       {entryPaging.visible.map(item => <p key={item.id}><button className="secondary" onClick={() => openEntry(item)}>
-        {item.kind === 'RUN' ? '직접 실행' : '정식 제출'} · {item.verdict || (item.status === 'RUNNING' ? '처리 중' : '대기')} · {new Date(item.createdAt).toLocaleString('ko-KR')}
+        {item.kind === 'RUN' ? '직접 실행' : '정식 제출'} · {verdictText(item.verdict) || (item.status === 'RUNNING' ? '처리 중' : '대기')} · {new Date(item.createdAt).toLocaleString('ko-KR')}
       </button></p>)}
       <Pager paging={entryPaging} label="실행·제출 기록 페이지"/>
-      {entry && <div><h4>당시 코드와 결과 · {entry.verdict || entry.status}</h4><pre aria-label="훈련에 저장된 코드">{entry.source}</pre>
+      {entry && <div><h4>당시 코드와 결과 · {verdictText(entry.verdict) || entry.status}</h4><pre aria-label="훈련에 저장된 코드">{entry.source}</pre>
         {entry.input !== null && <><h4>실행 입력</h4><pre>{entry.input || '(빈 입력)'}</pre><h4>표준 출력</h4><pre>{entry.stdout || '(출력 없음)'}</pre></>}
         {entry.outputTruncated && <p>출력이 길어 일부만 표시했어요.</p>}
         {entry.stderr && <><h4>표준 오류</h4><pre>{entry.stderr}</pre></>}

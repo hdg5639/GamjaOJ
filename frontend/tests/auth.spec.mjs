@@ -18,8 +18,7 @@ async function remotePython(program) {
 test('signup, login, personal settings, reload and logout in a real browser', async ({ page, browser }) => {
   test.setTimeout(90000);
   const username = process.env.GAMJAOJ_E2E_USERNAME;
-  const invitation = process.env.INVITE_CODE;
-  test.skip(!username || !invitation, 'Run through scripts/test-browser-auth.sh');
+  test.skip(!username, 'Run through scripts/test-browser-auth.sh');
   const base = process.env.GAMJAOJ_BASE_URL;
   if (!base) throw new Error('Set GAMJAOJ_BASE_URL');
   const password = 'Browser-test-only-429!';
@@ -35,7 +34,7 @@ test('signup, login, personal settings, reload and logout in a real browser', as
   await page.getByLabel('아이디', { exact: true }).fill(username);
   await page.getByLabel('비밀번호', { exact: true }).fill(password);
   await page.getByLabel('비밀번호 확인', { exact: true }).fill(password);
-  await page.getByLabel('초대코드', { exact: true }).fill(invitation);
+  await expect(page.getByLabel('초대코드', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '가입하기', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('가입했어요');
   await remotePython(`import subprocess

@@ -435,6 +435,8 @@ test('account controls remain visible and navigation preserves editor space', as
   await workspace(page);
   const header=page.locator('#global-header');
   await expect(header).toBeVisible();
+  // The sidebar starts expanded; the compact solving layout below is measured after collapsing it.
+  await page.getByRole('button',{name:'사이드바 접기'}).click();
   const initial=(await page.locator('#source').boundingBox()).height;
   expect((await page.locator('#source').boundingBox()).y).toBeLessThan(160);
   expect((await page.locator('.app-navigation').boundingBox()).width).toBeLessThanOrEqual(52);

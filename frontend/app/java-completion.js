@@ -44,7 +44,7 @@ export function javaNameCompletion(context) {
   }
   const word = context.matchBefore(identifier);
   if (!word && !context.explicit) return null;
-  if (afterDot(state, word?.from ?? pos)) return null; // members come from memberCompletionSource
+  if (afterDot(state, word?.from ?? pos, 'JAVA', pos)) return null; // members come from memberCompletionSource
   let names = cached.get(tree);
   if (!names) {
     names = [];

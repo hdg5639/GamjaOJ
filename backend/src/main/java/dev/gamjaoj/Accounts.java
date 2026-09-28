@@ -1,9 +1,7 @@
 package dev.gamjaoj;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.core.userdetails.User;
@@ -17,14 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class Accounts implements UserDetailsService {
     private final JdbcClient jdbc;
     private final PasswordEncoder passwords;
-    private final byte[] invite;
 
-    public Accounts(JdbcClient jdbc, PasswordEncoder passwords,
-                    @Value("${gamjaoj.invite-code}") String invite) {
-        if (invite.isBlank()) throw new IllegalArgumentException("INVITE_CODE must not be blank");
+    public Accounts(JdbcClient jdbc, PasswordEncoder passwords) {
         this.jdbc = jdbc;
         this.passwords = passwords;
-        this.invite = invite.getBytes(StandardCharsets.UTF_8);
     }
 
     public record Profile(UUID id, String username, String nickname, String trainingGoal) {}
@@ -40,8 +34,6 @@ public class Accounts implements UserDetailsService {
 
     @Transactional
     public void register(AuthController.Signup request) {
-        if (!MessageDigest.isEqual(invite, request.inviteCode().getBytes(StandardCharsets.UTF_8)))
-            throw new AccountException(400, "초대코드를 확인해 주세요.");
         if (request.password().getBytes(StandardCharsets.UTF_8).length > 72)
             throw new AccountException(400, "비밀번호는 UTF-8 기준 72바이트 이내로 입력해 주세요.");
         try {

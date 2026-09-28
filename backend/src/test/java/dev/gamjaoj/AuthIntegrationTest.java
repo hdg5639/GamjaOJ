@@ -97,12 +97,12 @@ class AuthIntegrationTest {
     }
 
     @Test
-    void rejectsBadInviteDuplicatesAndInvalidCredentials() throws Exception {
+    void signupNeedsNoInviteAndRejectsDuplicatesAndInvalidCredentials() throws Exception {
         Browser browser = new Browser();
         String name = username();
-        assertThat(browser.signup(name, "wrong").statusCode()).isEqualTo(400);
-        assertThat(jdbc.sql("SELECT COUNT(*) FROM app_user WHERE username = ?").param(name).query(Integer.class).single()).isZero();
-        assertThat(browser.signup(name, "test-invite-only").statusCode()).isEqualTo(201);
+        assertThat(browser.call("POST", "/api/auth/signup", json.writeValueAsString(Map.of(
+                "username", username(), "password", PASSWORD, "nickname", "초대 없음")), "application/json", true).statusCode()).isEqualTo(201);
+        assertThat(browser.signup(name, "any-old-client-value").statusCode()).isEqualTo(201); // ignored if still sent
         assertThat(browser.signup(name, "test-invite-only").statusCode()).isEqualTo(409);
         assertThat(browser.call("POST", "/api/auth/login", "username=" + name + "&password=incorrect",
                 "application/x-www-form-urlencoded", true).statusCode()).isEqualTo(401);

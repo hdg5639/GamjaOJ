@@ -14,5 +14,8 @@ export function memberCompletionSource(language) {
     return {from:result.from,options:result.options,validFor:/^[\p{ID_Continue}$]*$/u,commitCharacters:[]};
   };
 }
-/** True when the word being completed is a member name after "." (handled by memberCompletionSource). */
-export function afterDot(state,from){return state.sliceDoc(Math.max(0,from-1),from)==='.';}
+/** True when the word is a member name after "." whose receiver type is known (memberCompletionSource answers it).
+ *  Unknown receivers (auto, undeclared, custom types) keep the plain name catalog as before. */
+export function afterDot(state,from,language,pos){
+  return state.sliceDoc(Math.max(0,from-1),from)==='.'&&memberCompletions(language,state.doc.toString(),pos)!==null;
+}

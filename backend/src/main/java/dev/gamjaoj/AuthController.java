@@ -22,7 +22,7 @@ public class AuthController {
             @NotBlank @Pattern(regexp="[a-z0-9_]{3,24}") String username,
             @NotBlank @Size(min=8, max=72) String password,
             @NotBlank @Size(max=24) String nickname,
-            @NotBlank @Size(max=128) String inviteCode) {}
+            @Size(max=128) String inviteCode) {} // Invitation is no longer required; older clients may still send it.
     public record Preferences(@NotBlank @Size(max=24) String nickname,
                               @jakarta.validation.constraints.NotNull @Size(max=120) String trainingGoal) {}
 

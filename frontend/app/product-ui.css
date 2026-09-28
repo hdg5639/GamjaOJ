@@ -378,3 +378,8 @@ button.danger:disabled { opacity:.6; }
 /* Code reset asks once inline before replacing the draft. */
 .reset-code-confirm { display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:13px; }
 .reset-code-confirm button { padding:4px 10px; }
+/* Language choice and code reset share one compact row so the editor does not move down. */
+.code-tools { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:nowrap; }
+.code-tools .reset-code { font-size:12px; padding:2px 8px; line-height:1.2; min-height:0; white-space:nowrap; }
+.code-tools .reset-code-confirm { font-size:12px; }
+.diagnostic-code-column > .code-tools { margin-bottom:0; }

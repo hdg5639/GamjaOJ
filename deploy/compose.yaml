@@ -18,7 +18,6 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/gamjaoj
       DB_USER: gamjaoj
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
-      INVITE_CODE: ${INVITE_CODE:?Set INVITE_CODE}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       WORKER_TOKEN: ${WORKER_TOKEN:?Set WORKER_TOKEN}
       SUBMISSIONS_ENABLED: ${SUBMISSIONS_ENABLED:-false}
