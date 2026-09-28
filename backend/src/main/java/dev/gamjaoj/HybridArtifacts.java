@@ -59,8 +59,18 @@ final class HybridArtifacts {
         section(c.path("authorNotes"),"algorithm","complexity","edgeCases");return c;
     }
     static JsonNode presentation(JsonNode candidate,JsonNode contract) {
-        var p=bounded(candidate);fields(p,"schemaVersion","title","context","semantics","ruleExplanations","hints","editorial");schema(p);
+        var p=bounded(candidate);
+        // sections (learner input/output/limits prose) is required of new writers; artifacts written before it existed stay readable.
+        if(p.has("sections"))fields(p,"schemaVersion","title","context","sections","semantics","ruleExplanations","hints","editorial");
+        else fields(p,"schemaVersion","title","context","semantics","ruleExplanations","hints","editorial");
+        schema(p);
         text(p.path("title"),160);text(p.path("context"),8000);text(p.path("editorial"),12000);texts(p.path("hints"),3,3,2000);
+        if(p.has("sections")) {
+            section(p.path("sections"),"input","output","limits");
+            HybridStatementQuality.korean("title",p.path("title").asText());HybridStatementQuality.korean("context",p.path("context").asText());
+            for(String key:List.of("input","output","limits"))HybridStatementQuality.korean(key,p.path("sections").path(key).asText());
+            HybridStatementQuality.bounds(p.path("semantics"),p.path("sections").path("input").asText()+"\n"+p.path("sections").path("limits").asText());
+        }
         // Models cannot override canonical IO, limits or rule semantics in the public snapshot.
         require(p.path("semantics").equals(publicSemantics(contract)),"PUBLIC_CONTRACT_MISMATCH");
         var rules=p.path("ruleExplanations");require(rules.isArray()&&rules.size()==contract.path("actions").size(),"MISSING_RULE_COVERAGE");
@@ -75,6 +85,7 @@ final class HybridArtifacts {
         // Construct from an allowlist. Teaching, author notes, personal context and answers cannot enter.
         var out=JudgeJson.JSON.createObjectNode().put("schemaVersion","1");
         for(String key:List.of("title","context","semantics","ruleExplanations"))out.set(key,presentation.path(key).deepCopy());
+        if(presentation.has("sections"))out.set("sections",presentation.path("sections").deepCopy());
         return out;
     }
     static JsonNode contentReview(JsonNode candidate,String inputHash) {

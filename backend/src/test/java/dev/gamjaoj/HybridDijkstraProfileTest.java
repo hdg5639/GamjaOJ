@@ -20,6 +20,9 @@ class HybridDijkstraProfileTest {
     static ObjectNode prose() {
         var p=new HybridGenerationIntegrationTest().presentation();p.remove(List.of("semantics","ruleExplanations"));
         p.put("title","가까운 목적지").put("context","도시의 출발점에서 목적지까지 이동합니다.").put("editorial","다익스트라로 최소 비용을 구합니다. long 거리와 우선순위 최소 우선순위 큐를 사용합니다.");
+        p.putObject("sections").put("input","첫 줄에 N M S T가 주어지고, 다음 M줄에 간선의 두 끝점 u v와 비용 w가 주어집니다.")
+                .put("output","S에서 T까지의 최소 비용을 출력합니다. S와 T가 같으면 0, 도달할 수 없으면 `-1`을 출력합니다.")
+                .put("limits","1 ≤ N ≤ 100, 0 ≤ M ≤ 200이며 M은 N(N-1)/2 이하입니다. 간선 비용은 1 이상 10^9 이하입니다.");
         p.putArray("hints").add("거리 순으로 탐색합니다.").add("최소 우선순위 큐를 사용합니다.").add("방문한 정점의 거리를 저장합니다.");return p;
     }
     static String generated(){return JudgeJson.canonical(JudgeJson.JSON.valueToTree(List.of("1 0 1 1\n","2 1 1 2\n1 2 7\n","3 1 1 3\n1 2 7\n",HybridDijkstraProfile.stress().get(0).input())));}
