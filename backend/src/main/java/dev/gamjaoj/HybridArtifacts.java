@@ -53,8 +53,19 @@ final class HybridArtifacts {
     private static void source(JsonNode node) {
         text(node,65536);require(node.asText().getBytes(StandardCharsets.UTF_8).length<=65536,"SOURCE_TOO_LARGE");
     }
+    /** Models sometimes wrap Java in a Markdown fence; the fence is formatting, never part of the program. */
+    static String unfence(String source) {
+        String t=source.strip();
+        if(!t.startsWith("```"))return source;
+        int newline=t.indexOf('\n');t=newline<0?"":t.substring(newline+1).stripTrailing();
+        if(t.endsWith("```"))t=t.substring(0,t.length()-3);
+        return t;
+    }
+    static void unfence(JsonNode node,String... fields) {
+        if(node instanceof com.fasterxml.jackson.databind.node.ObjectNode o)for(String f:fields)if(o.path(f).isTextual())o.put(f,unfence(o.path(f).asText()));
+    }
     static JsonNode core(JsonNode candidate) {
-        var c=bounded(candidate);fields(c,"schemaVersion","reference","generator","inputValidator","authorNotes");schema(c);
+        var c=bounded(candidate);unfence(c,"reference","generator","inputValidator");fields(c,"schemaVersion","reference","generator","inputValidator","authorNotes");schema(c);
         for(String field:List.of("reference","generator","inputValidator"))source(c.path(field));
         section(c.path("authorNotes"),"algorithm","complexity","edgeCases");return c;
     }
@@ -97,7 +108,7 @@ final class HybridArtifacts {
         require(r.path("issues").isEmpty(),"CONTENT_REVIEW_REJECTED");return r;
     }
     static JsonNode reader(JsonNode candidate) {
-        var r=bounded(candidate);fields(r,"schemaVersion","interpretedRules","ambiguities","oracleSource","oracleDomain","adversarialInputs","coverageNotes");schema(r);
+        var r=bounded(candidate);unfence(r,"oracleSource");fields(r,"schemaVersion","interpretedRules","ambiguities","oracleSource","oracleDomain","adversarialInputs","coverageNotes");schema(r);
         texts(r.path("interpretedRules"),1,32,4000);texts(r.path("ambiguities"),0,16,2000);
         source(r.path("oracleSource"));section(r.path("oracleDomain"),"inputDomain","enumeration","limitations");
         text(r.path("coverageNotes"),4000);

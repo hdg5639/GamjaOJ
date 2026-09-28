@@ -22,6 +22,13 @@ class HybridStatementQualityTest {
         HybridStatementQuality.bounds(dijkstra,"1 ≤ N ≤ 100, 0 ≤ M ≤ 200, 1 ≤ w ≤ 10⁹");
         HybridStatementQuality.bounds(dijkstra,"N ≤ 100, M ≤ 2×10^2, w ≤ 1e9");
     }
+    @Test void markdownFencesAroundModelJavaAreRemovedButPlainSourceIsUntouched() {
+        assertThat(HybridArtifacts.unfence("```java\nimport java.io.*;\npublic class Main{}\n```\n")).isEqualTo("import java.io.*;\npublic class Main{}\n");
+        assertThat(HybridArtifacts.unfence("```\npublic class Main{}```")).isEqualTo("public class Main{}");
+        String plain="public class Main { String s=\"```\"; }";assertThat(HybridArtifacts.unfence(plain)).isSameAs(plain);
+        var reader=JudgeJson.JSON.createObjectNode().put("oracleSource","```java\npublic class Main{}\n```");HybridArtifacts.unfence(reader,"oracleSource");
+        assertThat(reader.path("oracleSource").asText()).isEqualTo("public class Main{}\n");
+    }
     @Test void writerSectionsReplaceTheContractDumpInTheStatement() {
         var presentation=HybridArtifacts.presentation(fixtures.presentation(),fixtures.contract());
         var statement=HybridPackagePlan.pack("v",List.of(),presentation).path("statement").asText();
