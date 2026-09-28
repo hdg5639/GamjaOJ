@@ -265,13 +265,15 @@ class HybridRuleOnboarding {
         try {
             if(role.equals("AUTHOR")) {
                 // Keep the exact candidate even when rejected, for diagnosis; it is never used unless accepted.
+                HybridArtifacts.unfence(result.value(),"generator","validator","reference","largeGenerator","slowSolution");
+                result.value().path("mutants").forEach(mutant->HybridArtifacts.unfence(mutant,"source"));
                 String candidate=JudgeJson.canonical(HybridArtifacts.bounded(result.value()));
                 jdbc.sql("UPDATE hybrid_rule_onboarding SET author_json=?,author_sha256=? WHERE id=?").param(candidate).param(JudgeJson.hash(candidate)).param(id).update();
                 var author=validateAuthor(result.value());String raw=JudgeJson.canonical(author);
                 jdbc.sql("UPDATE hybrid_rule_onboarding SET author_json=?,author_sha256=?,status='AUTHORED',updated_at=? WHERE id=?")
                         .param(raw).param(JudgeJson.hash(raw)).param(now()).param(id).update();
             } else {
-                var oracle=result.value();HybridArtifacts.fields(oracle,"oracleSource");source(oracle.path("oracleSource"));
+                var oracle=result.value();HybridArtifacts.unfence(oracle,"oracleSource");HybridArtifacts.fields(oracle,"oracleSource");source(oracle.path("oracleSource"));
                 String raw=JudgeJson.canonical(oracle);
                 jdbc.sql("UPDATE hybrid_rule_onboarding SET oracle_json=?,oracle_sha256=?,status='QUALIFYING',updated_at=? WHERE id=?")
                         .param(raw).param(JudgeJson.hash(raw)).param(now()).param(id).update();
