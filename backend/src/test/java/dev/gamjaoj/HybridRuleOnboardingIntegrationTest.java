@@ -199,6 +199,13 @@ class HybridRuleOnboardingIntegrationTest {
         drain(false,false);onboarding.advance();
         assertThat(view(id).error()).isEqualTo("DOMAIN_VALIDATOR_REJECTED");assertThat(view(id).failedCheck()).isEqualTo("q-valid · tiny-0 WA");
     }
+    @Test void easyProblemsDoNotNeedATimingOutSlowSolution() throws Exception {
+        provide(author());slowVerdict="AC";UUID id=UUID.randomUUID();
+        mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",id).contentType("application/json")
+                .content("{\"request\":\"물건을 한 번씩만 골라 가치 합을 최대로 만드는 규칙\",\"difficulty\":\"EASY\"}")).andExpect(status().isOk());
+        worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
+        assertThat(view(id).status()).isEqualTo("ACTIVE");
+    }
     @Test void largeTestsMustMakeTheSlowSolutionTimeOut() throws Exception {
         provide(author());slowVerdict="AC";UUID id=request();worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
         assertThat(view(id).error()).isEqualTo("LARGE_TESTS_NOT_DISCRIMINATING");

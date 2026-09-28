@@ -13,8 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 class HybridGeneration {
     enum Role { CONTRACT, CORE, PRESENTATION, READER, VALIDATION, CONTENT_REVIEW }
     private static final Set<String> TERMINAL=Set.of("HELD","FAILED","CANCELLED","DEADLINE_EXCEEDED","PUBLISHED");
-    private final JdbcClient jdbc;private final Submissions submissions;
-    HybridGeneration(JdbcClient jdbc,Submissions submissions){this.jdbc=jdbc;this.submissions=submissions;}
+    private final JdbcClient jdbc;private final Submissions submissions;private final AiSettings settings;
+    HybridGeneration(JdbcClient jdbc,Submissions submissions,AiSettings settings){this.jdbc=jdbc;this.submissions=submissions;this.settings=settings;}
+    /** Whole-generation deadline. Registered rules with large inputs need several exclusive Runner replays, so 120 s was too short. */
+    long deadlineSeconds() {
+        try{return Math.max(120,Math.min(1800,Long.parseLong(settings.value("HYBRID_GENERATION_SECONDS","600").trim())));}catch(NumberFormatException e){return 600;}
+    }
     record Job(UUID id,UUID owner,int revision,String status,int repairs,boolean shared,String contractHash,
                String publicHash,String error,OffsetDateTime acceptedAt,OffsetDateTime deadlineAt) {}
     record Branch(UUID id,UUID generation,int revision,Role role,int attempt,String status,JsonNode input,
@@ -97,7 +101,7 @@ class HybridGeneration {
         OffsetDateTime accepted=now();
         jdbc.sql("INSERT INTO hybrid_generation(id,owner_id,pipeline_version,request_json,request_sha256,status,share_on_publish,created_at,deadline_at,updated_at) VALUES (?,?,?,?,?,'QUEUED',?,?,?,?)")
                 .param(id).param(owner).param(HybridArtifacts.VERSION).param(input).param(JudgeJson.hash(input))
-                .param(shared).param(accepted).param(accepted.plusSeconds(120)).param(accepted).update();
+                .param(shared).param(accepted).param(accepted.plusSeconds(deadlineSeconds())).param(accepted).update();
         enqueue(job(id,false),Role.CONTRACT,JudgeJson.JSON.createObjectNode().put("request",request),"QUEUED");return view(username,id);
     }
     Progress view(String username,UUID id) {
