@@ -75,7 +75,7 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen}) {
       {busyWork&&<p className="draft-help" role="status">진행 중인 등록이 끝나면 새로 요청할 수 있어요.</p>}
     </form>
     {items.length>0&&<ul className="rule-onboarding-list">{itemPaging.visible.map(item=><li key={item.id}>
-      <p><strong>{labels[item.status]||item.status}</strong> · {item.label||item.request.slice(0,60)||'자동 주제'}{item.difficulty?` · ${difficulties[item.difficulty]||item.difficulty}`:''}{item.style&&item.style!=='GENERAL'?` · ${styles[item.style]}`:''}{item.targeted?' · 진단 습관 겨냥':''}</p>
+      <p><strong>{labels[item.status]||item.status}</strong> · {item.label||item.request.slice(0,60)||'자동 주제'}{item.difficulty?` · ${difficulties[item.difficulty]||item.difficulty}`:''}{item.style&&item.style!=='GENERAL'?` · ${styles[item.style]}`:''}{item.targeted?' · 진단 습관 겨냥':''}{item.repairs>0?` · 자동 수정 ${item.repairs}회`:''}</p>
       {item.status==='ACTIVE'&&item.publish&&<p className="draft-help">{item.followupError?`문제를 바로 만들지 못했어요: ${item.followupError}`:item.followupStatus?followups[item.followupStatus]||item.followupStatus:'문제 생성 준비 중'}
         {item.publishedVersion&&onOpen&&<> <button className="primary" disabled={busy} onClick={()=>onOpen(item.publishedVersion)}>문제 풀기</button></>}</p>}
       {item.status==='QUALIFYING'&&<p className="draft-help">실행 검증 {Object.values(item.checks||{}).filter(v=>['AC','OK','WA'].includes(v)).length}건 완료</p>}
