@@ -18,6 +18,7 @@ export default function DiagnosticProfile({api,sessionId,row,onObservation,onRul
   },[sessionId,row.id,row.status,row.corrections?.length]);
   if(error)return <p role="alert" className="notice error">분야별 요약을 불러오지 못했어요. {error}</p>;
   if(!profile)return <p role="status">분야별 요약을 불러오고 있어요…</p>;
+  if(!Array.isArray(profile.categories))return null; // never let an unexpected response hide the evaluation itself
   const all=profile.categories.flatMap(c=>c.observations);
   const count=tone=>all.filter(o=>o.tone===tone).length;
   const ruleName=id=>profile.rules.find(r=>r.id===id)?.label||id;

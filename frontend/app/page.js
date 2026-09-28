@@ -101,7 +101,7 @@ export default function Home() {
   }
 
   useEffect(()=>{
-    let collapsed=true;
+    let collapsed=false; // Expanded unless this browser saved a choice for this account.
     try { const saved=localStorage.getItem(`gamjaoj-sidebar-${user?.id}`);if(saved!==null)collapsed=saved==='collapsed'; } catch {}
     setSidebarCollapsed(collapsed);
   },[user?.id]);
@@ -151,15 +151,12 @@ export default function Home() {
             <button aria-pressed={mode === 'signup'} disabled={busy} className={mode === 'signup' ? 'selected' : ''} onClick={() => { setMode('signup'); setError(''); setMessage(''); }}>처음 왔어요</button>
           </div>
           <h2>{mode === 'login' ? '다시 만나 반가워요.' : '내 연습장을 만들어 볼까요?'}</h2>
-          <p className="muted">{mode === 'login' ? '이어서 연습할 준비가 됐나요?' : '친구에게 받은 초대코드로 함께 시작해요.'}</p>
+          <p className="muted">{mode === 'login' ? '이어서 연습할 준비가 됐나요?' : '아이디와 비밀번호만 있으면 바로 시작할 수 있어요.'}</p>
           <form key={mode} onSubmit={submit}>
             {mode === 'signup' && <label>닉네임<input name="nickname" maxLength={24} required autoComplete="nickname" placeholder="어떻게 불러드릴까요?" /></label>}
             <label>아이디<input name="username" required minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" autoComplete="username" autoCapitalize="none" spellCheck="false" placeholder="영문 소문자, 숫자, 밑줄 3~24자" /></label>
             <label>비밀번호<input name="password" type="password" required minLength={mode === 'signup' ? 8 : undefined} maxLength={72} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder="8자 이상 입력해 주세요" /></label>
-            {mode === 'signup' && <>
-              <label>비밀번호 확인<input name="confirmPassword" type="password" required maxLength={72} autoComplete="new-password" /></label>
-              <label>초대코드<input name="inviteCode" type="password" required maxLength={128} autoComplete="off" placeholder="공유받은 초대코드" /></label>
-            </>}
+            {mode === 'signup' && <label>비밀번호 확인<input name="confirmPassword" type="password" required maxLength={72} autoComplete="new-password" /></label>}
             <button className="primary" disabled={busy}>{busy ? '잠시만요…' : mode === 'login' ? '내 연습장으로' : '가입하기'}</button>
           </form>
           <p className="help">계정에 문제가 생겼다면 운영자에게 알려주세요.</p>

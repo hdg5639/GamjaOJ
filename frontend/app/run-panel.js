@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {languageInfo,recordLanguageLabel,limitText} from './languages';
+import {verdictText,verdictHelp} from './verdicts';
 
-const names = { OK: '실행 완료', CE: '컴파일 오류', RE: '실행 오류', TLE: '시간 초과',
-  OLE: '출력 초과', MLE: '메모리 초과', IE: '실행 시스템 오류' };
-const status = item => names[item.verdict] || (item.status === 'RUNNING' ? '실행 중' : '실행 대기');
+const status = item => item.verdict ? verdictText(item.verdict) : item.status === 'RUNNING' ? '실행 중' : '실행 대기';
 
 export default function RunPanel({ user, source, language='JAVA', problem, api, sessionId, onActivity, inputRequest }) {
   const [inputOpen,setInputOpen]=useState(true);
@@ -108,6 +107,7 @@ export default function RunPanel({ user, source, language='JAVA', problem, api, 
       {selected && selected.problemVersion===problem?.version && <article className="run-detail submission-detail">
         {(selected.problemHeld||(problem?.version===selected.problemVersion&&problem.problemHeld))&&<p className="notice">문제 검토 중 · 기존 실행 기록입니다.</p>}
         <div className="record-heading"><h4 id="run-heading" tabIndex={-1}>{status(selected)}</h4><small>{new Date(selected.createdAt).toLocaleString('ko-KR')}</small></div>
+        {verdictHelp[selected.verdict]&&selected.verdict!=='IE'&&<p className="draft-help">{verdictHelp[selected.verdict]}</p>}
         <p className="version">{selected.problemVersion}</p>
         {(selected.source!==source||selected.problemVersion!==problem?.version)&&<p className="notice">현재 편집 중인 코드와 다른 실행의 결과예요.</p>}
         <span className="version">{recordLanguageLabel(selected)} · {limitText(selected.execution)}</span>

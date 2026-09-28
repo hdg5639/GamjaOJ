@@ -16,6 +16,7 @@ import FollowupPanel from './followup-panel';
 import ProblemTeaching from './problem-teaching';
 import AiOperations, { AiBudget } from './ai-operations';
 import dynamic from 'next/dynamic';
+import {verdictText,verdictHelp} from './verdicts';
 
 const CodeEditor = dynamic(() => import('./code-editor'), { ssr: false,
   loading: () => <div id="source" role="status">편집기를 불러오고 있어요…</div>,
@@ -30,9 +31,7 @@ public class Main {
     }
 }
 `;
-const verdicts = { AC: '정답', WA: '오답', CE: '컴파일 오류', RE: '실행 오류', TLE: '시간 초과',
-  MLE: '메모리 초과', OLE: '출력 초과', IE: '채점 시스템 오류' };
-const label = item => item.verdict ? `${item.verdict} · ${verdicts[item.verdict]}` : item.status === 'RUNNING' ? '채점 중' : '채점 대기';
+const label = item => item.verdict ? verdictText(item.verdict) : item.status === 'RUNNING' ? '채점 중' : '채점 대기';
 
 export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar }) {
   const [size,changeSize,resetSize]=useEditorSizing(user.id,'practice');
@@ -339,8 +338,8 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
             : `${activeSession.problemVersion} 훈련은 유지 중이에요. 현재 문제의 제출은 자유 풀이로 저장돼요.`}
         </p>}
         <div className="code-heading"><span>{inspected?languageInfo[recordLanguage(inspected)].file:lang.file}</span>
-          <label className="language-choice">언어<select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
-          {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(starters[language]);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</div>
+          <span className="code-tools"><label className="language-choice">언어<select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+          {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(starters[language]);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</span></div>
         <p className="draft-help">{inspected?`${recordLanguageLabel(inspected)} · ${limitText(inspected.execution)}`:limitText(problem.languages?.find(l=>l.id===language))}</p>
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         <div className="editor-views" style={size.height==null?undefined:{flex:`0 0 ${size.height}px`,height:size.height}}><div className="editor-view" hidden={!!inspected}>
@@ -379,6 +378,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {selected&&selected.problemVersion===version&&<article className="submission-detail">
           {selected.problemHeld&&<p className="notice">문제 검토 중 · 이 기록은 학습 판단 근거에서 보류됩니다.</p>}
           <div className="record-heading"><h4 id="submission-heading" tabIndex={-1}>{label(selected)}</h4><small>{new Date(selected.createdAt).toLocaleString('ko-KR')}</small></div>
+          {verdictHelp[selected.verdict]&&selected.verdict!=='IE'&&<p className="draft-help">{verdictHelp[selected.verdict]}</p>}
           <p className="version">{selected.problemVersion} · {recordLanguageLabel(selected)}</p>
           {(selected.problemVersion!==version||selected.source!==source)&&<p className="notice">현재 편집 중인 코드와 다른 제출의 결과예요.</p>}
           <button type="button" className="secondary" onClick={()=>viewCode(selected)}>해당 제출 코드 보기</button>

@@ -77,6 +77,8 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
   await page.getByRole('button',{name:'선택한 2문항 시작'}).click();
   await expect(page.getByRole('heading',{name:'진단 문항 1'})).toBeVisible();
   await expect(page.locator('.workspace-heading')).toBeHidden();
+  // The sidebar starts expanded; collapsing it gives the compact solving layout checked below.
+  await page.getByRole('button',{name:'사이드바 접기'}).click();
   expect((await page.locator('.app-navigation').boundingBox()).width).toBeLessThanOrEqual(52);
   expect((await page.locator('#diagnostic-source').boundingBox()).y).toBeLessThan(width>850?180:330);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
