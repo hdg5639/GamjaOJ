@@ -163,7 +163,7 @@ class HybridRuleOnboarding {
             +" difficulty EASY: one core idea with a light twist and modest bounds. MEDIUM: the model is not obvious from the story; one standard technique plus one twist; bounds force an efficient algorithm."
             +" HARD: two techniques combined or a nontrivial state space (for example position plus direction, or a small bitmask), several interacting rules, up to about 2*10^5 elements or operations."
             +" EXPERT: an advanced idea (offline processing, segment or Fenwick tree with lazy updates, bitmask or tree DP, 0-1 BFS or Dijkstra on an expanded state graph, amortized structures) combined with intricate rules, up to about 5*10^5 elements or operations."
-            +" For every difficulty the slowSolution is a correct naive approach that times out on largeGenerator inputs."
+            +" For MEDIUM and harder the slowSolution is a correct naive approach that times out on largeGenerator inputs. For EASY choose bounds where a direct, careful implementation passes (no exponential search over large sets, no advanced technique); the slowSolution then only has to be exact and may finish in time."
             +" style SIMULATION: a board or world that evolves step by step under several simultaneous rules (movement, collision, spreading, gravity, rotation), in the style of Samsung SW competency tests; the answer is a statistic after the process."
             +" style COMMAND: the input is Q commands, one per line, each starting with a numeric command code (for example 100 to initialize, 200 to add, 300 to query); every query command prints exactly one line; updates and queries interleave so that recomputing per query is too slow. style GENERAL: any structure."
             +" If category is not AUTO, the intended solution must center on that family (implementation, arrays-strings, basic-data-structures, basic-search, bfs, dfs, backtracking, dp, binary-search, greedy, graph meaning shortest paths, mst)."
@@ -394,8 +394,8 @@ class HybridRuleOnboarding {
         for(UUID id:jdbc.sql("SELECT id FROM hybrid_rule_onboarding WHERE status='QUALIFYING' ORDER BY created_at").query(UUID.class).list())advanceOne(id);
     }
     private void advanceOne(UUID id) {
-        var o=jdbc.sql("SELECT owner_id,author_json,author_sha256,oracle_json,oracle_sha256,carrier_generation_id,answers_json FROM hybrid_rule_onboarding WHERE id=? AND status='QUALIFYING'")
-                .param(id).query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getString(4),r.getString(5),r.getObject(6,UUID.class),r.getString(7)}).optional();
+        var o=jdbc.sql("SELECT owner_id,author_json,author_sha256,oracle_json,oracle_sha256,carrier_generation_id,answers_json,request_json FROM hybrid_rule_onboarding WHERE id=? AND status='QUALIFYING'")
+                .param(id).query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getString(4),r.getString(5),r.getObject(6,UUID.class),r.getString(7),r.getString(8)}).optional();
         if(o.isEmpty())return;
         try {
             if(!JudgeJson.hash((String)o.get()[1]).equals(o.get()[2])||!JudgeJson.hash((String)o.get()[3]).equals(o.get()[4]))throw new IllegalArgumentException("ONBOARDING_ARTIFACT_FENCE");
@@ -470,7 +470,9 @@ class HybridRuleOnboarding {
             expect(done,"q-generated-valid","AC","GENERATED_INPUT_REJECTED");expect(done,"q-reference-tiny","AC","REFERENCE_TINY_FAILED");
             expect(done,"q-mutant-a","WA","MUTANT_NOT_DISTINGUISHED");expect(done,"q-mutant-b","WA","MUTANT_NOT_DISTINGUISHED");
             String slowVerdict=done.get("q-slow").verdict();
-            if(!slowVerdict.equals("TLE"))throw new IllegalArgumentException(slowVerdict.equals("AC")?"LARGE_TESTS_NOT_DISCRIMINATING":slowVerdict.equals("IE")?"LARGE_INPUT_GENERATION_FAILED":"SLOW_SOLUTION_INCORRECT");
+            // An EASY problem may be solvable directly: its slow solution only has to be exact, not too slow.
+            boolean easy="EASY".equals(JudgeJson.parse((String)o.get()[7]).path("difficulty").asText());
+            if(!(slowVerdict.equals("TLE")||(easy&&slowVerdict.equals("AC"))))throw new IllegalArgumentException(slowVerdict.equals("AC")?"LARGE_TESTS_NOT_DISCRIMINATING":slowVerdict.equals("IE")?"LARGE_INPUT_GENERATION_FAILED":"SLOW_SOLUTION_INCORRECT");
             var stressAnswers=new ArrayList<String>();
             for(int i=0;i<stress.size();i++) {
                 expect(done,"q-stress-run-"+i,"OK","RUNNER_"+done.get("q-stress-run-"+i).verdict());

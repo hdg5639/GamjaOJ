@@ -92,7 +92,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
           <p className="draft-help">기본은 나만 보기입니다. 공개하면 본문·예제·힌트·해설을 다른 회원도 볼 수 있어요.</p>
           <label className="check-row"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>위 규칙으로 생성하고 검증 통과 시 게시</label>
         </fieldset>
-        <p className="draft-help">요청 시 서비스 AI 예산을 사용합니다. 최대 120초의 처리 기한 안에 검증을 마치지 못하면 게시하지 않으며, 자동 재요청은 하지 않습니다.</p>
+        <p className="draft-help">요청 시 서비스 AI 예산을 사용합니다. 최대 10분의 처리 기한 안에 검증을 마치지 못하면 게시하지 않으며, 자동 재요청은 하지 않습니다.</p>
         {pending&&<p className="notice" role="status">요청의 접수 여부를 확인하고 있어요. 다시 누르면 같은 요청을 확인합니다.</p>}
         {(running||otherActive)&&!pending&&<p className="notice" role="status">출제가 진행 중이에요. 현재 요청이 끝나면 새로 만들 수 있습니다.</p>}
         <button className="primary" disabled={busy||(!pending&&(!options?.enabled||!profile||!consent||running||otherActive||!loaded))}>{busy?'처리 중…':pending?'기존 요청 확인':'이 규칙으로 생성·게시'}</button>

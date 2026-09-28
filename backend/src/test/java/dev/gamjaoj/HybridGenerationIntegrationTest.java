@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class HybridGenerationIntegrationTest {
     @Autowired HybridGeneration hybrid;@Autowired JdbcClient jdbc;@Autowired MockMvc mvc;
+    @Autowired AiSettings aiSettings;
     @Autowired Submissions submissions;@Autowired GenerationJobs legacy;
     @BeforeEach void setup() {
         jdbc.sql("DELETE FROM hybrid_generation").update();jdbc.sql("DELETE FROM generation_attempt").update();
@@ -244,7 +245,7 @@ class HybridGenerationIntegrationTest {
         assertThat(count("hybrid_generation")).isEqualTo(1);
     }
     @Test void durableAssignmentsCanBeReadAfterServiceRecreationWithoutNewDispatch() {
-        UUID id=designed();var core=hybrid.claim(id,CORE);var recreated=new HybridGeneration(jdbc,submissions);
+        UUID id=designed();var core=hybrid.claim(id,CORE);var recreated=new HybridGeneration(jdbc,submissions,aiSettings);
         assertThat(recreated.view("owner",id).branches()).containsEntry(CORE,"RUNNING").containsEntry(PRESENTATION,"QUEUED");
         assertThat(recreated.claim(id,CORE)).isNull();assertThat(count("hybrid_branch")).isEqualTo(3);
         assertThat(hybrid.complete(result(core,core()))).isTrue();
