@@ -88,20 +88,27 @@ final class HybridPackagePlan {
                 .put("title",presentation.path("title").asText()).put("mode","HYBRID_V1");
         var sem=presentation.path("semantics");var statement=new StringBuilder(presentation.path("context").asText());
         statement.append("\n\n규칙\n");for(var rule:presentation.path("ruleExplanations"))statement.append(rule.path("text").asText()).append('\n');
-        statement.append("\n\n대상과 상태\n").append(sem.path("domain").path("entities").asText()).append('\n')
-                .append(sem.path("domain").path("types").asText()).append('\n').append(sem.path("domain").path("relationships").asText())
-                .append("\n초기 상태: ").append(sem.path("state").path("initial").asText()).append("\n변경되는 상태: ").append(sem.path("state").path("mutable").asText());
-        for(var action:sem.path("actions"))statement.append("\n행동 조건: ").append(action.path("preconditions").asText())
-                .append("\n상태 변화: ").append(action.path("transition").asText()).append("\n재사용: ").append(action.path("reuse").asText())
-                .append("\n자원 조건: ").append(action.path("resources").asText());
-        statement.append("\n\n목표\n").append(sem.path("goal").path("definition").asText()).append("\n종료 조건: ").append(sem.path("termination").asText());
-        statement.append("\n입력\n").append(sem.path("input").path("format").asText())
-                .append("\n인덱스: ").append(sem.path("input").path("indexing").asText()).append("\n테스트 케이스: ").append(sem.path("input").path("caseCount").asText());
-        statement.append("\n\n출력\n").append(sem.path("output").path("format").asText())
-                .append("\n동점: ").append(sem.path("output").path("ties").asText()).append("\n선택 없음: ").append(sem.path("output").path("empty").asText())
-                .append("\n불가능한 경우: ").append(sem.path("output").path("impossible").asText())
-                .append("\n출력 수의 범위: ").append(sem.path("output").path("numericRange").asText());
-        statement.append("\n\n제약\n").append(sem.path("limits").path("maxInputSize").asText()).append('\n').append(sem.path("limits").path("executionConstraints").asText());
+        if(presentation.has("sections")) {
+            // Learner prose checked for Korean wording and contract bounds; the contract itself stays for review only.
+            var s=presentation.path("sections");
+            statement.append("\n입력\n").append(s.path("input").asText().strip()).append("\n\n출력\n").append(s.path("output").asText().strip())
+                    .append("\n\n제한\n").append(s.path("limits").asText().strip());
+        } else {
+            statement.append("\n\n대상과 상태\n").append(sem.path("domain").path("entities").asText()).append('\n')
+                    .append(sem.path("domain").path("types").asText()).append('\n').append(sem.path("domain").path("relationships").asText())
+                    .append("\n초기 상태: ").append(sem.path("state").path("initial").asText()).append("\n변경되는 상태: ").append(sem.path("state").path("mutable").asText());
+            for(var action:sem.path("actions"))statement.append("\n행동 조건: ").append(action.path("preconditions").asText())
+                    .append("\n상태 변화: ").append(action.path("transition").asText()).append("\n재사용: ").append(action.path("reuse").asText())
+                    .append("\n자원 조건: ").append(action.path("resources").asText());
+            statement.append("\n\n목표\n").append(sem.path("goal").path("definition").asText()).append("\n종료 조건: ").append(sem.path("termination").asText());
+            statement.append("\n입력\n").append(sem.path("input").path("format").asText())
+                    .append("\n인덱스: ").append(sem.path("input").path("indexing").asText()).append("\n테스트 케이스: ").append(sem.path("input").path("caseCount").asText());
+            statement.append("\n\n출력\n").append(sem.path("output").path("format").asText())
+                    .append("\n동점: ").append(sem.path("output").path("ties").asText()).append("\n선택 없음: ").append(sem.path("output").path("empty").asText())
+                    .append("\n불가능한 경우: ").append(sem.path("output").path("impossible").asText())
+                    .append("\n출력 수의 범위: ").append(sem.path("output").path("numericRange").asText());
+            statement.append("\n\n제약\n").append(sem.path("limits").path("maxInputSize").asText()).append('\n').append(sem.path("limits").path("executionConstraints").asText());
+        }
         p.put("statement",statement.toString());p.set("semantics",sem.deepCopy());
         var tests=p.putArray("tests");candidates.stream().filter(c->!checkOnly(c)).forEach(tests::add);
         if(generatedCount(profile)>0) {

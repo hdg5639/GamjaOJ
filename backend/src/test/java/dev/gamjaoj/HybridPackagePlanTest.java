@@ -33,7 +33,9 @@ class HybridPackagePlanTest {
         var pack=HybridPackagePlan.pack("version",candidates,f.presentation());
         assertThat(pack.path("samples").size()).isEqualTo(2);
         for(var sample:pack.path("samples"))assertThat(sample.path("output").asText()).isEqualTo(HybridPackagePlan.parse(sample.path("input").asText()).answer());
-        assertThat(pack.path("statement").asText()).contains("total chosen value","at most once per item","0..1000000");
+        // Learner sections replace the English contract dump; the contract stays in semantics for review only.
+        assertThat(pack.path("statement").asText()).contains("각 장비는 최대 한 번","입력\n","제한\n1 ≤ N ≤ 100").doesNotContain("total chosen value","at most once per item");
+        assertThat(pack.path("semantics").path("goal").path("definition").asText()).isEqualTo("total chosen value");
     }
     @Test void duplicateGeneratorAndOversizedFinalPackagesAreHeldRatherThanSilentlyTruncated(){
         var f=new HybridGenerationIntegrationTest();

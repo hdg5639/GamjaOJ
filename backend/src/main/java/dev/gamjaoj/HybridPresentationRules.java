@@ -30,7 +30,8 @@ final class HybridPresentationRules {
     static JsonNode assemble(JsonNode input,JsonNode payload,JsonNode contract) {
         if(!input.has("serverRules"))return HybridArtifacts.presentation(payload,contract);
         validate(input);
-        HybridArtifacts.fields(payload,"schemaVersion","title","context","hints","editorial");
+        if(payload.has("sections"))HybridArtifacts.fields(payload,"schemaVersion","title","context","sections","hints","editorial");
+        else HybridArtifacts.fields(payload,"schemaVersion","title","context","hints","editorial");
         var result=(ObjectNode)payload.deepCopy();
         result.set("semantics",input.path("semantics").deepCopy());
         result.set("ruleExplanations",input.path("serverRules").path("rules").deepCopy());

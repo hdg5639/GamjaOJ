@@ -52,6 +52,9 @@ class HybridGenerationIntegrationTest {
     }
     ObjectNode presentation() {
         var p=JudgeJson.JSON.createObjectNode().put("schemaVersion","1").put("title","탐사 장비 선택").put("context","장비를 선택합니다.");
+        p.putObject("sections").put("input","첫 줄에 N과 W가 주어지고, 다음 N줄에 각 장비의 비용과 가치가 주어집니다.")
+                .put("output","고른 장비 가치 합의 최댓값을 한 줄에 출력합니다. 아무것도 고르지 않으면 0입니다.")
+                .put("limits","1 ≤ N ≤ 100, 1 ≤ W ≤ 1,000이고 비용은 1 이상 1,000 이하, 가치는 1 이상 10,000 이하입니다.");
         p.set("semantics",HybridArtifacts.publicSemantics(contract()));
         p.putArray("ruleExplanations").addObject().put("id","choose").put("text","각 장비는 최대 한 번 선택할 수 있습니다.");
         p.putArray("hints").add("PRIVATE_HINT_1").add("PRIVATE_HINT_2").add("PRIVATE_HINT_3");p.put("editorial","PRIVATE_EDITORIAL");return p;
