@@ -383,3 +383,6 @@ button.danger:disabled { opacity:.6; }
 .code-tools .reset-code { font-size:12px; padding:2px 8px; line-height:1.2; min-height:0; white-space:nowrap; }
 .code-tools .reset-code-confirm { font-size:12px; }
 .diagnostic-code-column > .code-tools { margin-bottom:0; }
+/* New problem request: difficulty, style and field side by side, stacking on narrow screens. */
+.problem-request-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
+.catalog-level[data-level="EXPERT"] strong { color:#8a1c1c; }

@@ -4,12 +4,6 @@ import {categoryLabels} from './diagnostic-categories';
 const tones={STRENGTH:'강점',WATCH:'주의',RISK:'위험'};
 const outcomes={OPEN:'미완료',PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀'};
 const difficulty={EASY:'하',MEDIUM:'중'};
-/** Rule request text the learner reviews and edits before submitting; never sent automatically. */
-export function ruleDraft(category,observation) {
-  const label=categoryLabels[category]||category;
-  const sentence=text=>text.trim().replace(/[.。]$/,'');
-  return `${label} 연습 문제 규칙.\n진단에서 관찰된 코드 습관: ${sentence(observation.pattern)}.\n이 습관이 문제가 되는 경우: ${sentence(observation.risk)}.\n위 경우를 테스트로 구분할 수 있어야 한다.`.slice(0,1000);
-}
 export default function DiagnosticProfile({api,sessionId,row,onObservation,onRuleDraft}) {
   const [profile,setProfile]=useState(null),[error,setError]=useState('');
   useEffect(()=>{let stopped=false;setError('');
@@ -36,13 +30,13 @@ export default function DiagnosticProfile({api,sessionId,row,onObservation,onRul
         <p><strong>{o.pattern||'코드 관찰'}</strong></p>
         {o.risk&&<p>{o.tone==='STRENGTH'?'유지할 이유':'위험해지는 경우'}: {o.risk}</p>}
         <button className="secondary" onClick={()=>onObservation(o.index)}>관찰 {o.index+1} 근거·학습 계획 보기</button>
-        {category.selected&&o.tone&&o.tone!=='STRENGTH'&&category.ruleIds.length===0&&profile.ruleOnboardingEnabled&&onRuleDraft&&
-          <button className="secondary" onClick={()=>onRuleDraft(ruleDraft(category.id,o))}>이 습관으로 규칙 등록 요청 작성</button>}
+        {category.selected&&o.tone&&o.tone!=='STRENGTH'&&profile.ruleOnboardingEnabled&&onRuleDraft&&
+          <button className="secondary" onClick={()=>onRuleDraft({evaluationId:row.id,observationIndex:o.index,pattern:o.pattern,category:category.id})}>이 습관을 겨냥한 문제 만들기</button>}
       </div>)}
       {category.alsoSeen.length>0&&<p className="muted">다른 분야 관찰 {category.alsoSeen.map(i=>i+1).join(', ')}번에서 같은 습관이 이 분야 제출에도 보였어요.</p>}
       {category.selected&&category.observations.length===0&&row.interpretation&&<p className="muted">이 분야에서 코드 근거로 짚은 습관은 없어요.</p>}
       {category.ruleIds.length>0&&<p className="muted">분야 이름이 맞는 등록 규칙: {category.ruleIds.map(ruleName).join(', ')}. 관찰에서 학습 목표를 저장하면 이 규칙으로 문제를 만들 수 있어요.</p>}
     </article>)}</div>
-    {profile.ruleOnboardingEnabled&&<p className="muted">규칙 등록 요청 작성은 등록 화면에 문장만 채워 넣어요. 내용을 확인하고 직접 요청해야 하며, 요청하면 AI 예산을 사용합니다.</p>}
+    {profile.ruleOnboardingEnabled&&<p className="muted">'이 습관을 겨냥한 문제 만들기'는 새 문제 만들기 화면에 겨냥 대상만 채워요. 난이도와 스타일을 고른 뒤 직접 요청해야 하며, 요청하면 AI 예산을 사용합니다.</p>}
   </section>;
 }

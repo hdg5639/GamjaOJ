@@ -98,7 +98,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
         <button className="primary" disabled={busy||(!pending&&(!options?.enabled||!profile||!consent||running||otherActive||!loaded))}>{busy?'처리 중…':pending?'기존 요청 확인':'이 규칙으로 생성·게시'}</button>
       </form>
       {error&&<p className="notice error" role="alert">{error}</p>}
-      <RuleOnboarding api={api} onRegistered={loadOptions} draft={ruleDraft}/>
+      <RuleOnboarding api={api} onRegistered={loadOptions} draft={ruleDraft} onOpen={onOpen}/>
     </section>
     <section className="generation-results" aria-labelledby="hybrid-generation-results">
       <h3 id="hybrid-generation-results" tabIndex={-1} ref={results}>진행·결과</h3>

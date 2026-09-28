@@ -122,6 +122,32 @@ class HybridRuleOnboardingIntegrationTest {
         UUID again=request();worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
         assertThat(view(again).status()).isEqualTo("FAILED");assertThat(view(again).error()).isEqualTo("DUPLICATE_RULE_CONTRACT");
     }
+    @Autowired HybridRuleFollowup followup;
+    @Test void styledRequestReachesTheAuthorWithoutPublicationPreferencesAndFollowupRecordsRefusal() throws Exception {
+        var calls=new ArrayList<HybridRuleOnboarding.Call>();
+        doAnswer(c->{var call=c.getArgument(0,HybridRuleOnboarding.Call.class);calls.add(call);
+            if(call.role().equals("ORACLE"))return result(JudgeJson.JSON.createObjectNode().put("oracleSource","public class Main{public static void main(String[] a){}}"));
+            return result(author());}).when(provider).generate(any());
+        for(String bad:List.of("{\"request\":\"\",\"difficulty\":\"HARD\"}","{\"request\":\"아무 문제나\",\"difficulty\":\"LEGENDARY\",\"category\":\"bfs\"}","{\"category\":\"quantum\",\"difficulty\":\"EASY\"}"))
+            mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",UUID.randomUUID()).contentType("application/json").content(bad)).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",UUID.randomUUID()).contentType("application/json")
+                .content("{\"difficulty\":\"EASY\",\"evaluationId\":\""+UUID.randomUUID()+"\",\"observationIndex\":0}")).andExpect(status().isNotFound());
+        UUID id=UUID.randomUUID();
+        mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",id).contentType("application/json")
+                .content("{\"request\":\"\",\"difficulty\":\"HARD\",\"style\":\"COMMAND\",\"category\":\"bfs\",\"publish\":true,\"shared\":true}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.difficulty").value("HARD")).andExpect(jsonPath("$.style").value("COMMAND")).andExpect(jsonPath("$.publish").value(true));
+        assertThat(worker.runOnce()).isTrue();
+        var authorCall=calls.get(0);var input=JudgeJson.parse(authorCall.input());
+        assertThat(input.path("difficulty").asText()).isEqualTo("HARD");assertThat(input.path("style").asText()).isEqualTo("COMMAND");assertThat(input.path("category").asText()).isEqualTo("bfs");
+        assertThat(input.has("publish")||input.has("shared")).isFalse();
+        assertThat(authorCall.instructions()).contains("Never name the technique","style COMMAND","mutants[0] must be a realistic");
+        assertThat(authorCall.model().maxOutputTokens()).isEqualTo(28000);
+        worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
+        assertThat(view(id).status()).isEqualTo("ACTIVE");
+        followup.advance(); // rule-based admission is disabled in this environment: the refusal is recorded, not retried forever
+        var v=view(id);assertThat(v.followupGenerationId()).isNull();assertThat(v.followupError()).isNotBlank();
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_generation WHERE id=?").param(HybridRuleFollowup.generationId(id)).query(Integer.class).single()).isZero();
+    }
     @Test void authorSchemaPinsKebabCaseActionIdsAndRejectedCandidateIsKeptForDiagnosis() throws Exception {
         var schema=HybridRuleOnboarding.authorSchema();
         assertThat(schema.path("properties").path("contract").path("properties").path("actions").path("items").path("properties").path("id").path("pattern").asText()).isEqualTo("^[a-z][a-z0-9-]{0,39}$");

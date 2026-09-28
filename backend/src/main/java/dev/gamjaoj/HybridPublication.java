@@ -102,6 +102,10 @@ class HybridPublication {
                     jdbc.sql("UPDATE problem_version SET catalog_category=?,catalog_tags=? WHERE id=?")
                             .param(catalog.map(HybridRuleRegistry.Version::category).orElse(profile.category()))
                             .param(catalog.map(HybridRuleRegistry.Version::tags).orElse(profile.tags())).param(version).update();
+                    // A member-requested rule carries its target difficulty (하/중/상/최상) onto every problem generated from it.
+                    jdbc.sql("SELECT request_json FROM hybrid_rule_onboarding WHERE version_id=?").param(ruleVersion.get()).query(String.class).optional()
+                            .map(requestJson->JudgeJson.parse(requestJson).path("difficulty").asText("")).filter(HybridRuleOnboarding.DIFFICULTIES::contains)
+                            .ifPresent(d->jdbc.sql("UPDATE problem_version SET catalog_difficulty=? WHERE id=?").param(d).param(version).update());
                 }
                 jdbc.sql("UPDATE hybrid_generation SET status='PUBLISHED',error_code=NULL,published_version_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").param(version).param(id).update();
                 registry.qualify(id);
