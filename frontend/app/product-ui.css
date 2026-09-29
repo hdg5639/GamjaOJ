@@ -435,3 +435,10 @@ button.danger:disabled { opacity:.6; }
 .submit-tests li span, .submit-tests .skipped { color:var(--muted, #6b7a76); }
 .submit-tests .skipped { grid-column:1 / -1; }
 .example-note { grid-column:1 / -1; margin:0; font-size:13px; line-height:1.55; color:var(--ink); }
+/* Delete confirmation opens as its own full-width row under the problem it belongs to. */
+.catalog-list li:has(> .catalog-remove) { flex-wrap:wrap; }
+.catalog-list li > .catalog-remove { flex:1 0 100%; order:10; margin:0; display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; padding:12px 14px; border:1px solid #f0c7c3; background:#fff6f5; border-radius:10px; }
+.catalog-list li > .catalog-remove p { flex:1 1 100%; margin:0; font-size:13px; line-height:1.55; color:var(--ink); }
+.catalog-list li > .catalog-remove .notice.error { flex-basis:100%; }
+.remove-confirm { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; margin-top:8px; padding:12px 14px; border:1px solid #f0c7c3; background:#fff6f5; border-radius:10px; }
+.remove-confirm p { flex:1 1 100%; margin:0; font-size:13px; line-height:1.55; color:var(--ink); }
