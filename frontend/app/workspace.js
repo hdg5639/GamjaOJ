@@ -1,5 +1,7 @@
 'use client';
 
+import EditorShortcutHelp,{EditorTools} from './editor-shortcut-help';
+
 import { useEffect, useRef, useState } from 'react';
 import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
 import RunConsole, { SubmitTests, Examples } from './run-console';
@@ -357,13 +359,13 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         </p>}
         <div className="code-heading"><div className="code-caption"><span className="code-filename">{inspected?languageInfo[recordLanguage(inspected)].file:lang.file}</span><span className="draft-status code-save-note" hidden={!!inspected} title={draftStatus} aria-live="polite">{draftStatus}</span></div>
           <span className="code-tools"><label className="language-choice"><span className="visually-hidden">언어</span><select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
-          {!inspected&&<details id="editor-tools" className="tool-pop"><summary>도구</summary><div className="tool-pop-panel">
+          {!inspected&&<EditorTools id="editor-tools"><summary>도구</summary><div className="tool-pop-panel">
             <label className="check-row vim-toggle"><input type="checkbox" checked={vim} onChange={e=>setVim(e.target.checked)}/>Vim 모드 <small>Esc 명령 모드 · i 입력 모드</small></label>
-            <strong>편집기 단축키 · 자동완성</strong><span>Ctrl+Space 후보 · Enter 확정 · Tab 들여쓰기 · Esc 다음 Tab으로 나가기 · Ctrl/⌘+F 검색 · Ctrl/⌘+Enter 제출</span>
+            <EditorShortcutHelp/>
             <strong>파일</strong>
             <label className="file-import">{language==='JAVA'?'Java':lang.label} 파일 불러오기<input type="file" accept={lang.extension} disabled={busy} onChange={importSource} /></label>
             <button type="button" className="secondary" onClick={downloadSource}>{lang.file} 내려받기</button>
-            <span>초안은 계정·문제·언어별로 이 브라우저에만 남아요. 다른 기기로 옮길 때는 파일을 내려받아 주세요.</span></div></details>}
+            <span>초안은 계정·문제·언어별로 이 브라우저에만 남아요. 다른 기기로 옮길 때는 파일을 내려받아 주세요.</span></div></EditorTools>}
           {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(starters[language]);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</span></div>
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
@@ -371,6 +373,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         <SplitStack share={split} onChange={setSplit} top={<div className="editor-views"><div className="editor-view" hidden={!!inspected}>
         <CodeEditor key={`${user.id}:${version}:${language}`} language={language} label={lang.file} value={source} disabled={busy} onChange={editSource} vim={vim}
           onLimit={() => setError('너무 긴 코드는 입력할 수 없어요. 기존 내용을 유지했어요. 제출 코드는 UTF-8 기준 64 KiB 이내여야 해요.')}
+          onRun={() => {if(!busy&&!inspected&&problem.submissionsEnabled)setRunRequest(value=>value+1);}}
           onSubmit={() => document.getElementById('code-form')?.requestSubmit()} />
         </div>{inspected&&<div className="editor-view"><CodeEditor key={inspected.id} id="snapshot-source" label="기록 코드" language={recordLanguage(inspected)} value={inspected.source||''} disabled={true} onChange={()=>{}} onSubmit={()=>{}} onLimit={()=>{}} /></div>}</div>}
         bottom={<RunConsole key={user.id} user={user} api={api} scope={version} disabled={!!inspected || !problem.submissionsEnabled}

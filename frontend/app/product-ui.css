@@ -454,7 +454,7 @@ dialog.modal::backdrop { background:rgba(15,23,21,.45); }
 .tool-pop > summary { list-style:none; cursor:pointer; border:1px solid var(--line); background:#fff; color:var(--ink); display:inline-flex; align-items:center; font-weight:600; }
 .tool-pop > summary::-webkit-details-marker { display:none; }
 .tool-pop[open] > summary { background:var(--subtle); }
-.tool-pop-panel { position:absolute; right:0; top:calc(100% + 6px); z-index:30; width:min(320px, 80vw); display:grid; gap:8px; padding:12px; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.12); font-size:12.5px; line-height:1.5; color:var(--muted, #5d6b67); }
+.tool-pop-panel { max-height:min(var(--tool-panel-height,65vh),560px); overflow-y:auto; position:absolute; right:0; top:calc(100% + 6px); z-index:30; width:min(320px, 80vw); display:grid; gap:8px; padding:12px; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.12); font-size:12.5px; line-height:1.5; color:var(--muted, #5d6b67); }
 .tool-pop-panel strong { color:var(--ink); }
 .tool-pop-panel .file-import { display:grid; gap:4px; }
 .code-tools { position:relative; }
