@@ -46,6 +46,21 @@ public class JudgeQueue {
             jdbc.sql("UPDATE judge_attempt SET status='EXPIRED',finished_at=? WHERE submission_id=? AND status='RUNNING'")
                     .param(now).param(id).update();
         }
+        // Checks of a generation that ended (deadline passed, finished or stopped, or its branch closed) can never be
+        // claimed again. Close them as IE so they do not look RUNNING/QUEUED forever; live generations are untouched.
+        var abandoned = jdbc.sql("""
+                SELECT j.submission_id FROM judge_job j JOIN submission s ON s.id=j.submission_id
+                JOIN hybrid_branch b ON b.id=s.hybrid_branch_id JOIN hybrid_generation g ON g.id=b.generation_id
+                WHERE (j.status='QUEUED' OR (j.status='RUNNING' AND j.lease_until<=?))
+                  AND (g.deadline_at<=? OR g.status IN ('FAILED','CANCELLED','DEADLINE_EXCEEDED','PUBLISHED')
+                       OR b.status IN ('FAILED','CANCELLED','SUPERSEDED','CHECKED','SUCCEEDED') OR b.revision<>g.revision)""").param(now).param(now).query(UUID.class).list();
+        for (UUID id : abandoned) {
+            String report = "{\"verdict\":\"IE\",\"error\":\"generation ended before this check ran\"}";
+            jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='IE',result_json=?,result_sha256=?,finished_at=? WHERE submission_id=?")
+                    .param(report).param(JudgeJson.hash(report)).param(now).param(id).update();
+            jdbc.sql("UPDATE judge_attempt SET status='EXPIRED',finished_at=? WHERE submission_id=? AND status='RUNNING'")
+                    .param(now).param(id).update();
+        }
         // A job whose hybrid generation was stopped is not resumed: a worker failing on it would otherwise renew and retry forever.
         var resumed = jdbc.sql("SELECT submission_id FROM judge_job WHERE status='RUNNING' AND worker_id=? AND lease_until>? AND EXISTS (SELECT 1 FROM submission s WHERE s.id=judge_job.submission_id AND (s.hybrid_branch_id IS NULL OR EXISTS (SELECT 1 FROM hybrid_branch b JOIN hybrid_generation g ON g.id=b.generation_id WHERE b.id=s.hybrid_branch_id AND b.revision=g.revision AND g.deadline_at>CURRENT_TIMESTAMP AND ((b.status='RUNNING' AND g.status='VALIDATING') OR (b.status='EARLY' AND g.status='BUILDING') OR (b.status='BLOCKED' AND g.status='HELD' AND g.error_code='VALIDATION_ADAPTER_NOT_CONNECTED') OR (b.status='RUNNING' AND g.status='QUALIFYING'))))) ORDER BY created_at LIMIT 1")
                 .param(worker).param(now).query(UUID.class).optional();
