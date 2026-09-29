@@ -119,6 +119,27 @@ class SubmissionIntegrationTest {
         return report;
     }
 
+    @Test void formalSubmissionsJudgeEveryTestAndKeepTheFirstFailureVerdict() {
+        var saved=submissions.submit(alice,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,"JAVA"));
+        var assignment=queue.claim(UUID.randomUUID()).orElseThrow();
+        assertThat(assignment.judgeAll()).isTrue();
+        int count=assignment.problem().path("tests").size();
+        var full=report(assignment).put("judge_all",true).put("verdict","WA");
+        ((ObjectNode)full.path("tests").get(0)).put("verdict","WA");
+        var lastVerdict=full.deepCopy().put("verdict","AC");
+        assertThatThrownBy(()->queue.complete(saved.id(),assignment.token(),lastVerdict)).isInstanceOf(AccountException.class);
+        queue.complete(saved.id(),assignment.token(),full);
+        var detail=submissions.detail(alice,saved.id());
+        assertThat(detail.verdict()).isEqualTo("WA");
+        assertThat(detail.tests()).hasSize(count).extracting(Submissions.TestResult::verdict).first().isEqualTo("WA");
+        assertThat(detail.testCount()).isEqualTo(count);
+        var run=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2\n"));
+        var runAssignment=queue.claim(UUID.randomUUID()).orElseThrow();
+        assertThat(runAssignment.judgeAll()).isFalse();
+        var forged=report(runAssignment).put("judge_all",true).put("verdict","OK");
+        assertThatThrownBy(()->queue.complete(run.id(),runAssignment.token(),forged)).isInstanceOf(AccountException.class);
+    }
+
     @Test void languagesPersistTrustedLimitsAndFenceReportsAndIdempotency() {
         assertThat(submissions.problems(alice).get(0).languages()).extracting(LanguageProfiles.Option::id)
                 .containsExactly("JAVA","CPP","PYTHON");

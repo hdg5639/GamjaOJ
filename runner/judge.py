@@ -232,6 +232,9 @@ class Runner:
         self.generated_cache = None
         self.timings = Timings()
         self.execution_mode = "EXCLUSIVE"
+        # Learner formal submissions run every test (coding-test style per-test results); validation
+        # checks keep stopping at the first failure. The overall verdict is always the first failure.
+        self.judge_all = False
 
     def sandbox(self, mount, command, stdin=b"", compile_phase=False, output_limit=None):
         name = "gamjaoj-sandbox-" + uuid.uuid4().hex
@@ -333,6 +336,8 @@ class Runner:
                       "dockerControl": os.environ.get("GAMJAOJ_DOCKER_CONTROL", "cli")},
                   "language": self.profile["language"], "execution_profile": self.profile,
                   "problem_version": problem["version"], "execution_mode": self.execution_mode, "verdict": "IE", "tests": []}
+        if self.judge_all:
+            report["judge_all"] = True
         try:
             self.timings.call("image_inspect", docker, "image", "inspect", self.image)
             with workspace(self.timings) as directory:
@@ -362,16 +367,19 @@ class Runner:
                     self.timings.call("artifact_unpack", unpack_classes, result["stdout"], classes, self.profile["artifact"])
                     if self.compile_cache is not None and not cache_hit:
                         self.compile_cache.put(cache_key, result)
+                    failed = None
                     for test in problem["tests"]:
                         result = self.timings.call("test_total", self.sandbox, classes, self.profile['testCommand'], test["input"].encode())
                         verdict = classify(result, None if custom else test["output"].encode())
                         report["tests"].append({"id": test["id"], "verdict": verdict,
                                                 **evidence(result), **({"stdout": result["stdout"][:16384].decode(errors="replace"),
                                                 "stdout_truncated": len(result["stdout"]) > 16384 or result["limit"] == "OUTPUT_LIMIT"} if custom else {})})
-                        report["verdict"] = verdict
                         if verdict not in ("AC", "OK"):
+                            failed = failed or verdict
+                        report["verdict"] = failed or verdict
+                        if failed and not self.judge_all:
                             break
-                    if report["verdict"] == "AC" and problem.get("generated"):
+                    if problem.get("generated") and (report["verdict"] == "AC" or self.judge_all):
                         self._generated(problem, classes, report)
         except (InfrastructureError, OSError, tarfile.TarError) as exc:
             report["verdict"] = "IE"
@@ -443,9 +451,11 @@ class Runner:
                           "input_bytes": len(data["input"]), "expected_sha256": hashlib.sha256(data["expected"]).hexdigest(),
                           "generator_wall_ms": data.get("generator_wall_ms"), "reference_wall_ms": data.get("reference_wall_ms")}
                 report["tests"].append(entry)
-                report["verdict"] = verdict
                 if verdict != "AC":
-                    break
+                    if report["verdict"] == "AC":
+                        report["verdict"] = verdict
+                    if not self.judge_all:
+                        break
 
 
 def unpack_classes(archive, destination, artifact="class"):
