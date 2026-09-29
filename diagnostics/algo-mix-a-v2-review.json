@@ -1,0 +1,28 @@
+{
+  "bankId": "algo-mix-a-v2",
+  "artifactSha256": "5f29093f0d00b7924da9be39b49eb8cc7aecb141c18ab6de6cd9fa1b438aaa0b",
+  "decision": "APPROVED_LIMITED_PILOT",
+  "reviewerType": "AI_ASSISTED_CONTENT_REVIEW",
+  "reviewDate": "2026-09-29",
+  "scope": "algo-mix-a-v1 with two longer public examples per item (tests EX2, EX3 after T01) and per-example explanations; replaces v1 in the catalog.",
+  "basedOn": "algo-mix-a-v1 (artifactSha256 6b00edd68cfd3d5a5470a0c9049537f14ae680ec34d3dbfd9e743cbd8d126da0)",
+  "checks": [
+    "Built by diagnostics/build_algo_mix_v2.py from the reviewed v1 artifact; hidden tests, rubrics, solutions and generators unchanged",
+    "40 new example outputs computed by Python references and recomputed by package Python oracles; all inputs pass the package validator",
+    "No new example exposes the item's targeted wrong solution (build-time check in Python, Runner check in three languages)",
+    "Local Runner (production images and judge code): correct Java/C++/Python AC on all fixed and generated tests for all 20 items",
+    "Every wrong solution passes all public examples and ends WA on a private test in all three languages",
+    "Slow solutions AC on 12 package small random cases and TLE on generated large input; generators byte-identical",
+    "Large correct wall time maximum Java 194 ms, C++ 124 ms, Python 365 ms; infrastructure IE retries 0",
+    "Each example explanation checked against its computed output"
+  ],
+  "limitations": [
+    "No independent human review or learner calibration completed",
+    "Oracles, references and examples share one author; agreement is not an external answer key",
+    "Examples deliberately show ordinary cases only; boundary, overflow and unreachable traps stay hidden",
+    "Difficulty labels and workload remain provisional; no mastery or measurement claim"
+  ],
+  "reviewChanges": [
+    "Statements: '예제 설명' renamed '예제 1 설명' and explanations for examples 2 and 3 appended"
+  ]
+}
