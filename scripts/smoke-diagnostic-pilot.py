@@ -10,11 +10,14 @@ import http.cookiejar
 import json
 from pathlib import Path
 import secrets
+import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from diagnostics.time_limits import limits_for
 spec=importlib.util.spec_from_file_location('runner_smoke',Path(__file__).with_name('smoke-dedicated-runner.py'))
 helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
 ssh,sql=helper.ssh,helper.sql
@@ -59,7 +62,10 @@ def main():
             by_version={item['problem']['version']:item for item in content['items']}
             for _ in content['items']:
                 question=saved['current'];item=by_version[question['problemVersion']]
-                assert set(question)=={'itemId','problemVersion','title','statement','sampleInput','sampleOutput','languages'}
+                assert set(question)=={'itemId','problemVersion','title','statement','sampleInput','sampleOutput','examples','languages'}
+                limits=limits_for(item['problem'])
+                if limits is not None:
+                    assert {p['id']:p['timeLimitMs'] for p in question['languages']}=={l:limits[l]*1000 for l in ('JAVA','CPP','PYTHON')}
                 correct=item['reference'] if args.language=='JAVA' else item['languages'][args.language]['correct'] if 'languages' in item else references[question['problemVersion']][args.language]
                 wrong=item['languages'][args.language]['wrong'] if 'languages' in item else item['mutant'] if args.language=='JAVA' else None
                 sources=[wrong]*(attempts-1)+[correct]
@@ -76,6 +82,8 @@ def main():
                     else:raise AssertionError('Diagnostic judging timed out')
                     assert result['language']==args.language
                     assert result['execution']['id']==args.language
+                    if limits is not None:
+                        assert result['execution']['timeLimitMs']==limits[args.language]*1000
                     expected='AC' if index==len(sources)-1 else 'WA'
                     assert result['verdict']==expected,(question['problemVersion'],index,result['verdict'])
                 saved=call('/api/diagnostics/'+session)[1]
@@ -101,6 +109,7 @@ def main():
             print('PASS: A -> B correspondence, eight B AC, replay, prior exposure refusal and reserved catalog',flush=True)
         assert sql(f"SELECT count(*) FROM ai_task a JOIN app_user u ON u.id=a.user_id WHERE u.username='{username}'")=='0'
         assert sql(f"SELECT count(*) FROM judge_attempt a JOIN submission s ON s.id=a.submission_id WHERE s.diagnostic_item_id IN (SELECT id FROM diagnostic_item WHERE session_id='{session}') AND a.status='COMPLETED'")==str(count*args.attempts)
+        assert sql(f"SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.diagnostic_item_id IN (SELECT id FROM diagnostic_item WHERE session_id='{session}') AND s.execution_profile_json::jsonb=j.result_json::jsonb->'execution_profile'")==str(count*args.attempts)
         print(f'PASS: {count}-question HTTPS pilot, private catalog, {args.attempts} attempt(s)/item, private reassessment options, zero AI tasks',flush=True)
         if args.evaluate:
             status,evaluation=call('/api/diagnostics/'+session+'/evaluations','POST');assert status==200,(status,evaluation)
