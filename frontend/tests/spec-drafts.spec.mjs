@@ -66,7 +66,7 @@ for(const width of [390,1440]) test('experimental drafts preserve requests and o
   await page.screenshot({path:'/tmp/gamja-final-'+width+'.png',fullPage:true});
   await page.getByRole('button',{name:'이 문제 풀기'}).click();
   if(width<600)await page.getByRole('button',{name:'코드 작성',exact:true}).click();
-  await expect(page.getByRole('button',{name:'코드 제출',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'제출 후 채점하기',exact:true})).toBeVisible();
 });
 
 for(const width of [390,1440]) test('owner holds a published problem and keeps records at '+width,async({page})=>{
@@ -99,9 +99,8 @@ for(const width of [390,1440]) test('owner holds a published problem and keeps r
   await page.getByRole('button',{name:'문제 탐색',exact:true}).click();
   await expect(page.getByRole('region',{name:'문제 목록',exact:true}).getByText('현재 풀이할 수 있는 문제가 없어요.')).toBeVisible();
   await page.getByRole('button',{name:'문제 풀기',exact:true}).click();
-  await expect(page.getByRole('button',{name:'코드 제출',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'제출 후 채점하기',exact:true})).toBeDisabled();
   await expect(page.getByLabel('Main.java',{exact:true})).toContainText('// 보존할 초안');
-  await page.getByRole('button',{name:'실행 테스트',exact:true}).click();
-  await expect(page.getByRole('button',{name:'직접 실행',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'코드 실행',exact:true})).toBeDisabled();
   await page.screenshot({path:`/tmp/gamja-hold-${width}.png`});
 });

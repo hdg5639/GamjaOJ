@@ -38,6 +38,6 @@ for(const width of [390,1440])test(`problem history and personal activity stay s
  await page.getByRole('button',{name:'문제 풀기',exact:true}).click();await page.getByLabel('풀이할 문제').selectOption('v1');
  if(width===390)await page.getByRole('button',{name:'코드 작성',exact:true}).click();
  await expect(page.getByLabel('Main.java',{exact:true})).toContainText('// keep my draft');
- await page.getByRole('button',{name:'실행 테스트',exact:true}).click();await expect(page.getByText('최근 실행 내역',{exact:false})).toHaveCount(0);
+ await expect(page.getByText('최근 실행 내역',{exact:false})).toHaveCount(0);
  expect(runLists).toBe(0);
 });

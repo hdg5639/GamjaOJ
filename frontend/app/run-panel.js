@@ -6,8 +6,10 @@ import {verdictText,verdictHelp} from './verdicts';
 
 const status = item => item.verdict ? verdictText(item.verdict) : item.status === 'RUNNING' ? '실행 중' : '실행 대기';
 
-export default function RunPanel({ user, source, language='JAVA', problem, api, sessionId, onActivity, inputRequest }) {
-  const [inputOpen,setInputOpen]=useState(true);
+const tokens=text=>(text||'').trim().split(/\s+/).filter(Boolean);
+/** Coding-test style console under the editor: run with the sample and compare, or run custom input. */
+export default function RunPanel({ user, source, language='JAVA', problem, api, sessionId, onActivity, inputRequest, runRequest }) {
+  const [inputOpen,setInputOpen]=useState(false);
   const live=useRef(true);
   const [input, setInput] = useState('');
   const [selected, setSelected] = useState(null);
@@ -52,9 +54,10 @@ export default function RunPanel({ user, source, language='JAVA', problem, api, 
     return()=>{stopped=true;clearInterval(timer);};
   },[selected?.id,selected?.status,user.id]);
 
-  useEffect(()=>{if(inputRequest){setInputOpen(true);requestAnimationFrame(()=>document.getElementById('custom-input')?.focus());}},[inputRequest]);
+  useEffect(()=>{if(inputRequest){setInputOpen(open=>!open);requestAnimationFrame(()=>document.getElementById('custom-input')?.focus());}},[inputRequest]);
+  useEffect(()=>{if(runRequest)run();},[runRequest]);
   async function run(event) {
-    event.preventDefault();
+    event?.preventDefault();
     if(busy)return;
     if (!pending && (new TextEncoder().encode(input).length > 16384 || new TextEncoder().encode(source).length > 65536)) {
       setError('입력은 16 KiB, 코드는 64 KiB 이내로 작성해 주세요.'); return;
@@ -87,38 +90,42 @@ export default function RunPanel({ user, source, language='JAVA', problem, api, 
     } finally { if(live.current)setBusy(false); }
   }
 
-  return <section className="custom-runs" aria-label="직접 입력 실행">
-    <details className="run-input" open={inputOpen} onToggle={event=>setInputOpen(event.currentTarget.open)}><summary>실행 입력 편집</summary>
-    <p className="run-explanation muted">현재 코드를 직접 실행합니다. 정답 비교 없이 출력을 확인하며, 정식 제출에는 포함하지 않아요.</p>
-    <form className="run-form" onSubmit={run}>
-      <label htmlFor="custom-input">직접 입력</label>
+  const current=selected&&selected.problemVersion===problem?.version?selected:null;
+  const sample=current&&problem&&current.input===(problem.sampleInput||'');
+  const passed=sample&&current.status==='FINISHED'&&current.verdict==='OK'&&tokens(current.stdout).join(' ')===tokens(problem.sampleOutput).join(' ');
+  const outcome=!current?null:current.status!=='FINISHED'?'실행 중이에요…':current.verdict!=='OK'?`${status(current)}${verdictHelp[current.verdict]?' · '+verdictHelp[current.verdict]:''}`
+    :!sample?'실행을 마쳤어요. 직접 넣은 입력이라 기댓값과 비교하지 않았어요.':passed?'테스트를 통과하였습니다.':'실행한 결괏값이 기댓값과 다릅니다.';
+  return <section className="run-console" aria-label="실행 결과">
+    <div className="console-head"><h3>실행 결과</h3>{current&&<small>{recordLanguageLabel(current)} · {new Date(current.createdAt).toLocaleTimeString('ko-KR')}</small>}</div>
+    {inputOpen&&<form className="console-input" onSubmit={run}>
+      <label htmlFor="custom-input">직접 넣을 입력</label>
       <textarea id="custom-input" value={input} onChange={event => setInput(event.target.value)} rows={4}
         maxLength={16384} spellCheck="false" disabled={busy} placeholder={problem?.sampleInput || '입력 없이도 실행할 수 있어요.'} />
-      <button type="button" className="secondary" disabled={busy} onClick={() => setInput(problem?.sampleInput || '')}>예제 입력 넣기</button>
-      <p className="draft-help">입력 최대 16 KiB · 출력은 최대 16 KiB까지 표시해요.</p>
-      {pending && <p className="notice">이전 실행의 코드와 입력으로 접수 여부를 다시 확인해요.</p>}
-      <button className="primary" disabled={busy || !ready || !problem || (!problem.submissionsEnabled && !pending)}>
-        {busy ? '실행 접수 중…' : pending ? '같은 실행 다시 확인' : '직접 실행'}</button>
-    </form></details>
+      <div className="console-input-actions"><button type="button" className="secondary" disabled={busy} onClick={() => setInput(problem?.sampleInput || '')}>예제 입력으로 되돌리기</button>
+        <span className="draft-help">입력 최대 16 KiB · 출력은 16 KiB까지 표시 · 정식 제출에는 포함되지 않아요.</span></div>
+    </form>}
+    {pending && <p className="notice">이전 실행의 코드와 입력으로 접수 여부를 다시 확인해요. <button type="button" className="secondary" disabled={busy} onClick={()=>run()}>같은 실행 다시 확인</button></p>}
     {error && <p role="alert" className="notice error">{error}</p>}
-    <div className="history">
+    <div className="console-body" aria-live="polite">
       {!ready&&!error&&<p role="status" className="muted">실행을 준비하고 있어요…</p>}
-      {ready&&(!selected||selected.problemVersion!==problem?.version)&&<p className="muted">입력을 넣고 실행하면 여기에 결과가 표시돼요.</p>}
-      {selected && selected.problemVersion===problem?.version && <article className="run-detail submission-detail">
-        {(selected.problemHeld||(problem?.version===selected.problemVersion&&problem.problemHeld))&&<p className="notice">문제 검토 중 · 기존 실행 기록입니다.</p>}
-        <div className="record-heading"><h4 id="run-heading" tabIndex={-1}>{status(selected)}</h4><small>{new Date(selected.createdAt).toLocaleString('ko-KR')}</small></div>
-        {verdictHelp[selected.verdict]&&selected.verdict!=='IE'&&<p className="draft-help">{verdictHelp[selected.verdict]}</p>}
-        <p className="version">{selected.problemVersion}</p>
-        {(selected.source!==source||selected.problemVersion!==problem?.version)&&<p className="notice">현재 편집 중인 코드와 다른 실행의 결과예요.</p>}
-        <span className="version">{recordLanguageLabel(selected)} · {limitText(selected.execution)}</span>
-        <details><summary>실행한 입력 보기</summary><pre aria-label="실행한 입력">{selected.input || '(빈 입력)'}</pre></details>
-        {selected.status === 'FINISHED' && <>
-          <h4>표준 출력</h4><pre aria-label="실행 표준 출력">{selected.stdout || '(출력 없음)'}</pre>
-          {selected.outputTruncated && <p className="notice">출력이 길어 일부만 표시했어요.</p>}
-          {selected.stderr && <><h4>표준 오류</h4><pre>{selected.stderr}</pre></>}
-          {selected.compileMessage && <pre className="compiler-message">{selected.compileMessage}</pre>}
-          {selected.verdict === 'IE' && <p className="notice">시스템 문제로 실행을 마치지 못했어요. 풀이 실패로 기록하지 않습니다.</p>}
+      {ready&&!current&&<p className="muted">아래 ‘코드 실행’을 누르면 예제 입력으로 실행하고 기댓값과 비교한 결과가 여기에 나와요. 다른 입력은 ‘입력 직접 넣기’로 넣을 수 있어요.</p>}
+      {current&&<article className="run-detail" data-passed={current.status==='FINISHED'?String(!!passed):undefined}>
+        {(current.problemHeld||problem?.problemHeld)&&<p className="notice">문제 검토 중 · 기존 실행 기록입니다.</p>}
+        {current.source!==source&&<p className="notice">현재 편집 중인 코드와 다른 실행의 결과예요.</p>}
+        <dl className="console-case">
+          <dt>{sample?'테스트 1':'직접 입력'}</dt><dd></dd>
+          <dt>입력값</dt><dd><pre aria-label="실행한 입력">{current.input || '(빈 입력)'}</pre></dd>
+          {sample&&<><dt>기댓값</dt><dd><pre aria-label="기댓값">{problem.sampleOutput}</pre></dd></>}
+          {current.status==='FINISHED'&&<><dt>출력</dt><dd><pre aria-label="실행 표준 출력">{current.stdout || '(출력 없음)'}</pre></dd></>}
+          <dt>실행 결과</dt><dd><strong id="run-heading" tabIndex={-1} className="console-outcome">{outcome}</strong></dd>
+        </dl>
+        {current.status==='FINISHED'&&<>
+          {current.outputTruncated && <p className="notice">출력이 길어 일부만 표시했어요.</p>}
+          {current.stderr && <><h4>표준 오류</h4><pre>{current.stderr}</pre></>}
+          {current.compileMessage && <pre className="compiler-message">{current.compileMessage}</pre>}
+          {current.verdict === 'IE' && <p className="notice">시스템 문제로 실행을 마치지 못했어요. 풀이 실패로 기록하지 않습니다.</p>}
         </>}
+        <span className="version">{limitText(current.execution)}</span>
       </article>}
     </div>
   </section>;
