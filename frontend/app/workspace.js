@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
 import RunConsole, { SubmitTests, Examples } from './run-console';
 import LimitChips from './limit-chips';
+import {scheduleServerDraft,loadServerDraft,readLocalDraft,writeLocalDraft,newer} from './server-drafts';
 import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
 import DiagnosticPanel from './diagnostic-panel';
 import RecordHistory from './record-history';
@@ -60,13 +61,15 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
   const lang=languageInfo[language];
   const [source, setSource] = useState(starter);
   const [history, setHistory] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(null),[justSubmitted,setJustSubmitted]=useState(null);
   const [pending, setPending] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [draftStatus, setDraftStatus] = useState('');
+  const draftTicket=useRef(0),versionRef=useRef(null);
+  versionRef.current=version;
   const storageKey = `gamjaoj-pending-${user.id}`;
   const languageKey = `gamjaoj-language-${user.id}`;
   const selectionKey = `gamjaoj-selected-problem-${user.id}`;
@@ -153,14 +156,22 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
 
   function restoreDraft(problemVersion, fallback = starters[language], chosen=language) {
     setSource(fallback);
+    let local=null;
     try {
-      const draft = JSON.parse(localStorage.getItem(draftKey(problemVersion,chosen)));
-      if (draft && typeof draft.source === 'string' && draft.source.length <= 65536) {
-        setSource(draft.source); setDraftStatus('이 브라우저에 저장된 초안을 불러왔어요.');
-      } else setDraftStatus('작성한 코드는 이 브라우저에 자동 저장돼요.');
+      local = readLocalDraft(draftKey(problemVersion,chosen));
+      if (local && local.source.length <= 65536) {
+        setSource(local.source); setDraftStatus('저장된 초안을 불러왔어요.');
+      } else { local=null; setDraftStatus('작성한 코드는 자동 저장돼요.'); }
     } catch {
       setDraftStatus('초안을 불러오지 못했어요. 필요한 코드는 파일로 보관해 주세요.');
     }
+    // Then the server copy, unless the learner already typed or moved on meanwhile.
+    const ticket=++draftTicket.current;
+    loadServerDraft(api,'p:'+problemVersion,chosen).then(server=>{
+      if(ticket!==draftTicket.current||!newer(local,server)||server.source.length>65536)return;
+      setSource(server.source);setDraftStatus('서버에 저장된 초안을 불러왔어요.');
+      try{writeLocalDraft(draftKey(problemVersion,chosen),server.source,Date.parse(server.updatedAt));}catch{}
+    });
   }
 
   function changeLanguage(next) {
@@ -169,14 +180,16 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     try{localStorage.setItem(languageKey,next);}catch{}
   }
   function editSource(value) {
-    setSource(value);
+    setSource(value);draftTicket.current++;
     // Save in the edit event: an immediate reload or logout must not beat a debounce timer.
-    try {
-      localStorage.setItem(draftKey(version), JSON.stringify({ source: value }));
-      setDraftStatus('이 브라우저에 초안을 저장했어요.');
-    } catch {
-      setDraftStatus('자동 저장하지 못했어요. 코드 내려받기로 보관해 주세요.');
-    }
+    let local=true;
+    try { writeLocalDraft(draftKey(version), value); setDraftStatus('초안을 저장하고 있어요…'); }
+    catch { local=false; setDraftStatus('자동 저장하지 못했어요. 코드 내려받기로 보관해 주세요.'); }
+    const saved=version,chosen=language;
+    scheduleServerDraft(api,'p:'+saved,chosen,value,ok=>{
+      if(saved!==versionRef.current)return;
+      setDraftStatus(ok?'초안을 서버에 저장했어요.':local?'서버에 저장하지 못했어요. 이 브라우저에는 저장돼 있어요.':'자동 저장하지 못했어요. 코드 내려받기로 보관해 주세요.');
+    });
   }
 
   async function importSource(event) {
@@ -269,7 +282,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       if (!live.current) return;
       setPending(null); try { sessionStorage.removeItem(storageKey); } catch { /* Browser storage disabled. */ }
       setHistoryOpen(false);
-      setSelected(result); setHistory(items => [result, ...items.filter(item => item.id !== result.id)].slice(0,50));
+      setSelected(result); setJustSubmitted(result.id); setHistory(items => [result, ...items.filter(item => item.id !== result.id)].slice(0,50));
       window.dispatchEvent(new Event('gamjaoj-problems-changed'));
       setActivity(value => value + 1);
       setNotice('제출한 코드를 저장했어요. 채점 결과는 자동으로 갱신됩니다.');
@@ -360,15 +373,10 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       </form>
         <RunConsole key={user.id} user={user} api={api} scope={version} disabled={!!inspected || !problem.submissionsEnabled}
           body={{problemVersion:version,source,language,sessionId:currentSession?.id || null}} examples={problem.examples?.length?problem.examples:[{input:problem.sampleInput||'',output:problem.sampleOutput||''}]}
-          runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount} onActivity={() => setActivity(value => value + 1)}>
+          runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount} onActivity={() => setActivity(value => value + 1)}
+          submission={selected&&selected.id===justSubmitted&&selected.problemVersion===version?selected:null} onShowRecords={()=>showTool('history')}>
           {problem.problemHeld&&<p className="notice">문제 검토 중 · 새 실행은 보류돼요.</p>}
         </RunConsole>
-        {selected&&selected.problemVersion===version&&<section className="submit-console" aria-label="제출 결과" data-verdict={selected.verdict||'PENDING'}>
-          <strong>제출 결과 〉 {label(selected)}</strong>
-          {selected.verdict&&verdictHelp[selected.verdict]&&<span className="draft-help">{verdictHelp[selected.verdict]}</span>}
-          <button type="button" className="secondary" onClick={()=>showTool('history')}>제출 기록·피드백 보기</button>
-          <SubmitTests submission={selected}/>
-        </section>}
         <div className="editor-actions">
           <button type="button" className="secondary" disabled={!!inspected} onClick={() => setCasesRequest(value=>value+1)}>테스트 케이스 추가{caseCount?` (${caseCount})`:''}</button>
           <button type="button" className="secondary" disabled={!!inspected || busy || (!problem.submissionsEnabled)} onClick={() => setRunRequest(value=>value+1)}>코드 실행</button>

@@ -26,12 +26,21 @@ function outcome(c) {
  * Added cases are kept per problem in this browser. The console fits its content (up to 16rem) until the learner
  * drags its handle; the chosen height is then remembered.
  */
-export default function RunConsole({ user, api, body, examples, scope, disabled, runRequest, casesRequest, onCaseCount, onActivity, children }) {
+export default function RunConsole({ user, api, body, examples, scope, disabled, runRequest, casesRequest, onCaseCount, onActivity, submission, onShowRecords, children }) {
   const casesKey = `gamjaoj-test-cases-${user.id}-${scope}`, heightKey = `gamjaoj-console-height-${user.id}`;
   const [cases, setCases] = useState([]), [editing, setEditing] = useState(false);
   const [runs, setRuns] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [height, setHeight] = useState(null);
-  const live = useRef(true), runRef = useRef(null);
+  const live = useRef(true), runRef = useRef(null), toasted = useRef(null);
+  const [mode, setMode] = useState('runs'), [toast, setToast] = useState(null);
+  // A fresh formal submission takes over the console and, once judged, pops a short summary.
+  useEffect(() => { if (submission?.id) setMode('submission'); }, [submission?.id]);
+  useEffect(() => {
+    if (!submission || submission.status !== 'FINISHED' || toasted.current === submission.id) return;
+    toasted.current = submission.id; setToast(submission);
+    const timer = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(timer);
+  }, [submission?.id, submission?.status]);
   useEffect(() => { live.current = true; setHeight(read(heightKey, null)); return () => { live.current = false; }; }, [heightKey]);
   useEffect(() => { const saved = read(casesKey, []); setCases(Array.isArray(saved) ? saved.filter(c => typeof c?.input === 'string') : []); setRuns(null); setError(''); }, [casesKey]);
   useEffect(() => { onCaseCount?.(cases.length); }, [cases.length]);
@@ -48,7 +57,7 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
     const list = [...examples.map((e, i) => ({ label: `테스트 ${i + 1}`, input: e.input || '', output: e.output ?? '' })),
       ...cases.map((c, i) => ({ label: `추가 ${i + 1}`, input: c.input, output: c.output || '', custom: true }))];
     if (list.some(c => bytes(c.input) > 16384)) { setError('입력은 케이스마다 16 KiB 이내로 작성해 주세요.'); return; }
-    setBusy(true); setError(''); setEditing(false);
+    setBusy(true); setError(''); setEditing(false); setMode('runs');
     const snapshot = { scope, source: body.source, cases: list };
     setRuns(snapshot);
     const update = (index, result) => live.current && setRuns(state => state && state.scope === scope
@@ -74,8 +83,14 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
   const finished = !!shown && shown.cases.every(c => c.result?.status === 'FINISHED' || (!c.result && shown.cases.some(x => x.result?.verdict === 'CE')));
   const judged = results.filter(r => r[1] !== undefined);
   const first = shown?.cases.find(c => c.result)?.result;
+  const showing = mode === 'submission' && submission ? 'submission' : 'runs';
   return <section className="run-console" aria-label="실행 결과">
-    <div className="console-head"><h3>실행 결과</h3>
+    {toast && <div className="submit-toast" role="status" data-verdict={toast.verdict}>
+      <span>제출 결과 〉 <strong>{verdictText(toast.verdict)}</strong>{toast.tests?.length ? ` · ${toast.tests.filter(t => t.verdict === 'AC').length} / ${toast.verdict === 'AC' ? toast.tests.length : Math.max(toast.testCount || 0, toast.tests.length)}개 통과` : ''}</span>
+      <button type="button" aria-label="제출 결과 알림 닫기" onClick={() => setToast(null)}>×</button></div>}
+    <div className="console-head"><h3>{submission ? <span className="console-tabs">
+      <button type="button" aria-pressed={showing === 'runs'} onClick={() => setMode('runs')}>실행 결과</button>
+      <button type="button" aria-pressed={showing === 'submission'} onClick={() => setMode('submission')}>제출 결과</button></span> : '실행 결과'}</h3>
       <small>{finished && judged.length > 0 ? `${judged.filter(r => r[1]).length} / ${judged.length}개 통과` : first ? `${recordLanguageLabel(first)} · ${limitText(first.execution)}` : ''}</small></div>
     {editing && <div className="case-editor" role="group" aria-label="테스트 케이스 추가">
       <p className="case-editor-help">예제와 함께 실행할 테스트 케이스를 추가하세요. 기댓값을 비우면 출력만 보여 줘요. 추가한 케이스는 이 문제에 한해 이 브라우저에 저장돼요.</p>
@@ -95,9 +110,16 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
     {error && <p role="alert" className="notice error">{error}</p>}
     <div className="console-body" aria-live="polite" style={height == null ? { maxHeight: '16rem' } : { height }}>
       {children}
-      {!shown && <p className="muted">‘코드 실행’을 누르면 예제 {examples.length}개{cases.length ? `와 추가한 케이스 ${cases.length}개` : ''}를 차례로 실행하고 기댓값과 비교한 결과가 여기에 나와요. 실행은 제출 기록에 남지 않아요.</p>}
-      {shown && shown.source !== body.source && <p className="notice">현재 편집 중인 코드와 다른 실행의 결과예요.</p>}
-      {shown?.cases.map((c, index) => <article className="run-detail" key={index} data-passed={results[index][1] === undefined ? undefined : String(results[index][1])}>
+      {showing === 'submission' && <article className="submission-view" data-verdict={submission.verdict || 'PENDING'}>
+        <p className="submission-summary">정식 제출 〉 <strong>{submission.status === 'FINISHED' ? verdictText(submission.verdict) : '채점 중이에요…'}</strong>
+          {submission.status === 'FINISHED' && verdictHelp[submission.verdict] && <span> · {verdictHelp[submission.verdict]}</span>}</p>
+        {submission.compileMessage && <pre className="compiler-message">{submission.compileMessage}</pre>}
+        <SubmitTests submission={submission} />
+        {onShowRecords && <button type="button" className="secondary" onClick={onShowRecords}>제출 기록·피드백 보기</button>}
+      </article>}
+      {showing === 'runs' && !shown && <p className="muted">‘코드 실행’을 누르면 예제 {examples.length}개{cases.length ? `와 추가한 케이스 ${cases.length}개` : ''}를 차례로 실행하고 기댓값과 비교한 결과가 여기에 나와요. 실행은 제출 기록에 남지 않아요.</p>}
+      {showing === 'runs' && shown && shown.source !== body.source && <p className="notice">현재 편집 중인 코드와 다른 실행의 결과예요.</p>}
+      {showing === 'runs' && shown?.cases.map((c, index) => <article className="run-detail" key={index} data-passed={results[index][1] === undefined ? undefined : String(results[index][1])}>
         <dl className="console-case">
           <dt>{c.label}</dt><dd></dd>
           <dt>입력값</dt><dd><pre aria-label={`${c.label} 입력`}>{c.input || '(빈 입력)'}</pre></dd>

@@ -608,3 +608,48 @@ for(const width of [390,1024,1440])test('editor size persists without changing c
  await expect(page.getByRole('separator',{name:'편집기 높이 조절',exact:true})).toHaveAttribute('aria-valuenow','160');
  await page.screenshot({path:`/tmp/gamja-resize-${width}.png`,fullPage:true});
 });
+
+test('server drafts restore on another browser and follow edits', async ({ page }) => {
+  const puts=[];
+  await page.route('**/api/**', async route => {
+    const req=route.request(),url=new URL(req.url()),path=url.pathname;let data=[];
+    if(path==='/api/me')data={id:'server-user',username:'server-user',nickname:'s'};
+    if(path==='/api/problems')data=[{version:'v1',title:'서버 초안',statement:'s',sampleInput:'1',sampleOutput:'1',submissionsEnabled:true}];
+    if(path==='/api/auth/csrf')data={headerName:'X-CSRF',token:'t'};
+    if(path==='/api/drafts'&&req.method()==='GET')data=url.searchParams.get('scope')==='p:v1'&&url.searchParams.get('language')==='JAVA'?{source:'// from another device',updatedAt:new Date().toISOString()}:{};
+    if(path==='/api/drafts'&&req.method()==='PUT'){puts.push(req.postDataJSON());data={...req.postDataJSON(),updatedAt:new Date().toISOString()};}
+    await route.fulfill({json:data});
+  });
+  await page.goto(base+'/#practice');
+  const editor=page.getByLabel('Main.java',{exact:true});
+  await expectCode(editor,'// from another device');
+  await expect(page.getByText('서버에 저장된 초안을 불러왔어요.')).toBeVisible();
+  await editor.fill('// edited here');
+  await expect.poll(()=>puts.length).toBeGreaterThan(0);
+  expect(puts.at(-1)).toEqual({scope:'p:v1',language:'JAVA',source:'// edited here'});
+  await expect(page.getByText('초안을 서버에 저장했어요.')).toBeVisible();
+});
+
+test('formal submission results show per test in the console with a short popup', async ({ page }) => {
+  await page.route('**/api/**', async route => {
+    const req=route.request(),path=new URL(req.url()).pathname;let data=[];
+    if(path==='/api/me')data={id:'submit-user',username:'submit-user',nickname:'s'};
+    if(path==='/api/problems')data=[{version:'v1',title:'제출 결과',statement:'s',sampleInput:'1',sampleOutput:'1',submissionsEnabled:true}];
+    if(path==='/api/auth/csrf')data={headerName:'X-CSRF',token:'t'};
+    if(path==='/api/drafts')data={};
+    if(path==='/api/submissions'&&req.method()==='POST')data={id:'s1',problemVersion:'v1',status:'FINISHED',verdict:'WA',input:null,createdAt:new Date().toISOString(),testCount:3,
+      tests:[{number:1,verdict:'AC',wallMs:41},{number:2,verdict:'WA',wallMs:40},{number:3,verdict:'AC',wallMs:39}]};
+    await route.fulfill({json:data});
+  });
+  await page.goto(base+'/#practice');
+  await page.getByLabel('Main.java',{exact:true}).fill('class Main {}');
+  await page.getByRole('button',{name:'제출 후 채점하기',exact:true}).click();
+  const console=page.getByRole('region',{name:'실행 결과',exact:true});
+  await expect(console.getByText('테스트 2 〉 실패 (오답)')).toBeVisible();
+  await expect(console.getByText('테스트 3 〉 통과 (39ms)')).toBeVisible();
+  await expect(page.locator('.submit-toast')).toContainText('WA · 오답');
+  await expect(page.locator('.submit-toast')).toContainText('2 / 3개 통과');
+  await page.screenshot({path:'/tmp/gamja-submit-console.png'});
+  await console.getByRole('button',{name:'실행 결과',exact:true}).click();
+  await expect(console.getByText('테스트 2 〉 실패 (오답)')).toHaveCount(0);
+});
