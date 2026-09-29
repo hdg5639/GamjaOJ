@@ -190,9 +190,11 @@ test('member rule registration submits once, shows qualification progress and to
   await expect(page.getByRole('button',{name:'등록 취소'})).toBeVisible();
   await expect(page.getByRole('list',{name:'진행 단계'})).toBeVisible();
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(page.getByText('나만 사용')).toBeVisible({timeout:8000});
-  await expect(page.getByText('문제 게시 완료',{exact:false})).toBeVisible();await expect(page.locator('.rule-onboarding').getByRole('button',{name:'문제 풀기',exact:true})).toBeVisible();
+  await expect(page.getByText('문제 게시 완료',{exact:false})).toBeVisible({timeout:8000});
+  await expect(page.locator('.generation-side').getByRole('button',{name:'문제 풀기',exact:true})).toBeVisible();
   await expect(page.locator('.onboard-card .onboard-chips').getByText('명령 API 구현',{exact:true})).toBeVisible();
+  await page.getByRole('tab',{name:/내 규칙/}).click();
+  await expect(page.getByText('나만 사용')).toBeVisible();
   await page.getByRole('button',{name:'공개하기'}).click();
   await expect(page.getByText('다른 회원에게 공개',{exact:false}).first()).toBeVisible();
 });

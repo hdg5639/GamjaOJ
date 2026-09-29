@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {languageInfo,starters,recordLanguageLabel,limitText} from './languages';
 import RunConsole,{SubmitTests,Examples} from './run-console';
 import LimitChips from './limit-chips';
+import {useVimMode} from './editor-settings';
 import {scheduleServerDraft,loadServerDraft,readLocalDraft,writeLocalDraft,newer} from './server-drafts';
 import dynamic from 'next/dynamic';
 import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
@@ -18,6 +19,7 @@ const outcomes={OPEN:'아직 완료하지 않음',PASSED:'통과',EXHAUSTED:'5�
 export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration,onRuleDraft}) {
   const [size,changeSize]=useEditorSizing(user.id,'diagnostic',50,390);
   const [sheet,setSheet]=useState(null);
+  const [vim,setVim]=useVimMode();
   const [banks,setBanks]=useState([]),[sessions,setSessions]=useState([]),[session,setSession]=useState(null);
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false);
   const [language,setLanguage]=useState('JAVA'),[finishing,setFinishing]=useState(false);
@@ -149,8 +151,9 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
       {current&&<div className="diagnostic-workspace" style={{'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}><article data-expanded={problemExpanded}><h2 ref={heading} tabIndex={-1}>{current.title}</h2><p><strong>{number(item.id)}번 / {session.items.length}문항</strong> · {categories[item.category]||item.category} · {item.difficulty==='EASY'?'하':'중'} · 제출 {item.attempts}/5{item.pending?' · 채점 중':''}</p><LimitChips profile={current.languages?.find(l=>l.id===language)} label={current.languages?.find(l=>l.id===language)?.label}/><button className="diagnostic-problem-toggle secondary" aria-expanded={problemExpanded} aria-controls="diagnostic-problem-content" onClick={()=>setProblemExpanded(value=>!value)}>{problemExpanded?'문제 접기':'문제 보기'}</button><div id="diagnostic-problem-content"><p className="diagnostic-statement">{current.statement}</p><Examples examples={current.examples?.length?current.examples:[{input:current.sampleInput,output:current.sampleOutput}]}/></div></article>
         <ResizeHandle className="diagnostic-resizer" label="진단 문제와 편집기 비율" value={size.ratio} min={20} max={70} step={2} scale={splitScale} onChange={ratio=>changeSize({ratio})}/>
         <div className="diagnostic-code-column"><div className="code-tools"><label className="language-choice">언어<select aria-label="진단 언어" title="언어를 바꿔도 제출 횟수는 유지돼요." value={language} disabled={disabled||!!item.pending} onChange={e=>changeLanguage(e.target.value)}>{(current.languages||[languageInfo.JAVA]).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+        <button type="button" className="secondary vim-chip" aria-pressed={vim} title="Vim 키 바인딩 (Esc 명령 모드 · i 입력 모드)" onClick={()=>setVim(!vim)}>Vim {vim?'켬':'끔'}</button>
         <ResetCode disabled={disabled||!!item.pending} onReset={()=>edit(language==='JAVA'?starter:starters[language])}/></div>
-        <div className="diagnostic-editor" style={{height:size.height}}><Editor key={`${current.itemId}:${language}`} language={language} id="diagnostic-source" label={`진단 ${language==='JAVA'?'Java':languageInfo[language].label} 코드`} value={source} disabled={disabled} onChange={edit} onSubmit={()=>{if(!disabled&&!item.pending)mutate('/api/submissions',body,true);}} onLimit={()=>setError('코드는 64 KiB 이내로 작성해 주세요.')}/></div>
+        <div className="diagnostic-editor" style={{height:size.height}}><Editor key={`${current.itemId}:${language}`} language={language} id="diagnostic-source" label={`진단 ${language==='JAVA'?'Java':languageInfo[language].label} 코드`} value={source} vim={vim} disabled={disabled} onChange={edit} onSubmit={()=>{if(!disabled&&!item.pending)mutate('/api/submissions',body,true);}} onLimit={()=>setError('코드는 64 KiB 이내로 작성해 주세요.')}/></div>
           <ResizeHandle label="진단 편집기 높이 조절" orientation="horizontal" value={size.height} min={160} max={1000} step={20} onChange={height=>changeSize({height})}/>
           <p className="muted">{saveNote||'초안은 자동 저장돼요.'} 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.</p>
           {session.sourceSessionId&&<div><p className="muted">이 문제나 풀이를 이미 알고 있으면 아래에 알려 주세요. 기록 후 건너뛰며 약점이나 독립적인 실력 향상 근거로 쓰지 않습니다.</p><button className="secondary" disabled={disabled||!!item.pending} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${current.itemId}/exposure`,{},true)}>이 문제나 풀이를 본 적 있어요 · 기록 후 건너뛰기</button></div>}

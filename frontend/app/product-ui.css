@@ -532,3 +532,19 @@ dialog.modal::backdrop { background:rgba(15,23,21,.45); }
 .rule-card-actions { display:flex; gap:6px; flex-wrap:wrap; }
 .rule-card-actions button, .onboard-actions button { min-height:32px; padding:5px 12px; font-size:12.5px; }
 @media (max-width:600px) { .onboard-card { flex-direction:column; } .onboard-actions { flex-direction:row; } }
+/* Generation: forms on the left, a sticky tabbed side panel (results, request log, my rules) on the right. */
+.side-tabs { display:flex; gap:4px; padding:4px; margin:0 0 12px; background:var(--subtle); border-radius:9px; position:sticky; top:0; z-index:2; }
+.side-tabs button { flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:34px; border:0; border-radius:7px; background:transparent; color:var(--muted); font-size:13px; font-weight:650; }
+.side-tabs button[aria-selected="true"] { background:var(--surface); color:var(--ink); box-shadow:0 1px 3px #143e3414; }
+.side-tabs small { font-size:11px; padding:0 6px; border-radius:999px; background:var(--line); color:var(--ink); font-weight:600; }
+.side-dot { width:7px; height:7px; border-radius:50%; background:#3b82c4; }
+.generation-side .onboard-section:first-child { margin-top:0; }
+.generation-side .rule-grid { grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); }
+@media (min-width:901px) {
+  .generation-layout.hybrid-generation { align-items:start; }
+  .generation-layout.hybrid-generation > .generation-side { position:sticky; top:0; max-height:calc(100dvh - 150px); overflow:auto; overscroll-behavior:contain; padding-right:4px; }
+}
+.vim-toggle { font-weight:600; color:var(--ink); }
+.vim-toggle small { font-weight:400; color:var(--muted); margin-left:4px; }
+.code-tools .vim-chip { font-size:12.5px; padding:5px 10px; min-height:30px; border-radius:8px; }
+.code-tools .vim-chip[aria-pressed="true"] { border-color:var(--green); color:var(--green); }

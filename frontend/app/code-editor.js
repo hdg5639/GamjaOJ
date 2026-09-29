@@ -11,6 +11,7 @@ import { javaLanguage } from '@codemirror/lang-java';
 import { autocompletion, closeCompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { tags } from '@lezer/highlight';
+import { vim as vimMode } from '@replit/codemirror-vim';
 import { javaNameCompletion } from './java-completion';
 import {cppNameCompletion,pythonNameCompletion} from './native-completion';
 import {memberCompletionSource} from './member-completion-source';
@@ -85,19 +86,24 @@ const theme = EditorView.theme({
   '.cm-tooltip-autocomplete > ul > li[aria-selected="true"] .cm-completionDetail': {color:'#33414a'},
   '.cm-completionDetail': { color:'#bccac1', fontSize:'11px' },
   '.cm-searchMatch': { backgroundColor: '#62533a', outline: '1px solid #987e46' },
+  '.cm-vim-panel': { backgroundColor: '#313335', color: '#bbbbbb', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace', fontSize: '12px', padding: '2px 10px' },
+  '.cm-fat-cursor': { backgroundColor: '#ffe08a99 !important', color: '#18232d !important' },
+  '&:not(.cm-focused) .cm-fat-cursor': { background: 'none !important', outline: '1px solid #ffe08a' },
 }, { dark: true });
 
-export default function CodeEditor({ id = 'source', label = 'Main.java', language = 'JAVA', value, disabled, onChange, onSubmit, onLimit }) {
+export default function CodeEditor({ id = 'source', label = 'Main.java', language = 'JAVA', value, disabled, onChange, onSubmit, onLimit, vim = false }) {
   const host = useRef(null);
   const editor = useRef(null);
   const callbacks = useRef({ onChange, onSubmit, onLimit });
-  const editable = useRef(new Compartment());
+  const editable = useRef(new Compartment()), keys = useRef(new Compartment());
   useLayoutEffect(() => { callbacks.current = { onChange, onSubmit, onLimit }; }, [onChange, onSubmit, onLimit]);
 
   useEffect(() => {
     const view = new EditorView({
       parent: host.current,
       state: EditorState.create({ doc: value, extensions: [
+        // Vim bindings go first so they see keys before the default keymaps; completion still works in insert mode.
+        keys.current.of(vim ? vimMode({ status: true }) : []),
         lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), drawSelection(),
         history(), ...(language==='JAVA'?[javaLanguage,declarationColors]:[language==='CPP'?cpp():python()]), selectedText, indentUnit.of('    '), EditorState.tabSize.of(4),
         indentOnInput(), bracketMatching(), closeBrackets(), foldGutter(), highlightSelectionMatches(),
@@ -136,6 +142,9 @@ export default function CodeEditor({ id = 'source', label = 'Main.java', languag
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value }, annotations: externalChange.of(true) });
     }
   }, [value]);
+  useEffect(() => {
+    editor.current?.dispatch({ effects: keys.current.reconfigure(vim ? vimMode({ status: true }) : []) });
+  }, [vim]);
   useEffect(() => {
     if (disabled && editor.current) closeCompletion(editor.current);
     editor.current?.dispatch({ effects: editable.current.reconfigure([
