@@ -20,7 +20,9 @@ class AccountDeletion {
     private final JdbcClient jdbc;private final PasswordEncoder passwords;private final GenerationSpecDrafts drafts;
     AccountDeletion(JdbcClient jdbc,PasswordEncoder passwords,GenerationSpecDrafts drafts){this.jdbc=jdbc;this.passwords=passwords;this.drafts=drafts;}
 
-    private UUID archive() {
+    private UUID archive() {return archive(jdbc);}
+    /** The shared non-login owner of content kept for other members after its author removed it. */
+    static UUID archive(JdbcClient jdbc) {
         var existing=jdbc.sql("SELECT id FROM app_user WHERE username=?").param(ARCHIVE_USERNAME).query(UUID.class).optional();
         if(existing.isPresent())return existing.get();
         UUID id=UUID.randomUUID();
@@ -47,14 +49,7 @@ class AccountDeletion {
                   OR EXISTS (SELECT 1 FROM training_session t WHERE t.problem_version=p.id AND t.user_id<>?)
                   OR EXISTS (SELECT 1 FROM practice_followup f WHERE f.source_version=p.id AND f.user_id<>?))""")
                 .param(user).param(user).param(user).param(user).query(String.class).list();
-        for(String id:kept) {
-            var metadata=jdbc.sql("SELECT p.id,p.catalog_category,p.catalog_tags,p.catalog_difficulty,g.template_id,g.focus,d.spec_json FROM problem_version p "
-                    +"LEFT JOIN generation_job g ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) "
-                    +"LEFT JOIN generation_spec_draft d ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE p.id=?")
-                    .param(id).query((r,n)->ProblemCatalogMetadata.read(r)).single();
-            jdbc.sql("UPDATE problem_version SET owner_id=?,catalog_category=?,catalog_tags=? WHERE id=?")
-                    .param(archive).param(metadata.category()).param(String.join(",",metadata.tags())).param(id).update();
-        }
+        for(String id:kept)moveToArchive(jdbc,id,archive);
         // 2. Shared rules, or rules another member generated from, stay; detach them from sources that are deleted below.
         var keptRules=jdbc.sql("""
                 SELECT f.id FROM hybrid_rule_family f WHERE f.owner_id=? AND (f.shared=true OR EXISTS (
@@ -91,6 +86,15 @@ class AccountDeletion {
         return new Result(kept.size(),keptRules.size());
     }
 
+    /** Keeps a problem other members rely on: owned by the archive account with its catalog labels copied onto it. */
+    static void moveToArchive(JdbcClient jdbc,String id,UUID archive) {
+        var metadata=jdbc.sql("SELECT p.id,p.catalog_category,p.catalog_tags,p.catalog_difficulty,g.template_id,g.focus,d.spec_json FROM problem_version p "
+                +"LEFT JOIN generation_job g ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) "
+                +"LEFT JOIN generation_spec_draft d ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE p.id=?")
+                .param(id).query((r,n)->ProblemCatalogMetadata.read(r)).single();
+        jdbc.sql("UPDATE problem_version SET owner_id=?,catalog_category=?,catalog_tags=? WHERE id=?")
+                .param(archive).param(metadata.category()).param(String.join(",",metadata.tags())).param(id).update();
+    }
     private boolean active(UUID user) {
         int judging=jdbc.sql("""
                 SELECT count(*) FROM judge_job j JOIN submission s ON s.id=j.submission_id WHERE s.user_id=? AND j.status<>'FINISHED'
