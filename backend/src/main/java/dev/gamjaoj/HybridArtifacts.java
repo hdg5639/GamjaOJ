@@ -108,7 +108,16 @@ final class HybridArtifacts {
         require(r.path("issues").isEmpty(),"CONTENT_REVIEW_REJECTED");return r;
     }
     static JsonNode reader(JsonNode candidate) {
-        var r=bounded(candidate);unfence(r,"oracleSource");fields(r,"schemaVersion","interpretedRules","ambiguities","oracleSource","oracleDomain","adversarialInputs","coverageNotes");schema(r);
+        var r=bounded(candidate);unfence(r,"oracleSource");
+        // Worked examples arrived later; readers written before them stay valid.
+        if(r.has("examples"))fields(r,"schemaVersion","interpretedRules","ambiguities","oracleSource","oracleDomain","adversarialInputs","coverageNotes","examples");
+        else fields(r,"schemaVersion","interpretedRules","ambiguities","oracleSource","oracleDomain","adversarialInputs","coverageNotes");
+        schema(r);
+        if(r.has("examples")) {
+            // Unverified claims: only shape is checked here; the Runner checks them against validator and reference after publication.
+            require(r.path("examples").isArray()&&r.path("examples").size()<=3,"INVALID_READER_EXAMPLES");
+            for(var e:r.path("examples"))section(e,"input","output","explanation");
+        }
         texts(r.path("interpretedRules"),1,32,4000);texts(r.path("ambiguities"),0,16,2000);
         source(r.path("oracleSource"));section(r.path("oracleDomain"),"inputDomain","enumeration","limitations");
         text(r.path("coverageNotes"),4000);
