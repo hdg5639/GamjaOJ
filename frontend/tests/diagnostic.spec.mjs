@@ -20,7 +20,7 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
     if(path==='/api/diagnostics/session/state'){session={...session,status:req.postDataJSON().status};data=session;}
     if(path==='/api/submissions'&&req.method()==='POST'){
       expect(req.postDataJSON().diagnosticItemId).toBe('item1');keys.push(req.headers()['idempotency-key']);
-      submission={id:'saved',problemVersion:'v1',diagnosticItemId:'item1',source:req.postDataJSON().source,status:'FINISHED',verdict:width===1440?'WA':'AC',input:null};
+      submission={id:'saved',problemVersion:'v1',diagnosticItemId:'item1',source:req.postDataJSON().source,status:'FINISHED',verdict:width===1440?'WA':'AC',input:null,testCount:4,tests:width===1440?[{number:1,verdict:'AC',wallMs:12},{number:2,verdict:'WA',wallMs:15}]:[1,2,3,4].map(n=>({number:n,verdict:'AC',wallMs:10+n}))};
       session={...session,items:session.items.map((i,n)=>n===0?{...i,status:width===1440?'EXHAUSTED':'PASSED',attempts:width===1440?5:1}:i),current:q(2)};
       if(keys.length===1)return route.abort();
       expect(keys[1]).toBe(keys[0]);data=submission;
@@ -94,17 +94,22 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
   await page.screenshot({path:`/tmp/gamja-diagnostic-compact-${width}.png`,fullPage:true});
   await page.getByRole('button',{name:'코드 실행',exact:true}).click();
   const console=page.getByRole('region',{name:'실행 결과',exact:true});
-  await expect(console.getByText('예제 1 / 2개 통과')).toBeVisible();
+  await expect(console.getByText('1 / 2개 통과')).toBeVisible();
   await expect(console.getByText('테스트를 통과하였습니다.')).toBeVisible();
   await expect(console.getByText('실행한 결괏값이 기댓값과 다릅니다.')).toBeVisible();
   expect(runInputs).toEqual(['1 2','10 -4']);
-  await page.getByRole('button',{name:'입력 직접 넣기',exact:true}).click();
-  await page.getByLabel('직접 넣을 입력',{exact:true}).fill('5 5');
+  await page.getByRole('button',{name:'테스트 케이스 추가',exact:true}).click();
+  await page.getByRole('button',{name:'+ 케이스 추가',exact:true}).click();
+  await page.getByLabel('추가 1 · 입력',{exact:true}).fill('5 5');
   await page.getByRole('button',{name:'코드 실행',exact:true}).click();
-  await expect(console.getByText('직접 넣은 입력이라 기댓값과 비교하지 않았어요.',{exact:false})).toBeVisible();
-  expect(runInputs).toEqual(['1 2','10 -4','5 5']);
+  await expect(console.getByText('기댓값이 없어 비교하지 않았어요.',{exact:false})).toBeVisible();
+  expect(runInputs).toEqual(['1 2','10 -4','1 2','10 -4','5 5']);
+  await expect(page.getByRole('button',{name:'테스트 케이스 추가 (1)',exact:true})).toBeVisible();
+  const handle=page.getByRole('separator',{name:'실행 결과 높이 조절',exact:true});
+  const before=(await console.locator('.console-body').boundingBox()).height;
+  await handle.focus();await handle.press('ArrowDown');await handle.press('ArrowDown');
+  expect((await console.locator('.console-body').boundingBox()).height).toBeCloseTo(before+40,0);
   await page.screenshot({path:`/tmp/gamja-diagnostic-console-${width}.png`,fullPage:true});
-  await page.getByRole('button',{name:'예제로 실행하기',exact:true}).click();
 
   const height=page.getByRole('separator',{name:'진단 편집기 높이 조절',exact:true});
   await height.focus();await height.press('Home');
@@ -145,6 +150,9 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
   await page.getByRole('button',{name:'요청 다시 확인'}).click();
   await expect(page.getByRole('heading',{name:'진단 문항 2'})).toBeVisible();
   await expect(page.getByText(width===1440?'이전 문항: 5회 소진':'이전 문항: 통과')).toBeVisible();
+  const tests=page.getByRole('list',{name:'테스트별 채점 결과'});
+  if(width===1440){await expect(tests.getByText('테스트 2 〉 실패 (오답)')).toBeVisible();await expect(tests.getByText('테스트 3~4 〉 앞선 실패로 채점하지 않았어요')).toBeVisible();}
+  else await expect(tests.locator('li')).toHaveCount(4);
   await page.screenshot({path:`/tmp/gamja-diagnostic-${width}.png`,fullPage:true});
   await page.getByRole('button',{name:'모르겠어요 · 건너뛰기'}).click();
   await expect(page.getByText(/진단을 마쳤어요/)).toBeVisible();

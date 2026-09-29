@@ -31,11 +31,11 @@ for(const width of [390,1440])test('language drafts, custom execution and retry 
  await page.getByLabel('풀이 언어',{exact:true}).selectOption('JAVA');
  await expectCode(page.getByLabel('Main.java',{exact:true}),'// Java draft');
  await page.getByLabel('풀이 언어',{exact:true}).selectOption('PYTHON');
- await page.getByRole('button',{name:'입력 직접 넣기',exact:true}).click();
  await page.getByRole('button',{name:'코드 실행',exact:true}).click();
  await expect.poll(()=>runs.length).toBe(1);expect(runs[0].language).toBe('PYTHON');expect(runs[0].source).toBe('print(3)');
  await expect(page.getByRole('button',{name:'해당 실행 코드 보기',exact:true})).toHaveCount(0);
- await expect(page.getByLabel('실행 표준 출력')).toHaveText('3');
+ await expect(page.getByLabel('테스트 1 출력')).toHaveText('3');
+ await expect(page.getByText('테스트를 통과하였습니다.')).toBeVisible();
  if(width===390)await page.getByRole('button',{name:'코드 작성',exact:true}).click();
  await page.screenshot({path:`/tmp/gamja-languages-editor-${width}.png`,fullPage:true});
  await page.getByRole('button',{name:'제출 후 채점하기',exact:true}).click();

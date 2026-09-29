@@ -26,7 +26,23 @@ public class Submissions {
                           String sampleOutput, int sourceLimitBytes, boolean submissionsEnabled, boolean problemHeld, String reviewReason, boolean mine, boolean shared, boolean generated, String category, List<String> tags, String difficulty, String difficultySource, String solveStatus, long pendingSubmissions, List<LanguageProfiles.Option> languages) {}
     public record View(UUID id, String problemVersion, String sourceSha256, String source,
                        String status, String verdict, String compileMessage, OffsetDateTime createdAt,
-                       OffsetDateTime finishedAt, String input, String stdout, String stderr, boolean outputTruncated, UUID sessionId, String runnerPolicy, boolean problemHeld, UUID diagnosticItemId, String language, LanguageProfiles.Option execution) {}
+                       OffsetDateTime finishedAt, String input, String stdout, String stderr, boolean outputTruncated, UUID sessionId, String runnerPolicy, boolean problemHeld, UUID diagnosticItemId, String language, LanguageProfiles.Option execution,
+                       List<TestResult> tests, int testCount) {}
+    /** One judged test of a formal submission, in plan order: number and verdict only, never its input or output. */
+    public record TestResult(int number, String verdict, Integer wallMs) {}
+    private static List<TestResult> testResults(String result) {
+        var out = new java.util.ArrayList<TestResult>();
+        if (result == null) return out;
+        int number = 1;
+        for (JsonNode t : JudgeJson.parse(result).path("tests"))
+            out.add(new TestResult(number++, t.path("verdict").asText(), t.has("wall_ms") ? t.path("wall_ms").asInt() : null));
+        return out;
+    }
+    private static int testCount(String plan) {
+        if (plan == null) return 0;
+        JsonNode p = JudgeJson.parse(plan);
+        return p.path("tests").size() + p.path("generated").path("tests").size();
+    }
 
     UUID owner(String username, boolean lock) {
         return jdbc.sql("SELECT id FROM app_user WHERE username = ?" + (lock ? " FOR UPDATE" : ""))
@@ -138,7 +154,7 @@ public class Submissions {
         return view;
     }
     private View find(UUID user, UUID id, boolean includeSource) {
-        return jdbc.sql("SELECT s.*,p.review_hold,j.status,j.verdict,j.result_json,j.finished_at FROM submission s JOIN problem_version p ON p.id=s.problem_version JOIN judge_job j ON s.id=j.submission_id WHERE s.id=? AND s.user_id=? AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL")
+        return jdbc.sql("SELECT s.*,p.review_hold,j.status,j.verdict,j.result_json,j.finished_at,"+(includeSource?"CASE WHEN s.run_input IS NULL AND j.status='FINISHED' THEN COALESCE(d.package_json,p.package_json) END":"NULL")+" AS plan_json FROM submission s JOIN problem_version p ON p.id=s.problem_version JOIN judge_job j ON s.id=j.submission_id LEFT JOIN diagnostic_item d ON d.id=s.diagnostic_item_id WHERE s.id=? AND s.user_id=? AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL")
                 .param(id).param(user).query((row, index) -> {
                     String verdict = row.getString("verdict"), result = row.getString("result_json");
                     String compile = "CE".equals(verdict) && result != null
@@ -150,7 +166,9 @@ public class Submissions {
                             includeSource ? row.getString("source_code") : null, row.getString("status"), verdict, compile,
                             row.getObject("created_at", OffsetDateTime.class), row.getObject("finished_at", OffsetDateTime.class), input,
                             output.path("stdout").asText(""), output.path("stderr").asText(""), output.path("stdout_truncated").asBoolean(), row.getObject("training_session_id", UUID.class), row.getString("runner_policy"),row.getBoolean("review_hold"),row.getObject("diagnostic_item_id",UUID.class),row.getString("language"),
-                            row.getString("execution_profile_json")==null?null:LanguageProfiles.option(JudgeJson.parse(row.getString("execution_profile_json"))));
+                            row.getString("execution_profile_json")==null?null:LanguageProfiles.option(JudgeJson.parse(row.getString("execution_profile_json"))),
+                            includeSource && input == null ? testResults(result) : List.of(),
+                            includeSource && input == null && "FINISHED".equals(row.getString("status")) ? testCount(row.getString("plan_json")) : 0);
                 }).optional().orElseThrow(() -> new AccountException(404, "제출 기록을 찾을 수 없어요."));
     }
 }

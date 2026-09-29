@@ -87,9 +87,10 @@ test('workspace opens on the editor, initializes sample input and preserves edit
   await workspace(page);
   const editor = page.getByLabel('Main.java', { exact: true });
   await expect(editor).toBeInViewport();
-  await expect(page.getByLabel('직접 넣을 입력', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '입력 직접 넣기', exact: true }).click();
-  await expect(page.getByLabel('직접 넣을 입력', { exact: true })).toHaveValue('1 2');
+  await expect(page.getByLabel('추가 1 · 입력', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '테스트 케이스 추가', exact: true }).click();
+  await page.getByRole('button', { name: '예제 1 입력으로 추가', exact: true }).click();
+  await expect(page.getByLabel('추가 1 · 입력', { exact: true })).toHaveValue('1 2');
   await editor.fill('abc');
   await editor.press('Control+Home');
   await editor.press('Tab');
@@ -110,14 +111,15 @@ test('mobile panes retain code and input across resizing, navigation and keyboar
   await workspace(page);
   const editor = page.getByLabel('Main.java', { exact: true });
   await editor.fill('// 모바일에서도 유지할 코드');
-  await page.getByRole('button', { name: '입력 직접 넣기', exact: true }).click();
-  await page.getByLabel('직접 넣을 입력', { exact: true }).fill('42 58');
+  await page.getByRole('button', { name: '테스트 케이스 추가', exact: true }).click();
+  await page.getByRole('button', { name: '+ 케이스 추가', exact: true }).click();
+  await page.getByLabel('추가 1 · 입력', { exact: true }).fill('42 58');
   await page.getByRole('button', { name: '문제 보기', exact: true }).click();
   await expect(page.getByRole('heading', { name: '초안 테스트' })).toBeVisible();
   await expect(editor).toBeHidden();
   await page.setViewportSize({ width: 1440, height: 900 });
   await expectCode(editor, '// 모바일에서도 유지할 코드');
-  await expect(page.getByLabel('직접 넣을 입력', { exact: true })).toHaveValue('42 58');
+  await expect(page.getByLabel('추가 1 · 입력', { exact: true })).toHaveValue('42 58');
   await expect(page.getByRole('heading', { name: '초안 테스트' })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: '코드 작성', exact: true }).click();
@@ -169,8 +171,9 @@ test('workspace fits the viewport and result resizing preserves drafts and input
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.locator('#global-header')).toBeVisible();
   await page.getByRole('button', { name: '제출 기록', exact: true }).click();
-  await page.getByRole('button', { name: '입력 직접 넣기', exact: true }).click();
-  await page.getByLabel('직접 넣을 입력', { exact: true }).fill('123 456');
+  await page.getByRole('button', { name: '테스트 케이스 추가', exact: true }).click();
+  await page.getByRole('button', { name: '+ 케이스 추가', exact: true }).click();
+  await page.getByLabel('추가 1 · 입력', { exact: true }).fill('123 456');
   await editor.fill('// preserved during panel resize');
   const slider = page.getByRole('separator', { name: '결과 패널 너비' });
   await slider.focus();
@@ -178,7 +181,7 @@ test('workspace fits the viewport and result resizing preserves drafts and input
   await expect(page.getByRole('button', { name: '제출 후 채점하기', exact: true })).toBeInViewport({ ratio: 1 });
   await page.getByRole('button', { name: '결과 접기', exact: true }).click();
   await expect(page.locator('#workspace-results')).toBeHidden();
-  await expect(page.getByLabel('직접 넣을 입력', { exact: true })).toHaveValue('123 456');
+  await expect(page.getByLabel('추가 1 · 입력', { exact: true })).toHaveValue('123 456');
   await expectCode(editor, '// preserved during panel resize');
 });
 
@@ -396,9 +399,9 @@ test('side panel bounds, collapsed histories and read-only record preserve the d
   await expect(page.getByRole('button',{name:'제출 후 채점하기',exact:true})).toBeDisabled();
   await page.getByRole('button',{name:'작성 중인 코드로 돌아가기'}).click();
   await expectCode(editor,'// current draft');
-  await page.getByRole('button',{name:'입력 직접 넣기',exact:true}).click();
+  await page.getByRole('button',{name:'테스트 케이스 추가',exact:true}).click();
   await expect(page.locator('.run-console .record-history')).toHaveCount(0);
-  await expect(page.getByLabel('직접 넣을 입력',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'+ 케이스 추가',exact:true})).toBeVisible();
   for(const width of [390,1024,1920]){
     await page.setViewportSize({width,height:900});
     await page.screenshot({path:`/tmp/gamja-panels-${width}.png`});
