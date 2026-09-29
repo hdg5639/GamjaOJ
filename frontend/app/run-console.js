@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ResizeHandle } from './editor-sizing';
 import { languageInfo, recordLanguageLabel, limitText } from './languages';
 import { verdictText, verdictHelp, verdictNames } from './verdicts';
 
@@ -23,14 +22,12 @@ function outcome(c) {
  * Coding-test style console under the editor, shared by practice and diagnostics.
  * '코드 실행' runs every public example and then the learner's own test cases one by one (sequential, so the
  * per-user limit of three unfinished jobs is never hit by the run itself) and compares each with its expected output.
- * Added cases are kept per problem in this browser. The console fits its content (up to 16rem) until the learner
- * drags its handle; the chosen height is then remembered.
+ * Added cases are kept per problem in this browser. It fills the lower pane of the editor/console split.
  */
 export default function RunConsole({ user, api, body, examples, scope, disabled, runRequest, casesRequest, onCaseCount, onActivity, submission, onShowRecords, children }) {
-  const casesKey = `gamjaoj-test-cases-${user.id}-${scope}`, heightKey = `gamjaoj-console-height-${user.id}`;
+  const casesKey = `gamjaoj-test-cases-${user.id}-${scope}`;
   const [cases, setCases] = useState([]), [editing, setEditing] = useState(false);
   const [runs, setRuns] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [height, setHeight] = useState(null);
   const live = useRef(true), runRef = useRef(null), toasted = useRef(null);
   const [mode, setMode] = useState('runs'), [toast, setToast] = useState(null);
   // A fresh formal submission takes over the console and, once judged, pops a short summary.
@@ -41,14 +38,13 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
     const timer = setTimeout(() => setToast(null), 6000);
     return () => clearTimeout(timer);
   }, [submission?.id, submission?.status]);
-  useEffect(() => { live.current = true; setHeight(read(heightKey, null)); return () => { live.current = false; }; }, [heightKey]);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => { const saved = read(casesKey, []); setCases(Array.isArray(saved) ? saved.filter(c => typeof c?.input === 'string') : []); setRuns(null); setError(''); }, [casesKey]);
   useEffect(() => { onCaseCount?.(cases.length); }, [cases.length]);
   useEffect(() => { if (casesRequest) setEditing(open => !open); }, [casesRequest]);
   useEffect(() => { if (runRequest) runRef.current?.(); }, [runRequest]);
 
   function changeCases(next) { setCases(next); write(casesKey, next); }
-  function resize(value) { setHeight(value); write(heightKey, value); }
 
   async function run() {
     if (busy || disabled) return;
@@ -108,7 +104,7 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
       </div>
     </div>}
     {error && <p role="alert" className="notice error">{error}</p>}
-    <div className="console-body" aria-live="polite" style={height == null ? { maxHeight: '16rem' } : { height }}>
+    <div className="console-body" aria-live="polite">
       {children}
       {showing === 'submission' && <article className="submission-view" data-verdict={submission.verdict || 'PENDING'}>
         <p className="submission-summary">정식 제출 〉 <strong>{submission.status === 'FINISHED' ? verdictText(submission.verdict) : '채점 중이에요…'}</strong>
@@ -133,7 +129,6 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
         {c.result?.verdict === 'IE' && <p className="notice">시스템 문제로 실행을 마치지 못했어요. 풀이 실패로 기록하지 않습니다.</p>}
       </article>)}
     </div>
-    <ResizeHandle label="실행 결과 높이 조절" orientation="horizontal" value={height} min={100} max={720} step={20} onChange={resize} className="console-resize" />
   </section>;
 }
 

@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {languageInfo,starters,recordLanguageLabel,limitText} from './languages';
 import RunConsole,{SubmitTests,Examples} from './run-console';
 import LimitChips from './limit-chips';
+import SplitStack,{useSplit} from './split-stack';
 import {useVimMode} from './editor-settings';
 import {scheduleServerDraft,loadServerDraft,readLocalDraft,writeLocalDraft,newer} from './server-drafts';
 import dynamic from 'next/dynamic';
@@ -19,6 +20,7 @@ const outcomes={OPEN:'아직 완료하지 않음',PASSED:'통과',EXHAUSTED:'5�
 export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration,onRuleDraft}) {
   const [size,changeSize]=useEditorSizing(user.id,'diagnostic',50,390);
   const [sheet,setSheet]=useState(null);
+  const [split,setSplit]=useSplit(user.id,'diagnostic',62);
   const [vim,setVim]=useVimMode();
   const [banks,setBanks]=useState([]),[sessions,setSessions]=useState([]),[session,setSession]=useState(null);
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false);
@@ -153,13 +155,13 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
         <div className="diagnostic-code-column"><div className="code-tools"><label className="language-choice">언어<select aria-label="진단 언어" title="언어를 바꿔도 제출 횟수는 유지돼요." value={language} disabled={disabled||!!item.pending} onChange={e=>changeLanguage(e.target.value)}>{(current.languages||[languageInfo.JAVA]).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
         <button type="button" className="secondary vim-chip" aria-pressed={vim} title="Vim 키 바인딩 (Esc 명령 모드 · i 입력 모드)" onClick={()=>setVim(!vim)}>Vim {vim?'켬':'끔'}</button>
         <ResetCode disabled={disabled||!!item.pending} onReset={()=>edit(language==='JAVA'?starter:starters[language])}/></div>
-        <div className="diagnostic-editor" style={{height:size.height}}><Editor key={`${current.itemId}:${language}`} language={language} id="diagnostic-source" label={`진단 ${language==='JAVA'?'Java':languageInfo[language].label} 코드`} value={source} vim={vim} disabled={disabled} onChange={edit} onSubmit={()=>{if(!disabled&&!item.pending)mutate('/api/submissions',body,true);}} onLimit={()=>setError('코드는 64 KiB 이내로 작성해 주세요.')}/></div>
-          <ResizeHandle label="진단 편집기 높이 조절" orientation="horizontal" value={size.height} min={160} max={1000} step={20} onChange={height=>changeSize({height})}/>
-          <p className="muted">{saveNote||'초안은 자동 저장돼요.'} 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.</p>
-          {session.sourceSessionId&&<div><p className="muted">이 문제나 풀이를 이미 알고 있으면 아래에 알려 주세요. 기록 후 건너뛰며 약점이나 독립적인 실력 향상 근거로 쓰지 않습니다.</p><button className="secondary" disabled={disabled||!!item.pending} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${current.itemId}/exposure`,{},true)}>이 문제나 풀이를 본 적 있어요 · 기록 후 건너뛰기</button></div>}
-          <RunConsole user={user} api={api} scope={current.problemVersion} disabled={disabled} examples={current.examples?.length?current.examples:[{input:current.sampleInput,output:current.sampleOutput}]}
+        <p className="muted diagnostic-save-note">{saveNote||'초안은 자동 저장돼요.'} 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.</p>
+        <SplitStack className="diagnostic-split" share={split} onChange={setSplit}
+          top={<div className="diagnostic-editor"><Editor key={`${current.itemId}:${language}`} language={language} id="diagnostic-source" label={`진단 ${language==='JAVA'?'Java':languageInfo[language].label} 코드`} value={source} vim={vim} disabled={disabled} onChange={edit} onSubmit={()=>{if(!disabled&&!item.pending)mutate('/api/submissions',body,true);}} onLimit={()=>setError('코드는 64 KiB 이내로 작성해 주세요.')}/></div>}
+          bottom={<RunConsole user={user} api={api} scope={current.problemVersion} disabled={disabled} examples={current.examples?.length?current.examples:[{input:current.sampleInput,output:current.sampleOutput}]}
             body={body} runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount}
-            submission={result&&result.input==null&&result.diagnosticItemId===current.itemId?result:null}/>
+            submission={result&&result.input==null&&result.diagnosticItemId===current.itemId?result:null}/>}/>
+          {session.sourceSessionId&&<div><p className="muted">이 문제나 풀이를 이미 알고 있으면 아래에 알려 주세요. 기록 후 건너뛰며 약점이나 독립적인 실력 향상 근거로 쓰지 않습니다.</p><button className="secondary" disabled={disabled||!!item.pending} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${current.itemId}/exposure`,{},true)}>이 문제나 풀이를 본 적 있어요 · 기록 후 건너뛰기</button></div>}
           {held?<div className="editor-actions"><span className="held-note">{item?.status==='PASSED'?'통과했어요.':'정식 제출 5회를 모두 사용했어요.'} 결과를 확인한 뒤 다음으로 넘어가세요.</span>
             <button className="primary" onClick={next}>{session.current?'다음 문제':'진단 결과 보기'}</button></div>
           :<div className="editor-actions">

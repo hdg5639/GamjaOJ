@@ -105,15 +105,14 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
   await expect(console.getByText('기댓값이 없어 비교하지 않았어요.',{exact:false})).toBeVisible();
   expect(runInputs).toEqual(['1 2','10 -4','1 2','10 -4','5 5']);
   await expect(page.getByRole('button',{name:'테스트 케이스 추가 (1)',exact:true})).toBeVisible();
-  const handle=page.getByRole('separator',{name:'실행 결과 높이 조절',exact:true});
-  const before=(await console.locator('.console-body').boundingBox()).height;
-  await handle.focus();await handle.press('ArrowDown');await handle.press('ArrowDown');
-  expect((await console.locator('.console-body').boundingBox()).height).toBeCloseTo(before+40,0);
+  // One bar between editor and console: moving it trades height between them.
+  const handle=page.getByRole('separator',{name:'편집기와 실행 결과 비율',exact:true});
+  const editorBefore=(await page.locator('#diagnostic-source').boundingBox()).height,consoleBefore=(await console.boundingBox()).height;
+  await handle.focus();await handle.press('ArrowDown');await handle.press('ArrowDown');await handle.press('ArrowDown');
+  expect((await page.locator('#diagnostic-source').boundingBox()).height).toBeGreaterThan(editorBefore+10);
+  expect((await console.boundingBox()).height).toBeLessThan(consoleBefore-10);
   await page.screenshot({path:`/tmp/gamja-diagnostic-console-${width}.png`,fullPage:true});
-
-  const height=page.getByRole('separator',{name:'진단 편집기 높이 조절',exact:true});
-  await height.focus();await height.press('Home');
-  expect((await page.locator('#diagnostic-source').boundingBox()).height).toBeCloseTo(160,0);
+  await handle.press('Home');await expect(handle).toHaveAttribute('aria-valuenow','20');
   if(width>850){const split=page.getByRole('separator',{name:'진단 문제와 편집기 비율',exact:true});await split.focus();await split.press('ArrowLeft');await expect(split).toHaveAttribute('aria-valuenow','48');}
   await page.getByLabel('진단 언어',{exact:true}).selectOption('PYTHON');
   const pythonEditor=page.getByLabel('진단 Python 3.12 코드',{exact:true});

@@ -553,3 +553,14 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
 .site-notice { margin:0; font-size:11.5px; line-height:1.7; color:var(--muted); }
 .site-notice a { color:inherit; text-underline-offset:2px; }
 .problem-catalog > .site-notice { margin-top:28px; padding-top:14px; border-top:1px solid var(--line); }
+/* Editor and run console share one column; a single bar between them trades space (IDE-style split). */
+.split-stack { display:grid; flex:1 1 auto; min-height:0; }
+.split-top, .split-bottom { min-height:0; display:flex; flex-direction:column; }
+.split-top > .editor-views, .split-top > .diagnostic-editor { flex:1; min-height:0; height:auto; }
+.split-bottom > .run-console { flex:1; min-height:0; margin-top:0; display:flex; flex-direction:column; }
+.split-bottom > .run-console > .console-body { flex:1; min-height:0; overflow:auto; }
+.split-handle.editor-resize-handle.horizontal { height:12px; background:transparent; }
+.split-handle.editor-resize-handle.horizontal:hover, .split-handle.editor-resize-handle.horizontal:focus-visible { background:var(--subtle); }
+.editor-column > form.editor-card { overflow:hidden; }
+.diagnostic-split { height:clamp(420px, calc(100dvh - 250px), 1600px); }
+.diagnostic-save-note { margin:4px 0 6px; }

@@ -127,7 +127,7 @@ test('mobile panes retain code and input across resizing, navigation and keyboar
   await editor.press('Escape');
   await editor.press('Tab');
   await expect(editor).not.toBeFocused();
-  await expect(page.getByRole('separator',{name:'편집기 높이 조절',exact:true})).toBeFocused();
+  await expect(page.getByRole('separator',{name:'편집기와 실행 결과 비율',exact:true})).toBeFocused();
   const tools=page.locator('#editor-tools > summary');
   await tools.focus();await tools.press('Enter');
   await expect(page.locator('#editor-tools')).toHaveAttribute('open','');
@@ -582,11 +582,13 @@ for(const width of [390,1024,1440])test('editor size persists without changing c
   expect((await page.locator('.problem-card').boundingBox()).width).toBeGreaterThan(before+25);
   await split.focus();await split.press('Home');await expect(split).toHaveAttribute('aria-valuenow','20');
  }
- const height=page.getByRole('separator',{name:'편집기 높이 조절',exact:true});
- await height.focus();await height.press('Home');
- expect((await page.locator('#source').boundingBox()).height).toBeCloseTo(160,0);
+ const height=page.getByRole('separator',{name:'편집기와 실행 결과 비율',exact:true});
+ await height.focus();await height.press('Home');await expect(height).toHaveAttribute('aria-valuenow','20');
+ const small=(await page.locator('#source').boundingBox()).height,consoleTall=(await page.locator('.run-console').boundingBox()).height;
  const b=await height.boundingBox();await page.mouse.move(b.x+40,b.y+b.height/2);await page.mouse.down();await page.mouse.move(b.x+40,b.y+b.height/2+80,{steps:8});await page.mouse.up();
- expect((await page.locator('#source').boundingBox()).height).toBeCloseTo(240,0);
+ expect((await page.locator('#source').boundingBox()).height).toBeGreaterThan(small+50);
+ expect((await page.locator('.run-console').boundingBox()).height).toBeLessThan(consoleTall-50);
+ const dragged=await height.getAttribute('aria-valuenow');
  if(width===1024){
   await page.getByRole('button',{name:'제출 기록',exact:true}).click();
   const resultSplit=page.getByRole('separator',{name:'결과 패널 너비',exact:true});
@@ -596,16 +598,16 @@ for(const width of [390,1024,1440])test('editor size persists without changing c
   await page.getByRole('button',{name:'결과 접기',exact:true}).click();
  }
  await page.reload();await expectCode(editor,'// resize keeps this draft');
- expect((await page.locator('#source').boundingBox()).height).toBeCloseTo(240,0);
+ await expect(height).toHaveAttribute('aria-valuenow',dragged);
  if(width>800)await expect(page.getByRole('separator',{name:'문제와 편집기 비율',exact:true})).toHaveAttribute('aria-valuenow','20');
  await height.focus();await height.press('End');
  await expect(page.getByRole('button',{name:'제출 후 채점하기',exact:true})).toBeInViewport({ratio:1});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await expectCode(editor,'// resize keeps this draft');
  await height.focus();await height.press('Home');await switchUser('draft-user-b');
- await expect(page.getByRole('separator',{name:'편집기 높이 조절',exact:true})).not.toHaveAttribute('aria-valuenow','160');
+ await expect(page.getByRole('separator',{name:'편집기와 실행 결과 비율',exact:true})).not.toHaveAttribute('aria-valuenow','20');
  await switchUser('draft-user-a');await expectCode(editor,'// resize keeps this draft');
- await expect(page.getByRole('separator',{name:'편집기 높이 조절',exact:true})).toHaveAttribute('aria-valuenow','160');
+ await expect(page.getByRole('separator',{name:'편집기와 실행 결과 비율',exact:true})).toHaveAttribute('aria-valuenow','20');
  await page.screenshot({path:`/tmp/gamja-resize-${width}.png`,fullPage:true});
 });
 
