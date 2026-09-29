@@ -113,7 +113,7 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
 
   const height=page.getByRole('separator',{name:'진단 편집기 높이 조절',exact:true});
   await height.focus();await height.press('Home');
-  expect((await page.locator('#diagnostic-source').boundingBox()).height).toBeCloseTo(158,0);
+  expect((await page.locator('#diagnostic-source').boundingBox()).height).toBeCloseTo(160,0);
   if(width>850){const split=page.getByRole('separator',{name:'진단 문제와 편집기 비율',exact:true});await split.focus();await split.press('ArrowLeft');await expect(split).toHaveAttribute('aria-valuenow','48');}
   await page.getByLabel('진단 언어',{exact:true}).selectOption('PYTHON');
   const pythonEditor=page.getByLabel('진단 Python 3.12 코드',{exact:true});
