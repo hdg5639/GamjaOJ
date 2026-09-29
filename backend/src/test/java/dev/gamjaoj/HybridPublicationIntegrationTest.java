@@ -112,7 +112,34 @@ class HybridPublicationIntegrationTest {
     HybridExecution.Work review(){publication.advance();var work=execution.claimApi();assertThat(work).isNotNull();assertThat(work.request().assignment().role()).isEqualTo(CONTENT_REVIEW);return work;}
     com.fasterxml.jackson.databind.node.ObjectNode accepted(HybridExecution.Work work) {
         var p=JudgeJson.JSON.createObjectNode().put("schemaVersion","1").put("inputHash",work.request().assignment().inputHash())
-                .put("proseEquivalent",true).put("teachingCorrect",true).put("implementationAligned",true).put("reasoning","Fixture content review, not provider semantic evidence.");p.putArray("issues");return p;
+                .put("proseEquivalent",true).put("teachingCorrect",true).put("implementationAligned",true).put("reasoning","Fixture content review, not provider semantic evidence.");p.putArray("issues");if(work.request().assignment().input().has("requirements"))p.set("requirementsReview",GenerationRequirementsTest.accepted());return p;
+    }
+    @Test void originalRequestIsFrozenIntoReviewAndFidelityRejectionPreventsPublication() {
+        UUID id=checked(false);var work=review();
+        assertThat(work.request().assignment().input().has("requirements")).isTrue();
+        assertThat(work.request().schema().path("properties").has("requirementsReview")).isTrue();
+        String frozen=jdbc.sql("SELECT input_json FROM hybrid_branch WHERE id=?").param(work.request().assignment().branchId()).query(String.class).single();
+        publication.advance();assertThat(jdbc.sql("SELECT input_json FROM hybrid_branch WHERE id=?").param(work.request().assignment().branchId()).query(String.class).single()).isEqualTo(frozen);
+        var payload=accepted(work);var assessment=(com.fasterxml.jackson.databind.node.ObjectNode)payload.path("requirementsReview");
+        assessment.put("satisfied",false);assessment.withArray("issues").add("방문 개수와 복합 알고리즘 요구를 축소했습니다.");
+        var response=result(payload);execution.finish(work.attemptId(),response,null);execution.finish(work.attemptId(),response,null);publication.advance();
+        assertThat(jobs.view("owner",id).status()).isEqualTo("HELD");assertThat(jobs.view("owner",id).error()).isEqualTo("REQUIREMENTS_NOT_MET");
+        assertThat(published()).isZero();assertThat(execution.claimApi()).isNull();
+    }
+    @Test void missingFidelityResultCannotPassNewReview() {
+        UUID id=checked(false);var work=review();var payload=accepted(work);payload.remove("requirementsReview");
+        execution.finish(work.attemptId(),result(payload),null);publication.advance();
+        assertThat(jobs.view("owner",id).status()).isEqualTo("HELD");assertThat(published()).isZero();
+    }
+    @Test void reviewedLanguageLimitsAreRequiredAndPersistWithPublishedVersion() {
+        UUID id=checked(false);var work=review();
+        assertThat(work.request().assignment().input().path("requirements").path("timeEvidence").path("javaMaxWallMs").asLong()).isPositive();
+        var payload=accepted(work);
+        ((com.fasterxml.jackson.databind.node.ObjectNode)payload.path("requirementsReview")).set("timeLimits",JudgeJson.parse(ProblemTimeLimitsTest.limits(2,1,4)));
+        execution.finish(work.attemptId(),result(payload),null);publication.advance();
+        assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");
+        String version=jobs.view("owner",id).publishedVersionId();
+        assertThat(jdbc.sql("SELECT time_limits_json FROM problem_version WHERE id=?").param(version).query(String.class).single()).isEqualTo(ProblemTimeLimitsTest.limits(2,1,4));
     }
     int published(){return jdbc.sql("SELECT count(*) FROM problem_version WHERE id LIKE 'hybrid-check-%' AND ready=true").query(Integer.class).single();}
     @Test void allThreeRolesMustFitBudgetAndReviewConfigurationBeforeAdmission() {

@@ -74,7 +74,7 @@ public class Submissions {
                     // Explicit public fields only: never serialize a private problem package.
                     return new Problem(row.getString("id"), data.path("title").asText(), data.path("statement").asText(),
                             data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText(),
-                            examples(data, row.getString("examples_json")), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options());
+                            examples(data, row.getString("examples_json")), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options(row.getString("time_limits_json")));
                 }).list();
     }
 
@@ -94,7 +94,6 @@ public class Submissions {
         if (request.source().getBytes(StandardCharsets.UTF_8).length > 65536)
             throw new AccountException(400, "코드는 UTF-8 기준 64 KiB 이내로 제출해 주세요.");
         String language = LanguageProfiles.normalize(request.language());
-        JsonNode execution = LanguageProfiles.profile(language);
         String hash = JudgeJson.hash(request.source());
         UUID user = owner(username, true); // Serialize admission for this user's idempotency and pending cap.
         var existing = jdbc.sql("SELECT id FROM submission WHERE user_id = ? AND idempotency_key = ?")
@@ -127,6 +126,8 @@ public class Submissions {
             if (!session[0].equals(request.problemVersion()) || !session[1].equals("ACTIVE"))
                 throw new AccountException(409,"진행 중인 훈련의 문제를 확인해 주세요. 종료된 훈련에는 새 작업을 추가할 수 없어요.");
         }
+        String limits=snapshot==null?jdbc.sql("SELECT time_limits_json FROM problem_version WHERE id=?").param(request.problemVersion()).query((r,n)->r.getString(1)).optional().orElse(null):snapshot.limits();
+        JsonNode execution=LanguageProfiles.profile(language,limits);
         UUID id = UUID.randomUUID();
         jdbc.sql("INSERT INTO submission (id,user_id,problem_version,source_code,source_sha256,idempotency_key,runtime_image,runner_policy,language,execution_profile_json) VALUES (?,?,?,?,?,?,?,?,?,?)")
                 .param(id).param(user).param(request.problemVersion()).param(request.source()).param(hash).param(key)

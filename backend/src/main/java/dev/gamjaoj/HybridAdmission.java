@@ -55,7 +55,10 @@ class HybridAdmission {
     @Transactional
     HybridGeneration.Progress create(String user,UUID id,JsonNode request) {
         try {
-            HybridArtifacts.fields(request,"profileId","shared","publishOnSuccess");
+            HybridArtifacts.require(request!=null&&request.isObject(),"INVALID_REQUEST");
+            var shape=(com.fasterxml.jackson.databind.node.ObjectNode)request.deepCopy();shape.remove("theme");
+            HybridArtifacts.fields(shape,"profileId","shared","publishOnSuccess");
+            HybridArtifacts.require(!request.has("theme")||(request.path("theme").isTextual()&&request.path("theme").asText().length()<=1000),"INVALID_THEME");
             HybridArtifacts.require(request.path("profileId").isTextual()&&registry.resolve(request.path("profileId").asText(),viewer(user)).isPresent(),"UNSUPPORTED_PROFILE");
             HybridArtifacts.require(request.path("shared").isBoolean()&&request.path("publishOnSuccess").isBoolean()&&request.path("publishOnSuccess").asBoolean(),"EXPLICIT_PUBLICATION_REQUIRED");
         }catch(HybridArtifacts.Invalid invalid){throw new AccountException(400,"지원되는 규칙과 검증 후 게시 여부를 선택해 주세요. 자유 요청은 직접 요청하기를 이용해 주세요.");}
@@ -76,6 +79,21 @@ class HybridAdmission {
         var contract=selected.contract();
         jdbc.sql("INSERT INTO hybrid_public_request(generation_id,profile_id,profile_hash,contract_sha256,handoff_mode,rule_version_id) VALUES (?,?,?,?,'SERVER_FIXED_CONTRACT_V1',?)")
                 .param(id).param(selected.id()).param(selected.hash()).param(JudgeJson.hash(JudgeJson.canonical(contract))).param(versionId).update();
+        // A reusable rule binds mechanics, not its creator's original story. Instance preferences are separate.
+        var requirements=JudgeJson.JSON.createObjectNode().put("mode","FIXED_RULE");
+        requirements.set("selectedContract",contract);
+        requirements.putObject("presentation").put("policy","RETHEME_V1").put("theme",request.path("theme").asText("").strip());
+        jdbc.sql("SELECT request_json FROM hybrid_rule_onboarding WHERE version_id=? AND owner_id=?")
+                .param(versionId).param(owner).query(String.class).optional().ifPresent(raw->{
+                    var original=JudgeJson.parse(raw);var targeting=requirements.putObject("targeting");
+                    for(String key:List.of("difficulty","style","category","target"))if(original.has(key))targeting.set(key,original.get(key));
+                    // Review retains independent evidence of algorithm/mechanic requirements; the writer never sees this.
+                    requirements.put("ruleDesignRequest",original.path("request").asText(""));
+                    requirements.put("sourceThemeBinding",false);
+                });
+        String requirementsJson=JudgeJson.canonical(requirements);
+        jdbc.sql("UPDATE hybrid_public_request SET requirements_json=?,requirements_sha256=? WHERE generation_id=?")
+                .param(requirementsJson).param(JudgeJson.hash(requirementsJson)).param(id).update();
         // The selected semantics are already complete. Freeze server data through the same DAG acceptance.
         // There is no model call that merely copies this contract, and no claim of novel semantics.
         var a=jobs.claim(id,HybridGeneration.Role.CONTRACT);

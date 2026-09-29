@@ -38,6 +38,9 @@ class HybridExecution {
         // instructions, schema and framing, rather than estimating from a shorter current request.
         long bound=HybridArtifacts.MAX_PAYLOAD_BYTES+HybridModels.instructions(role).getBytes(StandardCharsets.UTF_8).length
                 +HybridModels.schema(role).toString().getBytes(StandardCharsets.UTF_8).length+4096L
+                +(role==READER?0L:(role==CONTENT_REVIEW?GenerationRequirements.REVIEW:GenerationRequirements.AUTHOR).getBytes(StandardCharsets.UTF_8).length)
+                +(role==CONTENT_REVIEW?GenerationRequirements.schema().toString().getBytes(StandardCharsets.UTF_8).length:0L)
+                +(role==PRESENTATION?8192L:0L) // bounded registered teaching and retheming instructions
                 +(HybridModels.author(role)?8192L:0L); // profile-specific author guidance
         return model.inputRate().multiply(BigDecimal.valueOf(bound))
                 .add(model.outputRate().multiply(BigDecimal.valueOf(model.maxOutputTokens())))
@@ -194,7 +197,7 @@ class HybridExecution {
                 if(selected.isPresent())instructions+=HybridProfiles.byId(selected.get()).readerInstructions();
             }
             var request=new HybridModels.ApiRequest(a,model,instructions,JudgeJson.canonical(input),
-                    "hybrid_"+a.role().name().toLowerCase(Locale.ROOT)+"_v1",HybridModels.outputSchema(a));
+                    (a.role()==CONTENT_REVIEW&&input.has("requirements")?"hybrid_content_review_requirements_v1":"hybrid_"+a.role().name().toLowerCase(Locale.ROOT)+"_v1"),HybridModels.outputSchema(a));
             return dispatch((UUID)row[0],(UUID)row[1],a,request);
         }
         return null;

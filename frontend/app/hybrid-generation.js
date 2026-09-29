@@ -17,6 +17,7 @@ const branchStates={NOT_STARTED:'대기',QUEUED:'대기',BLOCKED:'대기',RUNNIN
 
 export default function HybridGeneration({userId,api,onOpen,onActive,visible,otherActive,ruleDraft}) {
   const [profileId,setProfileId]=useState('zero-one-items-v1');
+  const [theme,setTheme]=useState('');
   const [options,setOptions]=useState(null),[jobs,setJobs]=useState([]),[loaded,setLoaded]=useState(false);
   const [optionsError,setOptionsError]=useState(''),[listError,setListError]=useState(''),[error,setError]=useState('');
   const [shared,setShared]=useState(false),[consent,setConsent]=useState(false),[busy,setBusy]=useState(false),[pending,setPending]=useState(null);
@@ -40,7 +41,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
   useEffect(()=>{
     live.current=true;
     try{const saved=JSON.parse(sessionStorage.getItem(storageKey));
-      if(saved&&/^[0-9a-f-]{36}$/i.test(saved.key)&&typeof saved.body?.profileId==='string'&&saved.body.profileId.length>0&&typeof saved.body.shared==='boolean'&&saved.body.publishOnSuccess===true){savePending(saved);setProfileId(saved.body.profileId);setShared(saved.body.shared);setConsent(true);}
+      if(saved&&/^[0-9a-f-]{36}$/i.test(saved.key)&&typeof saved.body?.profileId==='string'&&saved.body.profileId.length>0&&typeof saved.body.shared==='boolean'&&saved.body.publishOnSuccess===true){savePending(saved);setProfileId(saved.body.profileId);setShared(saved.body.shared);setTheme(typeof saved.body.theme==='string'?saved.body.theme:'');setConsent(true);}
     }catch{}
     loadOptions();refresh();
     return()=>{live.current=false;revision.current++;};
@@ -58,7 +59,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
   async function create(event){
     event.preventDefault();if(busyRef.current)return;
     if(!pendingRef.current&&(!options?.enabled||!profile||!consent||running||otherActive||!loaded))return;
-    const request=pendingRef.current||{key:crypto.randomUUID(),body:{profileId:profile.id,shared,publishOnSuccess:true}};
+    const request=pendingRef.current||{key:crypto.randomUUID(),body:{profileId:profile.id,theme:theme.trim(),shared,publishOnSuccess:true}};
     savePending(request);busyRef.current=true;setBusy(true);setError('');revision.current++;
     try{
       const job=await api('/api/generation/hybrid',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':request.key},body:JSON.stringify(request.body)});
@@ -91,6 +92,10 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
       {profile&&<div className="hybrid-scope"><h4>{profile.label}</h4><p>{profile.description}</p><ul>{profile.rules.map(rule=><li key={rule}>{rule}</li>)}</ul>{profile.verifiedReference&&<p className="draft-help">이 규칙은 검증을 통과한 정답 코드를 다시 사용해 코드 작성 단계를 생략합니다. 본문·힌트·해설과 실행 검증·최종 검토는 새로 진행합니다.</p>}</div>}
       {options&&!options.enabled&&<p className="notice">{options.message}</p>}
       <form onSubmit={create}>
+        <div className="field"><label htmlFor="hybrid-theme">소재 (선택)</label>
+          <textarea id="hybrid-theme" value={theme} maxLength={1000} rows={3} disabled={busy||!!pending||running||otherActive||!options?.enabled} onChange={e=>setTheme(e.target.value)} aria-describedby="hybrid-theme-help" placeholder="예: 공장의 자동 운송 장치, 해저 탐사 기지"/>
+        </div>
+        <p id="hybrid-theme-help" className="draft-help">비워 두면 새로운 소재로 만듭니다. 선택한 규칙과 입출력은 유지하며 이야기와 명칭을 바꿉니다.</p>
         <fieldset className="hybrid-consent" disabled={busy||!!pending||!options?.enabled}>
           <legend>완료 후 게시 범위</legend>
           <label className="check-row"><input type="checkbox" checked={shared} onChange={e=>setShared(e.target.checked)}/>다른 회원에게도 공개</label>

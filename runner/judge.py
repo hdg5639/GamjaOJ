@@ -29,6 +29,17 @@ POLICY = "java8-judge-v1"
 RUN_POLICY = "java8-run-v1"
 LANGUAGES = EXECUTION_CONTRACT["languages"]
 
+def checked_profile(profile, language, image):
+    """Only a bounded per-problem wall budget may differ from the pinned executable policy."""
+    base = LANGUAGES.get(language)
+    if not isinstance(profile, dict) or base is None:
+        raise ValueError("Unsupported language execution snapshot")
+    seconds = profile.get('testWallSeconds')
+    if (type(seconds) is not int or not 1 <= seconds <= 20
+            or profile != base | {'testWallSeconds': seconds} or profile['image'] != image):
+        raise ValueError("Unsupported language execution snapshot")
+    return dict(profile)
+
 def image_profile(image):
     return next((p for p in LANGUAGES.values() if p["image"] == image), LANGUAGES["JAVA"])
 

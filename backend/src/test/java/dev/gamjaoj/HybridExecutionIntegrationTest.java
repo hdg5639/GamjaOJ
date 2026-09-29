@@ -195,7 +195,7 @@ class HybridExecutionIntegrationTest {
         var author=execution.claimAuthorApi();assertThat(author).isNotNull();
         assertThat(author.request().assignment().role()).isEqualTo(CORE);assertThat(author.request().assignment().inputHash()).isEqualTo(coreInput);
         assertThat(author.request().settings().model()).isEqualTo("fixture-author");
-        assertThat(author.request().instructions()).isEqualTo(HybridModels.instructions(CORE));
+        assertThat(author.request().instructions()).isEqualTo(core.spec().path("instructions").asText()).contains("REQUIREMENT FIDELITY v1");
         assertThat(execution.claimAuthorApi()).isNull();
         execution.finish(author.attemptId(),result(fixtures.core()),null);
         execution.finish(writer.attemptId(),result(fixtures.presentation()),null);

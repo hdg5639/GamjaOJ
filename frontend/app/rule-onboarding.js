@@ -67,8 +67,8 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
     try{await api(path,options);await refresh();onRegistered?.();}catch(e){setError(e.message);}finally{setBusy(false);}
   }
   return <section className="rule-onboarding" aria-labelledby="rule-onboarding-heading">
-    <h3 id="rule-onboarding-heading">새 문제 만들기</h3>
-    <p className="draft-help">난이도와 스타일을 고르면 AI가 새로운 규칙의 문제를 설계하고, 정답 코드·별도로 작성한 완전탐색 검증 코드·오답·느린 풀이·대형 입력을 모두 실제 채점기로 검증한 뒤에만 등록합니다. 어떤 알고리즘을 써야 하는지는 본문에 드러나지 않아요. 요청당 AI 예산은 최대 $1, 처리 기한은 20분이며 실패해도 자동으로 다시 시도하지 않습니다.</p>
+    <h3 id="rule-onboarding-heading">재사용할 규칙 만들기</h3>
+    <p className="draft-help">난이도와 스타일을 고르면 AI가 입력·행동·목표와 제약을 설계하고, 정답 코드·별도로 작성한 완전탐색 검증 코드·오답·느린 풀이·대형 입력을 모두 실제 채점기로 검증한 뒤에만 등록합니다. 소재와 등장인물은 규칙에 고정하지 않으며, 문제를 만들 때마다 바꿀 수 있어요. 요청당 AI 예산은 최대 $1, 처리 기한은 20분이며 실패해도 자동으로 다시 시도하지 않습니다.</p>
     {enabled===false&&<p className="notice">지금은 새 규칙을 등록할 수 없어요.</p>}
     {error&&<p className="notice error" role="alert">{error}</p>}
     {draft&&text===draft.text&&<p className="notice" role="status">진단 결과에서 가져온 초안이에요. 내용을 확인하고 필요하면 고친 뒤 요청해 주세요.</p>}
@@ -81,11 +81,11 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
         <label className="field">분야<select aria-label="문제 분야" value={category} disabled={busy||!!pending.current} onChange={e=>setCategory(e.target.value)}><option value="AUTO">자동으로 고르기</option>{Object.entries(categoryLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
       </div>
       <p className="draft-help">{styleHelp[style]}</p>
-      <label className="field">원하는 내용 (선택)<textarea rows={3} maxLength={1000} value={text} disabled={busy||!enabled||!!pending.current} onChange={e=>setText(e.target.value)} placeholder="예: 물류 창고 로봇, 회전하는 격자, 시간에 따라 열리는 문 같은 소재나 원하는 조건"/></label>
+      <label className="field">원하는 규칙과 조건 (선택)<textarea rows={3} maxLength={1000} value={text} disabled={busy||!enabled||!!pending.current} onChange={e=>setText(e.target.value)} placeholder="예: 격자는 매초 90도 회전하고, 특정 시간에만 이동 가능한 연결과 소모·충전되는 자원이 있으며, K개의 지점을 모두 방문"/></label>
       <label className="check-row"><input type="checkbox" checked={publish} disabled={busy||!!pending.current} onChange={e=>setPublish(e.target.checked)}/>등록되면 바로 문제로 만들기</label>
       {publish&&<label className="check-row"><input type="checkbox" checked={shared} disabled={busy||!!pending.current} onChange={e=>setShared(e.target.checked)}/>만든 문제를 다른 회원에게도 공개</label>}
-      <button className="secondary" disabled={busy||!enabled||busyWork||(!pending.current&&!target&&category==='AUTO'&&text.trim().length<10)}>{pending.current?'같은 요청 다시 확인':'이 조건으로 문제 만들기'}</button>
-      {!target&&category==='AUTO'&&text.trim().length<10&&<p className="draft-help">분야를 고르거나 원하는 내용을 10자 이상 적어 주세요.</p>}
+      <button className="secondary" disabled={busy||!enabled||busyWork||(!pending.current&&!target&&category==='AUTO'&&text.trim().length<10)}>{pending.current?'같은 요청 다시 확인':'이 조건으로 규칙 등록'}</button>
+      {!target&&category==='AUTO'&&text.trim().length<10&&<p className="draft-help">분야를 고르거나 원하는 규칙과 조건을 10자 이상 적어 주세요.</p>}
       {busyWork&&<p className="draft-help" role="status">진행 중인 등록이 끝나면 새로 요청할 수 있어요.</p>}
     </form>
     {listHost?createPortal(<>

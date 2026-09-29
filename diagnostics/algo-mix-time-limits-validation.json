@@ -1,0 +1,277 @@
+{
+  "scope": "Local Docker, pinned language images, per-test 0.5 CPU. Not a live production run or new model generation. Existing historical dedicated-Runner evidence remains in the policy.",
+  "bank": "algo-mix-a-v2",
+  "bankSha256": "5f29093f0d00b7924da9be39b49eb8cc7aecb141c18ab6de6cd9fa1b438aaa0b",
+  "reports": {
+    ".state/algo-mix-time-limits-verify.json": "fb20b26ebe954b0fc244cf16e4fce197956cc8ce89dfa71ecee748bc24542ffa",
+    ".state/algo-mix-time-limits-margin-recheck.json": "b7823aa153e68b30e9656a290c158026a39e9f0f8cd7e9c8988a2d28a56b94b2"
+  },
+  "runnerContractSha256": "77111aed91c65a9365e4e22a09316fee7ad8b6867e8f4cfff9b337c6dfd39379",
+  "correctAC": 60,
+  "wrongWA": 60,
+  "slowTinyACAndLargeTLE": 9,
+  "infrastructureRetries": 0,
+  "marginCheck": "All final per-item checks have at least 25% headroom. Initial full pass had one C++ 877ms result under 1s while the Maven build ran concurrently; isolated landing-fees rerun maximum was 111ms. Both raw reports are preserved; wall-clock noise remains possible.",
+  "items": [
+    {
+      "version": "diagnostic-algo-mix-a-v2-letter-range-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 161,
+        "CPP": 105,
+        "PYTHON": 119
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-limited-symbol-window-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 5
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 164,
+        "CPP": 181,
+        "PYTHON": 471
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-undo-name-log-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 136,
+        "CPP": 185,
+        "PYTHON": 165
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-window-minimum-total-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 2,
+        "PYTHON": 3
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 152,
+        "CPP": 151,
+        "PYTHON": 474
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-warehouse-steps-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 110,
+        "CPP": 134,
+        "PYTHON": 136
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-simultaneous-signals-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 192,
+        "CPP": 105,
+        "PYTHON": 127
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-connected-workgroups-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 111,
+        "CPP": 195,
+        "PYTHON": 181
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-subtree-balances-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 135,
+        "CPP": 145,
+        "PYTHON": 165
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-capability-packs-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 3
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 230,
+        "CPP": 130,
+        "PYTHON": 251
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-safe-presentation-order-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 3
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 188,
+        "CPP": 446,
+        "PYTHON": 2000
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-landing-fees-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 124,
+        "CPP": 111,
+        "PYTHON": 116
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-one-time-options-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 3,
+        "CPP": 1,
+        "PYTHON": 3
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 459,
+        "CPP": 623,
+        "PYTHON": 731
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-inclusive-value-count-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 496,
+        "CPP": 192,
+        "PYTHON": 206
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-parallel-completion-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 3
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 378,
+        "CPP": 265,
+        "PYTHON": 199
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-smallest-valid-order-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 183,
+        "CPP": 137,
+        "PYTHON": 234
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-two-item-boxes-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 272,
+        "CPP": 114,
+        "PYTHON": 323
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-small-network-queries-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 134,
+        "CPP": 151,
+        "PYTHON": 365
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-single-source-delivery-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 3,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 362,
+        "CPP": 117,
+        "PYTHON": 158
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-minimum-link-plan-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 3,
+        "CPP": 1,
+        "PYTHON": 2
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 201,
+        "CPP": 108,
+        "PYTHON": 247
+      }
+    },
+    {
+      "version": "diagnostic-algo-mix-a-v2-coordinate-link-cost-v1",
+      "timeLimitsSeconds": {
+        "JAVA": 3,
+        "CPP": 2,
+        "PYTHON": 6
+      },
+      "referenceMaxWallMs": {
+        "JAVA": 129,
+        "CPP": 311,
+        "PYTHON": 582
+      }
+    }
+  ]
+}

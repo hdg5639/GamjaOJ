@@ -68,7 +68,15 @@ class GenerationSpecDrafts {
         jdbc.sql("UPDATE generation_spec_draft SET status='"+(finish?"FINAL_GENERATING":review?"REVIEW_GENERATING":build?"BUILD_GENERATING":"GENERATING")+"',"+(finish?"final_token":review?"review_token":build?"build_token":"token")+"=?,lease_until=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
                 .param(token).param(OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(20)).param(id).update();
         var spec=JudgeJson.JSON.createObjectNode().put("phase","EXPERIMENTAL_SPEC_DRAFT").put("request",data[1]).put("runtime","Java 8 / Main / STDIO");
-        if(build||review||finish){spec.remove("request");spec.put("phase",finish?"EXPERIMENTAL_FINAL_PLAN":review?"EXPERIMENTAL_REVIEW":"EXPERIMENTAL_IMPLEMENTATION");var definition=(com.fasterxml.jackson.databind.node.ObjectNode)JudgeJson.parse(data[5]);if(review||finish){definition.remove("referenceStrategy");definition.remove("oracleStrategy");}spec.set("definition",definition);}
+        if(review) {
+            spec.put("requirementsPolicy","v1");
+            long maximum=jdbc.sql("SELECT j.result_json FROM generation_spec_execution e JOIN judge_job j ON j.submission_id=e.submission_id WHERE e.draft_id=? AND e.role LIKE 'reference-%' AND j.status='FINISHED'")
+                    .param(id).query(String.class).list().stream().map(JudgeJson::parse).mapToLong(ProblemTimeLimits::maximum).max().orElse(0);
+            spec.putObject("timeEvidence").put("javaMaxWallMs",maximum).put("otherLanguagesMeasured",false)
+                    .put("scope","implementation checks only; final maximum-size checks have not run yet");
+            jdbc.sql("UPDATE generation_spec_draft SET review_requirements=true WHERE id=?").param(id).update();
+        }
+        if(build||review||finish){spec.put("phase",finish?"EXPERIMENTAL_FINAL_PLAN":review?"EXPERIMENTAL_REVIEW":"EXPERIMENTAL_IMPLEMENTATION");var definition=(com.fasterxml.jackson.databind.node.ObjectNode)JudgeJson.parse(data[5]);if(review||finish){definition.remove("referenceStrategy");definition.remove("oracleStrategy");}spec.set("definition",definition);}
         return new GenerationJobs.Assignment(id,token,0,data[2],data[3],spec,null,null,null);
     }
     void complete(UUID id,UUID token,JsonNode artifacts,JsonNode oracle,JsonNode usage,String error) {
@@ -144,7 +152,7 @@ class GenerationSpecDrafts {
         if(previous!=null){if(previous.equals(audit))return;throw new AccountException(409,"이미 저장된 검토 결과와 달라요.");}
         if(jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE id=? AND status='REVIEW_GENERATING' AND lease_until>CURRENT_TIMESTAMP").param(id).query(Integer.class).single()!=1)throw new AccountException(409,"검토 작업의 유효 시간이 지났어요.");
         String failure=error==null?null:Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH","CODEX_QUOTA_EXHAUSTED").contains(error)?error:"CODEX_REVIEW_FAILED";
-        if(failure==null)try{ExperimentalReview.validate(artifacts);if(oracle!=null&&!oracle.isNull())throw new IllegalArgumentException();}catch(IllegalArgumentException invalid){failure="INVALID_REVIEW";}
+        if(failure==null)try{ExperimentalReview.validate(artifacts,jdbc.sql("SELECT review_requirements FROM generation_spec_draft WHERE id=?").param(id).query(Boolean.class).single());if(oracle!=null&&!oracle.isNull())throw new IllegalArgumentException();}catch(HybridArtifacts.Invalid invalid){failure="REQUIREMENTS_NOT_MET".equals(invalid.getMessage())?"REQUIREMENTS_NOT_MET":"INVALID_REQUIREMENTS_REVIEW";}catch(IllegalArgumentException invalid){failure="INVALID_REVIEW";}
         jdbc.sql("UPDATE generation_spec_draft SET review_completion_json=?,error_code=?,status='REVIEW_FAILED',updated_at=CURRENT_TIMESTAMP WHERE id=?").param(audit).param(failure).param(id).update();
         if(failure!=null)return;
         String payload=JudgeJson.canonical(artifacts);

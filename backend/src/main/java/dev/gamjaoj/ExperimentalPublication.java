@@ -125,10 +125,13 @@ class ExperimentalPublication {
                     var report=JudgeJson.JSON.createObjectNode().put("policy","experimental-publication-v2").put("publishable",true).put("domainCases",small.size()).put("domainDescription",plan.path("domainDescription").asText()).put("executions",rows.size()).put("planHash",field(id,"final_plan_sha256")).put("packageHash",pack[1]).put("memoryLimitMiB",384).put("perTestMarginMs",4000).put("packageBudgetMs",40000);
                     var evidence=report.putArray("results");for(var result:results.values())evidence.addObject().put("role",result.role()).put("verdict",result.verdict()).put("reportHash",JudgeJson.hash(JudgeJson.canonical(result.report())));
                     var teaching=JudgeJson.JSON.createObjectNode().put("editorial",artifacts.path("editorial").asText());teaching.set("hints",artifacts.path("hints"));
-                    jdbc.sql("UPDATE problem_version SET ready=true,teaching_json=?,shared=(SELECT share_on_publish FROM generation_spec_draft WHERE id=?) WHERE id=? AND ready=false").param(teaching.toString()).param(id).param("experimental-check-"+id).update();
+                    long maximum=results.values().stream().filter(r->r.role().startsWith("final-package-")||r.role().startsWith("final-stress-")&&!r.role().contains("validator")).mapToLong(r->ProblemTimeLimits.maximum(r.report())).max().orElse(0);
+                    var assessment=json(id,"review_payload_json").path("requirementsReview");
+                    String limits=assessment.isMissingNode()?null:ProblemTimeLimits.reviewed(assessment,maximum);
+                    jdbc.sql("UPDATE problem_version SET ready=true,time_limits_json=?,teaching_json=?,shared=(SELECT share_on_publish FROM generation_spec_draft WHERE id=?) WHERE id=? AND ready=false").param(limits).param(teaching.toString()).param(id).param("experimental-check-"+id).update();
                     jdbc.sql("UPDATE generation_spec_draft SET status='PUBLISHED',final_report_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").param(report.toString()).param(id).update();
                 }else throw new IllegalArgumentException("FINAL_INVALID_STAGE");
-            }catch(IllegalArgumentException invalid){fail(id,invalid.getMessage()==null?"FINAL_INVALID_PLAN":invalid.getMessage());}
+            }catch(IllegalArgumentException|HybridArtifacts.Invalid invalid){fail(id,invalid.getMessage()==null?"FINAL_INVALID_PLAN":invalid.getMessage());}
         }
     }
 }

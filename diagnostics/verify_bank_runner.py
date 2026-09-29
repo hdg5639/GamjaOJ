@@ -1,8 +1,8 @@
 """Real-Runner verification of a diagnostic candidate bank (Docker; production images and judge code).
 
 For every item and language (Java 8, C++17, Python 3):
-  - the correct solution is AC on all fixed tests and generated large tests; large-test wall time is below
-    4000 ms (Java, Python) or 3000 ms (C++);
+  - the correct solution is AC under the exact package's reviewed per-language budget; every case keeps
+    25% headroom, and large cases also meet the older 4000 ms (Java/Python) or 3000 ms (C++) gate;
   - every wrong solution passes the public examples and ends with WA (not RE/TLE/MLE) on a private fixed test;
   - slow solutions (items with generated tests) are AC on small inputs and TLE on a generated test. With
     --package, small inputs are the package QA's 12 random cases per item (its random_case/oracle, seed
@@ -22,6 +22,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from runner.judge import LANGUAGES, Runner, GeneratedCache  # noqa: E402
+from diagnostics.time_limits import limits_for  # noqa: E402
 
 LIMIT_MS = {'JAVA': 4000, 'CPP': 3000, 'PYTHON': 4000}
 
@@ -34,11 +35,14 @@ def public(test_id):
     return test_id == 'T01' or test_id.startswith('EX')
 
 
-def judge(language, source, problem):
+def judge(language, source, problem, limits=None):
     """An IE is an infrastructure fault, not a program verdict: record it and retry exactly once."""
     for attempt in range(2):
         with tempfile.TemporaryDirectory() as directory:
             runner = Runner(LANGUAGES[language]['image'], directory)
+            if limits is not None:
+                from runner.judge import checked_profile
+                runner.profile = checked_profile(LANGUAGES[language] | {'testWallSeconds': limits[language]}, language, runner.image)
             runner.generated_cache = SHARED
             report = runner.judge(source.encode(), problem)
         if report['verdict'] != 'IE':
@@ -85,21 +89,27 @@ def generator_output(language, source, seed):
 
 def verify_item(item):
     problem, version = item['problem'], item['problem']['version']
+    limits = limits_for(problem)
     record = {'version': version, 'category': item['category'], 'difficulty': item['difficulty'], 'failures': [], 'languages': {}}
+    record['timeLimits'] = limits
     fail = record['failures'].append
     for language, sources in item['languages'].items():
         entry = record['languages'].setdefault(language, {})
-        report = judge(language, sources['correct'], problem)
+        report = judge(language, sources['correct'], problem, limits)
         large = [t for t in report['tests'] if t.get('kind') == 'generated']
         entry['correct'] = {'verdict': report['verdict'], 'fixedMaxWallMs': max((t['wall_ms'] for t in report['tests'] if t.get('kind') != 'generated'), default=None),
                             'largeWallMs': [t['wall_ms'] for t in large], 'largeInputBytes': [t.get('input_bytes') for t in large]}
         if report['verdict'] != 'AC':
             last = report['tests'][-1] if report['tests'] else {}
             fail(f'{language} correct {report["verdict"]} at {last.get("id")} {report.get("error", "")[:200]}')
+        if limits is not None:
+            for test in report['tests']:
+                if test['wall_ms'] > limits[language] * 750:
+                    fail(f'{language} correct {test["id"]} has less than 25% time headroom')
         for t in large:
             if t['wall_ms'] >= LIMIT_MS[language] + (1 if language == 'CPP' else 0):
                 fail(f'{language} correct large {t["id"]} {t["wall_ms"]} ms exceeds {LIMIT_MS[language]} ms gate')
-        wrong = judge(language, sources['wrong'], fixed_only(problem))
+        wrong = judge(language, sources['wrong'], fixed_only(problem), limits)
         tests = wrong['tests']
         entry['wrong'] = {'verdict': wrong['verdict'], 'failedAt': tests[-1]['id'] if tests else None}
         if wrong['verdict'] != 'WA':
@@ -109,9 +119,9 @@ def verify_item(item):
         if 'slow' in item:
             # Handoff criterion: exact on small inputs, TLE on the generated large inputs.
             small = dict(fixed_only(problem), tests=small_cases(item, problem))
-            exact = judge(language, item['slow'][language], small)
+            exact = judge(language, item['slow'][language], small, limits)
             large = dict(problem, tests=[problem['tests'][0]])
-            slow = judge(language, item['slow'][language], large)
+            slow = judge(language, item['slow'][language], large, limits)
             last = slow['tests'][-1] if slow['tests'] else {}
             entry['slow'] = {'smallVerdict': exact['verdict'], 'smallTests': len(small['tests']), 'largeVerdict': slow['verdict'],
                              'at': last.get('id'), 'kind': last.get('kind'), 'wallMs': last.get('wall_ms')}

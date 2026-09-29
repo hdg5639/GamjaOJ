@@ -15,6 +15,19 @@ class HybridPresentationRulesTest {
     ObjectNode prose() {
         var p=f.presentation();p.remove(List.of("semantics","ruleExplanations"));return p;
     }
+    @Test void instanceMayRewriteStoryNamesButCannotChangeSemanticsOrActionIdentity() {
+        var input=input();input.putObject("presentation").put("policy","RETHEME_V1").put("theme","해저 탐사 장비");
+        var p=prose().put("title","탐사 장비 선택").put("context","장비를 골라 탐사 가치를 최대화합니다.");
+        p.putArray("ruleExplanations").addObject().put("id","choose").put("text",input.path("serverRules").path("rules").get(0).path("text").asText().replace("물건","장비"));
+        var joined=HybridPresentationRules.assemble(input,p,f.contract());
+        assertThat(joined.path("semantics")).isEqualTo(input.path("semantics"));
+        assertThat(joined.path("ruleExplanations").toString()).contains("장비").doesNotContain("물건");
+        assertThat(HybridArtifacts.publicSnapshot(joined).toString()).doesNotContain("RETHEME_V1");
+        ((ObjectNode)p.path("ruleExplanations").get(0)).put("id","warp");
+        assertThatThrownBy(()->HybridPresentationRules.assemble(input,p,f.contract())).isInstanceOf(HybridArtifacts.Invalid.class);
+        p.set("semantics",input.path("semantics"));
+        assertThatThrownBy(()->HybridPresentationRules.assemble(input,p,f.contract())).isInstanceOf(HybridArtifacts.Invalid.class);
+    }
     @Test void fixedRulesReachPublicSnapshotWithoutHidingConflictingContextOrTeaching() {
         var input=input();var p=prose().put("context","비용이 남은 용량 이상인 물건만 선택한다.");
         var joined=HybridPresentationRules.assemble(input,p,f.contract());

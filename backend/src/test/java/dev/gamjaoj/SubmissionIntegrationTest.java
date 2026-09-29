@@ -49,6 +49,20 @@ class SubmissionIntegrationTest {
     Submissions.View submit(String name, UUID key) {
         return submissions.submit(name, key, new SubmissionController.Request("sum-v1", SOURCE));
     }
+    @Test void problemLimitsReachCatalogQueueAndRemainFrozenAcrossRetries() {
+        String limits=ProblemTimeLimitsTest.limits(2,1,4);
+        try {
+            jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id='sum-v1'").param(limits).update();
+            var catalog=submissions.problems(alice).stream().filter(p->p.version().equals("sum-v1")).findFirst().orElseThrow();
+            assertThat(catalog.languages()).extracting(LanguageProfiles.Option::timeLimitMs).containsExactly(2000,1000,4000);
+            UUID key=UUID.randomUUID();var saved=submit(alice,key);
+            jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id='sum-v1'").param(ProblemTimeLimitsTest.limits(4,2,6)).update();
+            assertThat(submit(alice,key).execution().timeLimitMs()).isEqualTo(2000);
+            var task=queue.claim(UUID.randomUUID()).orElseThrow();
+            assertThat(task.submissionId()).isEqualTo(saved.id());
+            assertThat(task.executionProfile().path("testWallSeconds").asInt()).isEqualTo(2);
+        } finally {jdbc.sql("UPDATE problem_version SET time_limits_json=NULL WHERE id='sum-v1'").update();}
+    }
     @Autowired TransientRuns transientRuns;
     @Autowired Diagnostics diagnostics;
     @Autowired org.springframework.context.ApplicationEventPublisher events;

@@ -53,7 +53,7 @@ class HybridRuleOnboardingIntegrationTest {
         var i=a.putArray("invalidInputs");HybridFiniteProfile.invalid().forEach(c->i.add(c.input()));
         var s=a.putArray("stressInputs");HybridFiniteProfile.stress().forEach(c->s.add(c.input()));
         a.putObject("oracleDomain").put("inputDomain","N <= 4, W <= 8").put("enumeration","all subsets");
-        return a;
+        a.set("requirementsReview",GenerationRequirementsTest.accepted());return a;
     }
     OpenAiResponses.Result result(JsonNode p){return new OpenAiResponses.Result(p,JudgeJson.JSON.createObjectNode().put("input_tokens",1000).put("output_tokens",2000),"r","q","fixture-author");}
     void provide(JsonNode author) {
@@ -95,6 +95,26 @@ class HybridRuleOnboardingIntegrationTest {
         mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",id).contentType("application/json")
                 .content("{\"request\":\"물건을 한 번씩만 골라 가치 합을 최대로 만드는 규칙\"}")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("QUEUED"));
         return id;
+    }
+    @Test void unmetRequirementsRepairFromOriginalRequestAndThenHoldWithoutQualification() throws Exception {
+        overrides.put("HYBRID_RULE_ONBOARDING_REPAIRS","1");
+        var a=author();var assessment=(ObjectNode)a.path("requirementsReview");
+        assessment.put("satisfied",false);assessment.withArray("issues").add("요청한 여러 장치 방문을 두 장치로 축소했습니다.");
+        provide(a);UUID id=request();worker.runOnce();
+        assertThat(view(id).status()).isEqualTo("QUEUED");assertThat(view(id).repairs()).isEqualTo(1);
+        var retry=onboarding.claimCall();assertThat(retry.input()).contains("물건을 한 번씩", "requirementsReview", "두 장치", "REQUIREMENTS_NOT_MET");
+        assertThat(retry.schema().path("properties").has("requirementsReview")).isTrue();
+        onboarding.finishCall(retry.attemptId(),result(a),null);
+        assertThat(view(id).status()).isEqualTo("HELD");assertThat(view(id).error()).isEqualTo("REQUIREMENTS_NOT_MET");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_execution_check").query(Integer.class).single()).isZero();
+        assertThat(ledger.budget().spentUsd()).isPositive();
+        onboarding.finishCall(retry.attemptId(),result(a),null);
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_onboarding_call").query(Integer.class).single()).isEqualTo(2);
+    }
+    @Test void newAuthorCannotOmitAssessment() throws Exception {
+        var a=author();a.remove("requirementsReview");provide(a);UUID id=request();
+        var call=onboarding.claimCall();onboarding.finishCall(call.attemptId(),result(a),null);
+        assertThat(view(id).status()).isEqualTo("HELD");assertThat(queue.claim(UUID.randomUUID())).isEmpty();
     }
     @Test void requestQualifiesPrivatePackageThroughIndependentOracleAndRunnerStages() throws Exception {
         provide(author());UUID id=request();

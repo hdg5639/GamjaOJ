@@ -124,11 +124,9 @@ class Worker:
         reports = list((work / "runs").glob("*/result.json"))
         execution_profile = assignment.get("executionProfile")
         if not reports:
-            from runner.judge import LANGUAGES
+            from runner.judge import checked_profile
             if execution_profile is not None:
-                if (execution_profile != LANGUAGES.get(assignment.get("language"))
-                        or execution_profile["image"] != assignment["runtimeImage"]):
-                    raise ValueError("Unsupported language execution snapshot")
+                checked_profile(execution_profile, assignment.get("language"), assignment["runtimeImage"])
             elif assignment.get("language", "JAVA") != "JAVA":
                 raise ValueError("Missing language execution snapshot")
         expected_contract = assignment.get("runnerEnvironment")
@@ -156,6 +154,9 @@ class Worker:
             else:
                 timings.call("attempt_cleanup", self.cleanup_attempt, token)
                 runner = self.runner_factory(assignment["runtimeImage"], work, attempt=token)
+                if execution_profile is not None:
+                    from runner.judge import checked_profile
+                    runner.profile = checked_profile(execution_profile, assignment.get("language"), assignment["runtimeImage"])
                 runner.compile_cache = self.compile_cache
                 runner.generated_cache = self.generated_cache
                 runner.execution_mode = execution_mode
