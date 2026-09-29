@@ -28,6 +28,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--catalog-only", action="store_true", help="Verify new catalog references and representative wrong answers on the persistent worker")
     mode.add_argument("--restart-worker", action="store_true", help="Pre-opening only: kill an active synthetic attempt and verify automatic recovery")
+    mode.add_argument("--memory-only", action="store_true", help="Verify real memory enforcement and untouched allocation behavior in all three languages")
     args = parser.parse_args()
     # Only the invitation is needed locally; worker/DB credentials remain on their hosts.
     invitation = ssh(os.environ["GAMJAOJ_APP_SSH_TARGET"], "sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
@@ -92,6 +93,9 @@ def main():
             # The catalog now also lists shared member problems; base problems must remain and no private field may leak.
             assert {"sum-v1", "total-v1", "valid-parentheses-v1"} <= {item["version"] for item in public}
             assert not any(key in item for item in public for key in ("tests", "package", "generated", "reference", "teaching"))
+        if args.memory_only:
+            assert opened, "Memory smoke requires ordinary execution admission"
+            jobs=[]
         for version, verdict, source in jobs:
             if not opened:
                 digest = hashlib.sha256(source.encode()).hexdigest()
@@ -147,9 +151,18 @@ def main():
                 ("TLE", sources["TLE"], "", ""),
                 ("OLE", 'public class Main {public static void main(String[] a) {while(true) System.out.print(new String(new char[8192]).replace("\\0", "x"));}}', "", None),
             ]
-            for verdict, source, stdin, output in cases:
+            memory_cases = [
+                ("JAVA", "OK", 'public class Main {static byte[] a; public static void main(String[] args){a=new byte[32*1024*1024];for(int i=0;i<a.length;i+=4096)a[i]=1;System.out.println(a[0]);}}', "", "1\n"),
+                ("JAVA", "RE", 'public class Main {static byte[] a; public static void main(String[] args){a=new byte[192*1024*1024];System.out.println(a.length);}}', "", None),
+                ("CPP", "OK", '#include <iostream>\nstatic volatile unsigned char a[512ULL*1024*1024];int main(){std::cout<<int(a[0])<<"\\n";}', "", "0\n"),
+                ("CPP", "MLE", '#include <iostream>\nstatic volatile unsigned char a[512ULL*1024*1024];int main(){for(unsigned long i=0;i<sizeof(a);i+=4096)a[i]=1;std::cout<<int(a[0]);}', "", None),
+                ("PYTHON", "MLE", 'a=bytearray(512*1024*1024)\nprint(len(a))', "", None),
+            ]
+            selected=memory_cases if args.memory_only else [("JAVA", *case) for case in cases]
+            memory_evidence=[]
+            for language, verdict, source, stdin, output in selected:
                 key = str(uuid.uuid4())
-                payload = dict(problemVersion="sum-v1", source=source, input=stdin)
+                payload = dict(problemVersion="sum-v1", source=source, input=stdin, language=language)
                 status, saved = call("/api/runs", "POST", payload, key)
                 assert status == 202, saved
                 job = str(uuid.UUID(saved["id"]))
@@ -164,13 +177,25 @@ def main():
                 else: raise AssertionError("Custom execution did not finish")
                 assert done["verdict"] == verdict and done["input"] == stdin, done
                 if output is not None: assert done["stdout"] == output
-                else: assert done["outputTruncated"] and len(done["stdout"]) <= 16384
-                if verdict == "RE": assert "custom error" in done["stderr"]
+                elif verdict == "OLE": assert done["outputTruncated"] and len(done["stdout"]) <= 16384
+                if verdict == "RE" and not args.memory_only: assert "custom error" in done["stderr"]
+                if args.memory_only:
+                    result=json.loads(sql(f"SELECT result_json FROM judge_job WHERE submission_id='{job}'"))
+                    profile=result['execution_profile']
+                    assert profile['language']==language
+                    assert profile['memoryMb']==(384 if language=='JAVA' else 256)
+                    assert all(t['oom_killed']==(verdict=='MLE') for t in result['tests'])
+                    if language=='JAVA' and verdict=='RE':
+                        assert 'OutOfMemoryError' in json.dumps(result)
+                    memory_evidence.append(dict(language=language,expected=verdict,source=source,result=result))
                 assert sql(f"SELECT worker_id::text FROM judge_job WHERE submission_id='{job}'") in worker_ids
                 assert sql(f"SELECT count(*) FROM judge_attempt WHERE submission_id='{job}' AND status='COMPLETED'") == "1"
                 verify_environment(job)
-                print(f"PASS: custom {verdict}, input/output preserved, one completion on the dedicated Runner host", flush=True)
-            assert len(call("/api/submissions")[1]) == 4
+                print(f"PASS: custom {language} {verdict}, input/output preserved, one completion on the dedicated Runner host", flush=True)
+            if args.memory_only:
+                Path('.state').mkdir(exist_ok=True)
+                Path('.state/memory-limits-live.json').write_text(json.dumps(memory_evidence,indent=2))
+            assert len(call("/api/submissions")[1]) == (0 if args.memory_only else 4)
             assert call("/api/runs")[1] == []  # Custom-run history listing is intentionally not exposed.
         Path('.state').mkdir(exist_ok=True)
         Path('.state/runner-environment-live.json').write_text(json.dumps(environment_evidence,indent=2))
