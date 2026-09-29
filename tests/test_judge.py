@@ -32,6 +32,18 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(InfrastructureError):
             classify(result | {"exit_code": 137}, b"3")
 
+    def test_rejected_plan_or_source_is_a_final_ie_report(self):
+        from runner.judge import LANGUAGES
+        with tempfile.TemporaryDirectory() as state, patch.dict(os.environ, {"HOME": state}):
+            runner = Runner(LANGUAGES["JAVA"]["image"], state)
+            plan = {"version": "v1", "output_policy": "TOKEN_EXACT", "tests": [{"id": f"t{i}", "input": "", "output": "1"} for i in range(21)]}
+            report = runner.judge(b"class Main {}", plan)
+            self.assertEqual("IE", report["verdict"]); self.assertEqual([], report["tests"])
+            self.assertTrue(report["error"].startswith("PLAN_REJECTED: Expected 1 to 20"))
+            self.assertEqual("v1", report["problem_version"])
+            small = dict(plan, tests=plan["tests"][:1])
+            self.assertTrue(runner.judge(b"x" * 70000, small)["error"].startswith("PLAN_REJECTED: Source exceeds"))
+
     def test_empty_suite_cannot_pass(self):
         with self.assertRaises(ValueError):
             validate_problem({"version": "x", "output_policy": "TOKEN_EXACT", "tests": []})

@@ -299,10 +299,26 @@ class Runner:
                 pass  # Diagnostic storage failure must not cause a re-execution.
             return report
 
+    def _rejected(self, source, problem, reason):
+        """A plan or source the Runner refuses is a final IE report, never an exception: an exception leaves the
+        leased job to be retried forever by the same worker."""
+        problem_bytes = json.dumps(problem, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+        custom = isinstance(problem, dict) and problem.get("output_policy") == "RUN_ONLY"
+        return {"run_id": uuid.uuid4().hex, "policy": (runtime_policies(self.image)[1 if custom else 0] if self.image in [p['image'] for p in LANGUAGES.values()] else POLICY), "image": self.image,
+                "source_sha256": hashlib.sha256(source).hexdigest(),
+                "problem_sha256": hashlib.sha256(problem_bytes).hexdigest(),
+                "runner_environment": {"contract": EXECUTION_CONTRACT, "dockerControl": os.environ.get("GAMJAOJ_DOCKER_CONTROL", "cli")},
+                "language": self.profile["language"], "execution_profile": self.profile,
+                "problem_version": problem.get("version", "") if isinstance(problem, dict) else "",
+                "execution_mode": self.execution_mode, "verdict": "IE", "tests": [], "error": "PLAN_REJECTED: " + str(reason)[:300]}
+
     def _judge(self, source, problem):
-        validate_problem(problem)
-        if len(source) > SOURCE_LIMIT:
-            raise ValueError("Source exceeds 64 KiB")
+        try:
+            validate_problem(problem)
+            if len(source) > SOURCE_LIMIT:
+                raise ValueError("Source exceeds 64 KiB")
+        except ValueError as reason:
+            return self._rejected(source, problem, reason)
         run_id = uuid.uuid4().hex
         run_dir = self.state_dir / "runs" / run_id
         run_dir.mkdir(parents=True, mode=0o700)
