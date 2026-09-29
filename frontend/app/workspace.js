@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
-import RunPanel from './run-panel';
+import RunConsole, { SubmitTests, Examples } from './run-console';
 import {useEditorSizing,ResizeHandle,EditorSizing,splitScale} from './editor-sizing';
 import DiagnosticPanel from './diagnostic-panel';
 import RecordHistory from './record-history';
@@ -46,7 +46,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
   const [tool, setTool] = useState('history'),[runRequest,setRunRequest]=useState(0);
   const [resultsOpen, setResultsOpen] = useState(false);
   const [resultSize, setResultSize] = useState(360);
-  const [inputRequest,setInputRequest]=useState(0);
+  const [casesRequest,setCasesRequest]=useState(0),[caseCount,setCaseCount]=useState(0);
   const [historyOpen,setHistoryOpen]=useState(false);
   const [inspected,setInspected]=useState(null);
   const panelRevision=useRef(0),selectionRevision=useRef(0),catalogRevision=useRef(0);
@@ -323,7 +323,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     {problem && <div className="practice-grid" data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
       <article className="problem-card">
         <span className="version">문제 · {problem.version}</span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2><p>{problem.statement}</p>
-        <h3>예제 입력</h3><pre>{problem.sampleInput}</pre><h3>예제 출력</h3><pre>{problem.sampleOutput}</pre>
+        <Examples examples={[{input:problem.sampleInput,output:problem.sampleOutput}]}/>
         {problem.problemHeld&&<p className="notice">문제 검토 중 · {problem.reviewReason} · 기존 코드와 기록은 보존되며 새 실행·제출·분석은 보류됩니다.</p>}
         {!problem.problemHeld&&<ProblemTeaching key={version} version={version} api={api} />}
         <p className="muted">{language==='JAVA'?'클래스 이름은 Main으로 작성해 주세요. ':''}제출한 코드는 기록에서 다시 확인할 수 있어요.</p>
@@ -358,14 +358,19 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
         {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
       </form>
-        <RunPanel key={user.id} user={user} source={source} language={language} problem={problem} api={api} sessionId={currentSession?.id || null} inputRequest={inputRequest} runRequest={runRequest} onViewCode={viewCode} onActivity={() => setActivity(value => value + 1)} />
+        <RunConsole key={user.id} user={user} api={api} scope={version} disabled={!!inspected || !problem.submissionsEnabled}
+          body={{problemVersion:version,source,language,sessionId:currentSession?.id || null}} examples={[{input:problem.sampleInput||'',output:problem.sampleOutput||''}]}
+          runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount} onActivity={() => setActivity(value => value + 1)}>
+          {problem.problemHeld&&<p className="notice">문제 검토 중 · 새 실행은 보류돼요.</p>}
+        </RunConsole>
         {selected&&selected.problemVersion===version&&<section className="submit-console" aria-label="제출 결과" data-verdict={selected.verdict||'PENDING'}>
           <strong>제출 결과 〉 {label(selected)}</strong>
           {selected.verdict&&verdictHelp[selected.verdict]&&<span className="draft-help">{verdictHelp[selected.verdict]}</span>}
           <button type="button" className="secondary" onClick={()=>showTool('history')}>제출 기록·피드백 보기</button>
+          <SubmitTests submission={selected}/>
         </section>}
         <div className="editor-actions">
-          <button type="button" className="secondary" disabled={!!inspected} onClick={() => setInputRequest(value=>value+1)}>입력 직접 넣기</button>
+          <button type="button" className="secondary" disabled={!!inspected} onClick={() => setCasesRequest(value=>value+1)}>테스트 케이스 추가{caseCount?` (${caseCount})`:''}</button>
           <button type="button" className="secondary" disabled={!!inspected || busy || (!problem.submissionsEnabled)} onClick={() => setRunRequest(value=>value+1)}>코드 실행</button>
           <button form="code-form" className="primary" disabled={!!inspected || busy || (!problem.submissionsEnabled && !pending)}>
           {busy ? '제출 확인 중…' : pending ? '같은 제출 다시 확인' : '제출 후 채점하기'}</button></div>
