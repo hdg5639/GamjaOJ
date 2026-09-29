@@ -155,7 +155,7 @@ input,select,textarea { border-color:#ccd9d3; }
 
 .language-choice { display:flex; align-items:center; gap:8px; font-size:12px; }
 .language-choice select { width:auto; max-width:220px; padding:5px 8px; }
-.code-heading { flex-wrap:wrap; }
+.code-heading { flex-wrap:wrap; row-gap:0; }
 
 /* Resizable code workspaces retain their draft DOM and independent scroll areas. */
 .editor-resize-handle { display:flex; align-items:center; justify-content:center; touch-action:none; user-select:none; background:var(--subtle); flex-shrink:0; }
@@ -460,7 +460,9 @@ dialog.modal::backdrop { background:rgba(15,23,21,.45); }
 .code-tools { position:relative; }
 .code-tools .tool-pop { position:static; }
 .code-tools .tool-pop-panel { right:0; width:min(320px, 100%); }
-.editor-meta { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.code-caption { display:flex; align-items:center; line-height:18px; gap:10px; flex:1; min-width:min(100%, 180px); }
+.code-filename { flex-shrink:0; }
+.code-save-note { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .visually-hidden { position:absolute !important; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 .code-heading .code-tools .reset-code, .code-heading .code-tools .tool-pop > summary { padding:5px 9px; }
 .modal-body h4 { margin:4px 0 6px; }
@@ -471,7 +473,7 @@ dialog.modal::backdrop { background:rgba(15,23,21,.45); }
 .limit-chips { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 10px; }
 .limit-chip { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; background:#fff7df; border:1px solid #f1d58a; color:#5b4410; font-size:12.5px; line-height:1.4; white-space:nowrap; }
 .limit-chip b { font-weight:700; color:#8a6412; }
-.editor-meta { margin:2px 0 6px; min-height:0; }
+
 .console-tabs { display:inline-flex; gap:4px; }
 .console-tabs button { min-height:0; padding:2px 8px; border:0; border-radius:6px; background:transparent; color:#9fb2ad; font-size:13px; font-weight:700; }
 .console-tabs button[aria-pressed="true"] { background:#2c3d39; color:#e6efec; }
@@ -563,4 +565,3 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
 .split-handle.editor-resize-handle.horizontal:hover, .split-handle.editor-resize-handle.horizontal:focus-visible { background:var(--subtle); }
 .editor-column > form.editor-card { overflow:hidden; }
 .diagnostic-split { height:clamp(420px, calc(100dvh - 250px), 1600px); }
-.diagnostic-save-note { margin:4px 0 6px; }

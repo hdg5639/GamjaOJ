@@ -355,7 +355,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
             ? '이 문제의 제출은 진행 중인 훈련에 저장돼요. 다른 문제도 자유롭게 선택할 수 있어요.'
             : `${activeSession.problemVersion} 훈련은 유지 중이에요. 현재 문제의 제출은 자유 풀이로 저장돼요.`}
         </p>}
-        <div className="code-heading"><span>{inspected?languageInfo[recordLanguage(inspected)].file:lang.file}</span>
+        <div className="code-heading"><div className="code-caption"><span className="code-filename">{inspected?languageInfo[recordLanguage(inspected)].file:lang.file}</span><span className="draft-status code-save-note" hidden={!!inspected} title={draftStatus} aria-live="polite">{draftStatus}</span></div>
           <span className="code-tools"><label className="language-choice"><span className="visually-hidden">언어</span><select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
           {!inspected&&<details id="editor-tools" className="tool-pop"><summary>도구</summary><div className="tool-pop-panel">
             <label className="check-row vim-toggle"><input type="checkbox" checked={vim} onChange={e=>setVim(e.target.checked)}/>Vim 모드 <small>Esc 명령 모드 · i 입력 모드</small></label>
@@ -365,7 +365,6 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
             <button type="button" className="secondary" onClick={downloadSource}>{lang.file} 내려받기</button>
             <span>초안은 계정·문제·언어별로 이 브라우저에만 남아요. 다른 기기로 옮길 때는 파일을 내려받아 주세요.</span></div></details>}
           {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(starters[language]);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</span></div>
-        <p className="draft-help editor-meta" title={inspected?'':draftStatus}><span className="draft-status" hidden={!!inspected} aria-live="polite">{draftStatus}</span></p>
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
         {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
