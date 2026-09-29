@@ -65,7 +65,7 @@ class HybridGenerationIntegrationTest {
         r.putArray("interpretedRules").add("각 항목은 최대 한 번 선택합니다.");r.putArray("ambiguities");
         r.putObject("oracleDomain").put("inputDomain","N <= 4, W <= 8").put("enumeration","all subsets").put("limitations","not independent evidence for large cases");
         r.putArray("adversarialInputs").addObject().put("input","1 4\n2 3\n").put("reason","unbounded reuse would change the answer");
-        r.put("coverageNotes","bounded fixture, execution adapter still required");return r;
+        r.put("coverageNotes","bounded fixture, execution adapter still required");r.putArray("examples");return r;
     }
     UUID start() {UUID id=UUID.randomUUID();hybrid.start("owner",id,"NEW_RULES; PRIVATE_LEARNER_CONTEXT",false);return id;}
     HybridGeneration.Completion result(HybridGeneration.Assignment a,JsonNode payload) {

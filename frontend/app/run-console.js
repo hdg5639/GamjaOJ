@@ -134,5 +134,6 @@ export function Examples({ examples }) {
   return <div className="examples">{examples.map((e, i) => <div className="example" key={i}>
     <div><h3>예제 입력{numbered ? ` ${i + 1}` : ''}</h3><pre>{e.input}</pre></div>
     <div><h3>예제 출력{numbered ? ` ${i + 1}` : ''}</h3><pre>{e.output}</pre></div>
+    {e.explanation && <p className="example-note"><strong>예제{numbered ? ` ${i + 1}` : ''} 설명</strong> {e.explanation}</p>}
   </div>)}</div>;
 }

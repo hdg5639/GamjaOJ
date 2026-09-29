@@ -23,7 +23,7 @@ public class Submissions {
         this.jdbc = jdbc; this.enabled = enabled; this.diagnostics=diagnostics;
     }
     public record Problem(String version, String title, String statement, String sampleInput,
-                          String sampleOutput, List<Diagnostics.Example> examples, int sourceLimitBytes, boolean submissionsEnabled, boolean problemHeld, String reviewReason, boolean mine, boolean shared, boolean generated, String category, List<String> tags, String difficulty, String difficultySource, String solveStatus, long pendingSubmissions, List<LanguageProfiles.Option> languages) {}
+                          String sampleOutput, List<Example> examples, int sourceLimitBytes, boolean submissionsEnabled, boolean problemHeld, String reviewReason, boolean mine, boolean shared, boolean generated, String category, List<String> tags, String difficulty, String difficultySource, String solveStatus, long pendingSubmissions, List<LanguageProfiles.Option> languages) {}
     public record View(UUID id, String problemVersion, String sourceSha256, String source,
                        String status, String verdict, String compileMessage, OffsetDateTime createdAt,
                        OffsetDateTime finishedAt, String input, String stdout, String stderr, boolean outputTruncated, UUID sessionId, String runnerPolicy, boolean problemHeld, UUID diagnosticItemId, String language, LanguageProfiles.Option execution,
@@ -38,13 +38,17 @@ public class Submissions {
             out.add(new TestResult(number++, t.path("verdict").asText(), t.has("wall_ms") ? t.path("wall_ms").asInt() : null));
         return out;
     }
-    /** Published samples when the package lists them (generated problems), otherwise the first test. */
-    static List<Diagnostics.Example> examples(JsonNode data) {
-        var out = new java.util.ArrayList<Diagnostics.Example>();
+    /** A public example; explanation only for worked examples confirmed by the Runner (ExampleEnrichment). */
+    public record Example(String input, String output, String explanation) {}
+    /** Published samples when the package lists them (generated problems), otherwise the first test; then verified worked examples. */
+    static List<Example> examples(JsonNode data, String verified) {
+        var out = new java.util.ArrayList<Example>();
         for (JsonNode s : data.path("samples"))
             if (s.path("input").isTextual() && s.path("output").isTextual() && out.size() < 5)
-                out.add(new Diagnostics.Example(s.path("input").asText(), s.path("output").asText()));
-        if (out.isEmpty()) out.add(new Diagnostics.Example(data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText()));
+                out.add(new Example(s.path("input").asText(), s.path("output").asText(), null));
+        if (out.isEmpty()) out.add(new Example(data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText(), null));
+        if (verified != null) for (JsonNode e : JudgeJson.parse(verified))
+            out.add(new Example(e.path("input").asText(), e.path("output").asText(), e.path("explanation").asText(null)));
         return out;
     }
     private static int testCount(String plan) {
@@ -70,7 +74,7 @@ public class Submissions {
                     // Explicit public fields only: never serialize a private problem package.
                     return new Problem(row.getString("id"), data.path("title").asText(), data.path("statement").asText(),
                             data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText(),
-                            examples(data), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options());
+                            examples(data, row.getString("examples_json")), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options());
                 }).list();
     }
 
@@ -109,7 +113,7 @@ public class Submissions {
         if (jdbc.sql("SELECT count(*) FROM problem_version WHERE id = ? AND ready = true AND review_hold=false AND (owner_id IS NULL OR owner_id=? OR shared=true)")
                 .param(request.problemVersion()).param(user).query(Integer.class).single() == 0)
             throw new AccountException(404, "제출할 수 있는 문제 버전이 아니에요.");
-        if (jdbc.sql("SELECT count(*) FROM submission s JOIN judge_job j ON s.id=j.submission_id WHERE s.user_id=? AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL AND j.status <> 'FINISHED'")
+        if (jdbc.sql("SELECT count(*) FROM submission s JOIN judge_job j ON s.id=j.submission_id WHERE s.user_id=? AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL AND s.example_check=false AND j.status <> 'FINISHED'")
                 .param(user).query(Integer.class).single() >= 3)
             throw new AccountException(429, "진행 중인 채점이 끝나면 다시 제출해 주세요.");
         boolean diagnosticProblem=jdbc.sql("SELECT diagnostic_only FROM problem_version WHERE id=?").param(request.problemVersion()).query(Boolean.class).single();
