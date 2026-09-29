@@ -462,7 +462,7 @@ dialog.modal::backdrop { background:rgba(15,23,21,.45); }
 .code-tools .tool-pop-panel { right:0; width:min(320px, 100%); }
 .code-caption { display:flex; align-items:center; line-height:18px; gap:10px; flex:1; min-width:min(100%, 180px); }
 .code-filename { flex-shrink:0; }
-.code-save-note { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.code-save-note { margin:0; line-height:inherit; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .visually-hidden { position:absolute !important; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 .code-heading .code-tools .reset-code, .code-heading .code-tools .tool-pop > summary { padding:5px 9px; }
 .modal-body h4 { margin:4px 0 6px; }
