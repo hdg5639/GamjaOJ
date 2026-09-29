@@ -65,6 +65,50 @@ class HybridPublicationIntegrationTest {
         }
         checks.advance();assertThat(jobs.view("owner",id).error()).isEqualTo("CONTENT_REVIEW_REQUIRED");assertThat(runner.jobs()).isEqualTo(15);return id;
     }
+    /** Runs validation stages; reader-code checks answer WA while failures remain, everything else passes. */
+    int[] validate(int[] failures) {
+        for(int stage=0;stage<9;stage++) {
+            checks.advance();Optional<JudgeQueue.Assignment> next;
+            while((next=queue.claim(UUID.randomUUID())).isPresent()) {
+                var a=next.get();String role=runner.role(a);
+                boolean fail=HybridRunnerChecks.readerCode(role)&&failures[0]>0;if(fail)failures[0]--;
+                runner.complete(a,role.equals("package-generator")?"OK":role.startsWith("mutant-")||fail?"WA":"AC",role.equals("package-generator")?HybridRunnerIntegrationTest.GENERATED:"");
+            }
+            checks.advance();
+            if(!"VALIDATING".equals(jobs.view("owner",lastId).status())&&!"HELD".equals(jobs.view("owner",lastId).status()))break;
+            if("HELD".equals(jobs.view("owner",lastId).status())&&!"VALIDATION_ADAPTER_NOT_CONNECTED".equals(jobs.view("owner",lastId).error()))break;
+        }
+        return failures;
+    }
+    UUID lastId;
+    int readers(UUID id){return jdbc.sql("SELECT count(*) FROM hybrid_branch WHERE generation_id=? AND role='READER'").param(id).query(Integer.class).single();}
+    @Test void readerCodeFailureRetriesAFreshReaderAndContinues() {
+        UUID id=admit(false);lastId=id;codex(f.contract());codex(f.core());
+        var writer=execution.claimApi();execution.finish(writer.attemptId(),result(f.presentation()),null);
+        var reader=execution.claimApi();execution.finish(reader.attemptId(),result(f.reader()),null);
+        validate(new int[]{1});
+        assertThat(jobs.view("owner",id).status()).isEqualTo("BUILDING");assertThat(readers(id)).isEqualTo(2);
+        var retry=execution.claimApi();assertThat(retry.request().assignment().role()).isEqualTo(READER);
+        assertThat(retry.request().settings().effort()).isEqualTo("low"); // first retry: same reader model
+        execution.finish(retry.attemptId(),result(f.reader()),null);
+        validate(new int[]{0});
+        assertThat(jobs.view("owner",id).error()).isEqualTo("CONTENT_REVIEW_REQUIRED");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_branch WHERE generation_id=? AND role='VALIDATION' AND status='SUPERSEDED'").param(id).query(Integer.class).single()).isOne();
+    }
+    @Test void secondRetryUsesTheStrongerReaderAndAThirdFailureHolds() {
+        UUID id=admit(false);lastId=id;codex(f.contract());codex(f.core());
+        var writer=execution.claimApi();execution.finish(writer.attemptId(),result(f.presentation()),null);
+        var reader=execution.claimApi();execution.finish(reader.attemptId(),result(f.reader()),null);
+        validate(new int[]{1});
+        var first=execution.claimApi();execution.finish(first.attemptId(),result(f.reader()),null);
+        validate(new int[]{1});
+        var second=execution.claimApi();assertThat(second.request().settings().effort()).isEqualTo("high"); // escalated
+        execution.finish(second.attemptId(),result(f.reader()),null);
+        validate(new int[]{1});
+        assertThat(readers(id)).isEqualTo(3);
+        assertThat(jobs.view("owner",id).status()).isEqualTo("HELD");assertThat(jobs.view("owner",id).error()).isEqualTo("RUNNER_WA");
+        assertThat(execution.claimApi()).isNull();
+    }
     HybridExecution.Work review(){publication.advance();var work=execution.claimApi();assertThat(work).isNotNull();assertThat(work.request().assignment().role()).isEqualTo(CONTENT_REVIEW);return work;}
     com.fasterxml.jackson.databind.node.ObjectNode accepted(HybridExecution.Work work) {
         var p=JudgeJson.JSON.createObjectNode().put("schemaVersion","1").put("inputHash",work.request().assignment().inputHash())

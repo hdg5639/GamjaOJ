@@ -106,6 +106,21 @@ final class HybridModels {
             throw new AccountException(503,"하이브리드 writer·reader·review 모델과 단가를 명시적으로 설정해야 해요.");
         }
     }
+    /**
+     * Stronger reader for the last retry after two independent readers disagreed with the validated rule.
+     * Defaults to the reader model with high reasoning; AI_HYBRID_READER_ESCALATION_* may name another model and its rates.
+     */
+    static AiSettings.Model escalatedReader(AiSettings config) {
+        var base=slot(config,READER);
+        String model=config.value("AI_HYBRID_READER_ESCALATION_MODEL",base.model()).trim(),effort=config.value("AI_HYBRID_READER_ESCALATION_REASONING","high").trim();
+        if(!Set.of("low","medium","high","xhigh","max").contains(effort))throw new AccountException(503,"상위 reader 추론 설정을 확인해 주세요.");
+        if(model.equals(base.model()))return new AiSettings.Model(model,effort,base.inputRate(),base.cachedRate(),base.outputRate(),base.pricingVersion(),base.maxOutputTokens(),base.promptVersion(),base.schemaVersion());
+        try {
+            return new AiSettings.Model(model,effort,new BigDecimal(required(config,"AI_HYBRID_READER_ESCALATION_INPUT_USD_PER_M")),
+                    new BigDecimal(required(config,"AI_HYBRID_READER_ESCALATION_CACHED_USD_PER_M")),new BigDecimal(required(config,"AI_HYBRID_READER_ESCALATION_OUTPUT_USD_PER_M")),
+                    required(config,"AI_HYBRID_READER_ESCALATION_PRICING_VERSION"),base.maxOutputTokens(),base.promptVersion(),base.schemaVersion());
+        } catch(IllegalArgumentException e){throw new AccountException(503,"상위 reader 모델의 단가를 명시적으로 설정해야 해요.");}
+    }
     private static String required(AiSettings c,String name) {
         String value=c.value(name,"").trim();if(value.isEmpty())throw new IllegalArgumentException();return value;
     }

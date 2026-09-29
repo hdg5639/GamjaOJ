@@ -13,6 +13,7 @@ import static org.assertj.core.api.Assertions.*;
         "spring.datasource.username=sa","spring.datasource.password=","gamjaoj.invite-code=test",
         "AI_API_ENABLED=false","AI_POLL_MS=3600000","HYBRID_VALIDATION_PROFILE=hybrid-execution-smoke-v1"})
 class HybridRunnerIntegrationTest {
+    @Autowired AiTasks ledger;
     @Autowired HybridRunnerChecks checks;@Autowired HybridGeneration hybrid;@Autowired JudgeQueue queue;
     @Autowired JdbcClient jdbc;@Autowired Submissions submissions;
     @Autowired org.springframework.core.env.ConfigurableEnvironment env;
@@ -104,7 +105,7 @@ class HybridRunnerIntegrationTest {
         finite();UUID id=joined();checks.advance();assertThat(jobs()).isEqualTo(2);
         drainFinite("");
         env.getPropertySources().remove("finite-profile-test"); // Global setting changes do not change in-flight policy.
-        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->new HybridRunnerChecks(jdbc,new AiSettings(env)).advance());assertThat(jobs()).isEqualTo(4);
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->new HybridRunnerChecks(jdbc,new AiSettings(env),ledger).advance());assertThat(jobs()).isEqualTo(4);
         var a=queue.claim(UUID.randomUUID()).orElseThrow();
         assertThat(a.problem().path("tests").size()).isEqualTo(16);
         assertThat(a.problem().path("tests").path(0).path("output").asText()).isEqualTo("1\n");
@@ -258,7 +259,7 @@ class HybridRunnerIntegrationTest {
         UUID id=packageToGenerator();var seed=jdbc.sql("SELECT generator_seed FROM hybrid_package_evidence").query(Long.class).single();
         checks.advance();assertThat(jobs()).isEqualTo(10);assertThat(jdbc.sql("SELECT generator_seed FROM hybrid_package_evidence").query(Long.class).single()).isEqualTo(seed);
         drainPackage();checks.advance();drainPackage();
-        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->new HybridRunnerChecks(jdbc,new AiSettings(env)).advance());
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->new HybridRunnerChecks(jdbc,new AiSettings(env),ledger).advance());
         assertThat(jobs()).isEqualTo(13);
         var oracle=JudgeJson.parse(jdbc.sql("SELECT s.run_package FROM submission s JOIN hybrid_execution_check e ON e.submission_id=s.id WHERE e.role='batch-oracle'").query(String.class).single());
         assertThat(oracle.path("tests")).allMatch(t->HybridPackagePlan.parse(t.path("input").asText()).tiny());
