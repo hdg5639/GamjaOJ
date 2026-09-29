@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
 import RunConsole, { SubmitTests, Examples } from './run-console';
 import LimitChips from './limit-chips';
+import SplitStack,{useSplit} from './split-stack';
 import {useVimMode} from './editor-settings';
 import {scheduleServerDraft,loadServerDraft,readLocalDraft,writeLocalDraft,newer} from './server-drafts';
 import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
@@ -38,6 +39,7 @@ const label = item => item.verdict ? verdictText(item.verdict) : item.status ===
 
 export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar }) {
   const [size,changeSize]=useEditorSizing(user.id,'practice');
+  const [split,setSplit]=useSplit(user.id,'practice');
   const [problems, setProblems] = useState([]);
   const [screen, updateScreen] = useState('home');
   function setScreen(next) { updateScreen(next); window.history.pushState(null,'','#'+next); if(next==='home')requestAnimationFrame(()=>document.querySelector('.catalog-view')?.scrollTo(0,0)); }
@@ -365,21 +367,20 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
           {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(starters[language]);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</span></div>
         <p className="draft-help editor-meta" title={inspected?'':draftStatus}><span className="draft-status" hidden={!!inspected} aria-live="polite">{draftStatus}</span></p>
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
-        <div className="editor-views" style={size.height==null?undefined:{flex:`0 0 ${size.height}px`,height:size.height}}><div className="editor-view" hidden={!!inspected}>
+        {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
+        {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
+        <SplitStack share={split} onChange={setSplit} top={<div className="editor-views"><div className="editor-view" hidden={!!inspected}>
         <CodeEditor key={`${user.id}:${version}:${language}`} language={language} label={lang.file} value={source} disabled={busy} onChange={editSource} vim={vim}
           onLimit={() => setError('너무 긴 코드는 입력할 수 없어요. 기존 내용을 유지했어요. 제출 코드는 UTF-8 기준 64 KiB 이내여야 해요.')}
           onSubmit={() => document.getElementById('code-form')?.requestSubmit()} />
-        </div>{inspected&&<div className="editor-view"><CodeEditor key={inspected.id} id="snapshot-source" label="기록 코드" language={recordLanguage(inspected)} value={inspected.source||''} disabled={true} onChange={()=>{}} onSubmit={()=>{}} onLimit={()=>{}} /></div>}</div>
-        <ResizeHandle label="편집기 높이 조절" orientation="horizontal" value={size.height} min={160} max={1000} step={20} onChange={height=>changeSize({height})}/>
-        {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
-        {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
-      </form>
-        <RunConsole key={user.id} user={user} api={api} scope={version} disabled={!!inspected || !problem.submissionsEnabled}
+        </div>{inspected&&<div className="editor-view"><CodeEditor key={inspected.id} id="snapshot-source" label="기록 코드" language={recordLanguage(inspected)} value={inspected.source||''} disabled={true} onChange={()=>{}} onSubmit={()=>{}} onLimit={()=>{}} /></div>}</div>}
+        bottom={<RunConsole key={user.id} user={user} api={api} scope={version} disabled={!!inspected || !problem.submissionsEnabled}
           body={{problemVersion:version,source,language,sessionId:currentSession?.id || null}} examples={problem.examples?.length?problem.examples:[{input:problem.sampleInput||'',output:problem.sampleOutput||''}]}
           runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount} onActivity={() => setActivity(value => value + 1)}
           submission={selected&&selected.id===justSubmitted&&selected.problemVersion===version?selected:null} onShowRecords={()=>showTool('history')}>
           {problem.problemHeld&&<p className="notice">문제 검토 중 · 새 실행은 보류돼요.</p>}
-        </RunConsole>
+        </RunConsole>}/>
+      </form>
         <div className="editor-actions">
           <button type="button" className="secondary" disabled={!!inspected} onClick={() => setCasesRequest(value=>value+1)}>테스트 케이스 추가{caseCount?` (${caseCount})`:''}</button>
           <button type="button" className="secondary" disabled={!!inspected || busy || (!problem.submissionsEnabled)} onClick={() => setRunRequest(value=>value+1)}>코드 실행</button>
