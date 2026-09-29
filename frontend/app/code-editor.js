@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { Annotation, Compartment, EditorState } from '@codemirror/state';
+import { Annotation, Compartment, EditorState, Prec } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, tooltips } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, bracketMatching, foldGutter, foldKeymap, indentOnInput, indentUnit, syntaxHighlighting, syntaxTree } from '@codemirror/language';
@@ -11,11 +11,24 @@ import { javaLanguage } from '@codemirror/lang-java';
 import { autocompletion, closeCompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { tags } from '@lezer/highlight';
-import { vim as vimMode } from '@replit/codemirror-vim';
+import { vim as vimMode, Vim } from '@replit/codemirror-vim';
 import { javaNameCompletion } from './java-completion';
 import {cppNameCompletion,pythonNameCompletion} from './native-completion';
 import {memberCompletionSource} from './member-completion-source';
 
+// Ex commands are registered globally by Vim, but actions belong to the focused editor.
+const editorActions = new WeakMap();
+for (const [name, prefix, action] of [['write', 'w', 'save'], ['run', 'run', 'run'], ['submit', 'submit', 'submit']]) {
+  Vim.defineEx(name, prefix, (cm, params) => {
+    if (params.args?.length || params.line != null || params.lineEnd != null) {
+      const message = document.createElement('span');
+      message.textContent = `:${prefix}는 인수나 범위 없이 사용해 주세요.`;
+      cm.openNotification(message, {bottom:true, duration:3000});
+      return;
+    }
+    editorActions.get(cm.cm6)?.(action);
+  });
+}
 const externalChange = Annotation.define();
 // Declaration roles come from the Java syntax tree, not regexes over strings/comments.
 function declarations(view) {
@@ -91,17 +104,38 @@ const theme = EditorView.theme({
   '&:not(.cm-focused) .cm-fat-cursor': { background: 'none !important', outline: '1px solid #ffe08a' },
 }, { dark: true });
 
-export default function CodeEditor({ id = 'source', label = 'Main.java', language = 'JAVA', value, disabled, onChange, onSubmit, onLimit, vim = false }) {
+export default function CodeEditor({ id = 'source', label = 'Main.java', language = 'JAVA', value, disabled, onChange, onSubmit, onRun, onLimit, vim = false }) {
   const host = useRef(null);
   const editor = useRef(null);
-  const callbacks = useRef({ onChange, onSubmit, onLimit });
+  const callbacks = useRef({ onChange, onSubmit, onRun, onLimit, disabled, vim });
   const editable = useRef(new Compartment()), keys = useRef(new Compartment());
-  useLayoutEffect(() => { callbacks.current = { onChange, onSubmit, onLimit }; }, [onChange, onSubmit, onLimit]);
+  useLayoutEffect(() => { callbacks.current = { onChange, onSubmit, onRun, onLimit, disabled, vim }; }, [onChange, onSubmit, onRun, onLimit, disabled, vim]);
 
   useEffect(() => {
+    const act = action => {
+      if (!callbacks.current.disabled) {
+        if (action === 'save') callbacks.current.onChange(view.state.doc.toString());
+        else if (action === 'run') callbacks.current.onRun?.();
+        else callbacks.current.onSubmit?.();
+      }
+      return true;
+    };
     const view = new EditorView({
       parent: host.current,
       state: EditorState.create({ doc: value, extensions: [
+        // App actions win over Vim and browser shortcuts; ordinary editing stays with Vim.
+        Prec.highest(keymap.of([
+          {key:'Escape', run:view=>{
+            if(!callbacks.current.vim)return false;
+            closeCompletion(view);
+            // Let Vim process Escape itself so undo groups, status and visual selections stay intact.
+            return false;
+          }},
+          {key:'F5', run:()=>act('run'), preventDefault:true},
+          {key:'Mod-Shift-Enter', run:()=>act('run'), preventDefault:true},
+          {key:'Mod-Enter', run:()=>act('submit'), preventDefault:true},
+          {key:'Mod-s', run:()=>act('save'), preventDefault:true},
+        ])),
         // Vim bindings go first so they see keys before the default keymaps; completion still works in insert mode.
         keys.current.of(vim ? vimMode({ status: true }) : []),
         lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), drawSelection(),
@@ -113,7 +147,7 @@ export default function CodeEditor({ id = 'source', label = 'Main.java', languag
         editable.current.of([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled)]),
         EditorView.contentAttributes.of({ 'aria-label': label, 'aria-description': 'Ctrl+Space 후보 열기, 방향키 선택, Enter 확정, Esc 닫기. 스페이스는 공백, Tab은 들여쓰기.',
           'aria-multiline': 'true', spellcheck: 'false', autocapitalize: 'off', autocorrect: 'off' }),
-        keymap.of([{ key: 'Mod-Enter', run: () => { callbacks.current.onSubmit(); return true; } },
+        keymap.of([
           ...completionKeymap,
           {key:'Tab', run:view=>{closeCompletion(view); return indentWithTab.run(view);}, shift:indentWithTab.shift},
           ...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, indentWithTab]),
@@ -131,7 +165,8 @@ export default function CodeEditor({ id = 'source', label = 'Main.java', languag
       ] }),
     });
     editor.current = view;
-    return () => { editor.current = null; view.destroy(); };
+    editorActions.set(view, act);
+    return () => { editorActions.delete(view); editor.current = null; view.destroy(); };
     // The parent keys by account/problem. Never rebuild the editor for a keystroke.
   }, [language]);
 
