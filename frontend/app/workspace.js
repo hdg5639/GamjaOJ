@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
 import RunConsole, { SubmitTests, Examples } from './run-console';
+import LimitChips from './limit-chips';
 import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
 import DiagnosticPanel from './diagnostic-panel';
 import RecordHistory from './record-history';
@@ -322,7 +323,8 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     </nav>
     {problem && <div className="practice-grid" data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
       <article className="problem-card">
-        <span className="version">문제 · {problem.version}</span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2><p>{problem.statement}</p>
+        <span className="version">문제 · {problem.version}</span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2>
+        <LimitChips profile={inspected?inspected.execution:problem.languages?.find(l=>l.id===language)} label={inspected?recordLanguageLabel(inspected):(problem.languages?.find(l=>l.id===language)||languageInfo[language])?.label}/><p>{problem.statement}</p>
         <Examples examples={problem.examples?.length?problem.examples:[{input:problem.sampleInput,output:problem.sampleOutput}]}/>
         {problem.problemHeld&&<p className="notice">문제 검토 중 · {problem.reviewReason} · 기존 코드와 기록은 보존되며 새 실행·제출·분석은 보류됩니다.</p>}
         {!problem.problemHeld&&<ProblemTeaching key={version} version={version} api={api} />}
@@ -345,8 +347,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
             <button type="button" className="secondary" onClick={downloadSource}>{lang.file} 내려받기</button>
             <span>초안은 계정·문제·언어별로 이 브라우저에만 남아요. 다른 기기로 옮길 때는 파일을 내려받아 주세요.</span></div></details>}
           {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(starters[language]);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</span></div>
-        {(()=>{const limits=inspected?`${recordLanguageLabel(inspected)} · ${limitText(inspected.execution)}`:limitText(problem.languages?.find(l=>l.id===language));
-          return <p className="draft-help editor-meta" title={[limits,inspected?'':draftStatus].filter(Boolean).join(' · ')}>{limits}<span className="draft-status" hidden={!!inspected} aria-live="polite">{draftStatus?`${limits?' · ':''}${draftStatus}`:''}</span></p>;})()}
+        <p className="draft-help editor-meta" title={inspected?'':draftStatus}><span className="draft-status" hidden={!!inspected} aria-live="polite">{draftStatus}</span></p>
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         <div className="editor-views" style={size.height==null?undefined:{flex:`0 0 ${size.height}px`,height:size.height}}><div className="editor-view" hidden={!!inspected}>
         <CodeEditor key={`${user.id}:${version}:${language}`} language={language} label={lang.file} value={source} disabled={busy} onChange={editSource}

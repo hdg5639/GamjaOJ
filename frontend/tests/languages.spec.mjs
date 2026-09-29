@@ -20,7 +20,7 @@ for(const width of [390,1440])test('language drafts, custom execution and retry 
  await page.goto(base+'/#practice');
  await page.getByLabel('Main.java',{exact:true}).fill('// Java draft');
  await page.getByLabel('풀이 언어',{exact:true}).selectOption('CPP');
- await expect(page.getByText('테스트당 3초 (시작 포함)',{exact:false})).toBeVisible();
+ await expect(page.locator('.problem-card .limit-chips')).toContainText('시간 3초');
  await page.getByLabel('Main.cpp',{exact:true}).fill('// C++ draft');
  await page.getByLabel('풀이 언어',{exact:true}).selectOption('PYTHON');
  await page.getByLabel('Main.py',{exact:true}).fill('print(3)');
