@@ -13,8 +13,12 @@ class ExperimentalReview {
     private final JdbcClient jdbc;
     private final ExperimentalChecks checks;
     ExperimentalReview(JdbcClient jdbc,ExperimentalChecks checks){this.jdbc=jdbc;this.checks=checks;}
-    static void validate(JsonNode value){
-        object(value,Set.of("verdict","issues","validCases","invalidCases","mutants"));
+    static void validate(JsonNode value){validate(value,false);}
+    static void validate(JsonNode value,boolean requirements){
+        if(value==null||!value.isObject())throw new IllegalArgumentException();
+        if(requirements||value.has("requirementsReview"))GenerationRequirements.validate(value.path("requirementsReview"),value.path("verdict").asText().equals("ACCEPT"));
+        var shape=(ObjectNode)value.deepCopy();shape.remove("requirementsReview");
+        object(shape,Set.of("verdict","issues","validCases","invalidCases","mutants"));
         if(!List.of("ACCEPT","REVISE").contains(value.path("verdict").asText()))throw new IllegalArgumentException();
         array(value.path("issues"),0,8);for(var issue:value.path("issues"))text(issue,2000,false);
         array(value.path("validCases"),0,8);array(value.path("invalidCases"),0,8);array(value.path("mutants"),0,2);
@@ -46,6 +50,7 @@ class ExperimentalReview {
         var s=snapshot(id);var report=JudgeJson.JSON.createObjectNode().put("policy","experimental-independent-review-v1").put("specHash",s[1]).put("artifactHash",s[4]).put("reviewHash",s[7])
                 .put("verdict",review.path("verdict").asText()).put("publishable",false).put("executions",0);
         report.set("issues",review.path("issues").deepCopy());
+        if(review.has("requirementsReview"))report.set("requirementsReview",review.path("requirementsReview").deepCopy());
         report.put("boundaryCases",review.path("validCases").size()).put("invalidCases",review.path("invalidCases").size()).put("mutants",review.path("mutants").size());
         report.putArray("remaining").add("bounded exhaustive domain").add("resource envelope").add("independent final seed");return report;
     }

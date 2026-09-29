@@ -26,13 +26,14 @@ for(const width of [390,768,1440])test('explicit consent creates once, restores 
   });
   const create=page.getByRole('button',{name:'이 규칙으로 생성·게시',exact:true});
   await expect(create).toBeDisabled();await expect(page.getByRole('checkbox',{name:'다른 회원에게도 공개',exact:true})).not.toBeChecked();expect(writes).toHaveLength(0);
+  await page.getByLabel('소재 (선택)',{exact:true}).fill('해저 탐사 장비');
   const consent=page.getByRole('checkbox',{name:'위 규칙으로 생성하고 검증 통과 시 게시',exact:true});
   await expect(consent).toBeEnabled();await consent.focus();await page.keyboard.press('Space');await expect(consent).toBeChecked();await expect(create).toBeEnabled();
   expect(await consent.evaluate(e=>getComputedStyle(e).outlineStyle)).not.toBe('none');
   await page.screenshot({path:`/tmp/gamja-hybrid-create-${width}.png`,fullPage:true});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await create.click();await expect(page.getByText('문제 작성 중',{exact:true})).toBeVisible();
-  expect(writes).toHaveLength(1);expect(writes[0].body).toEqual({profileId:'zero-one-items-v1',shared:false,publishOnSuccess:true});
+  expect(writes).toHaveLength(1);expect(writes[0].body).toEqual({profileId:'zero-one-items-v1',theme:'해저 탐사 장비',shared:false,publishOnSuccess:true});
   await page.reload();await page.getByRole('button',{name:'규칙 고정 출제 · 실험',exact:true}).click();
   await expect(page.getByText('문제 작성 중',{exact:true})).toBeVisible();expect(writes).toHaveLength(1);
   jobs=[{...makeJob(writes[0].key,'PUBLISHED'),branches:Object.fromEntries(['CONTRACT','CORE','PRESENTATION','READER','VALIDATION','CONTENT_REVIEW'].map(key=>[key,key==='VALIDATION'?'CHECKED':'SUCCEEDED']))}];
@@ -42,22 +43,25 @@ for(const width of [390,768,1440])test('explicit consent creates once, restores 
   await expect(page.locator('#problem-title')).toHaveText('완성된 배낭 문제');expect(writes).toHaveLength(1);
 });
 test('unknown POST outcome preserves the same request across reload and flag disable',async({page})=>{
-  const keys=[];let jobs=[],enabled=true;
+  const keys=[],bodies=[];let jobs=[],enabled=true;
   await fixture(page,async(route,path,req)=>{
     if(path==='/api/generation/hybrid/options'){await route.fulfill({json:{...options,enabled}});return true;}
     if(path==='/api/generation/hybrid'){
       if(req.method()==='POST'){
-        keys.push(req.headers()['idempotency-key']);
+        keys.push(req.headers()['idempotency-key']);bodies.push(req.postDataJSON());
         if(keys.length===1){await route.abort('failed');return true;}
         jobs=[makeJob(keys[0])];await route.fulfill({json:jobs[0]});
       }else await route.fulfill({json:jobs});return true;
     }
   });
+  await page.getByLabel('소재 (선택)',{exact:true}).fill('도서관 보관함');
   await page.getByRole('checkbox',{name:'위 규칙으로 생성하고 검증 통과 시 게시'}).check();
   await page.getByRole('button',{name:'이 규칙으로 생성·게시'}).click();await expect(page.getByRole('button',{name:'기존 요청 확인'})).toBeEnabled();
   enabled=false;await page.reload();await page.getByRole('button',{name:'규칙 고정 출제 · 실험',exact:true}).click();
+  await expect(page.getByLabel('소재 (선택)',{exact:true})).toHaveValue('도서관 보관함');
+  await expect(page.getByLabel('소재 (선택)',{exact:true})).toBeDisabled();
   await page.getByRole('button',{name:'기존 요청 확인'}).click();await expect(page.getByText('문제 작성 중',{exact:true})).toBeVisible();
-  expect(keys).toHaveLength(2);expect(keys[0]).toBe(keys[1]);
+  expect(keys).toHaveLength(2);expect(keys[0]).toBe(keys[1]);expect(bodies[0]).toEqual(bodies[1]);expect(bodies[1].theme).toBe('도서관 보관함');
   expect(await page.evaluate(()=>sessionStorage.getItem('gamjaoj-hybrid-request-hybrid-user'))).toBeNull();
 });
 test('disabled admission and read failures keep legacy modes available and never submit',async({page})=>{
@@ -122,7 +126,7 @@ test('BFS choice resets consent and survives an uncertain request and reload',as
   await page.getByRole('button',{name:'기존 요청 확인'}).click();
   await expect(page.locator('.hybrid-generation summary strong')).toHaveText(bfs.label);
   expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);
-  expect(writes[0].body).toEqual({profileId:bfs.id,shared:false,publishOnSuccess:true});
+  expect(writes[0].body).toEqual({profileId:bfs.id,theme:'',shared:false,publishOnSuccess:true});
 });
 
 test('Dijkstra choice resets consent and survives an uncertain request and reload',async({page})=>{
@@ -154,7 +158,7 @@ test('Dijkstra choice resets consent and survives an uncertain request and reloa
   await page.getByRole('button',{name:'기존 요청 확인'}).click();
   await expect(page.locator('.hybrid-generation summary strong')).toHaveText(dijkstra.label);
   expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);
-  expect(writes[0].body).toEqual({profileId:dijkstra.id,shared:false,publishOnSuccess:true});
+  expect(writes[0].body).toEqual({profileId:dijkstra.id,theme:'',shared:false,publishOnSuccess:true});
 });
 test('registry catalog selects the first available rule and labels reused verified code',async({page})=>{
   const reused={...makeJob('0f0e0d0c-0b0a-4908-8706-050403020100','BUILDING'),profileId:'dijkstra-shortest-path-v1',referenceReused:true};
@@ -177,15 +181,15 @@ test('member rule registration submits once, shows qualification progress and to
     if(path==='/api/rules/mine'){await route.fulfill({json:mine});return true;}
     if(path==='/api/rules/rule-o1-v1/sharing'){mine=[{...mine[0],shared:req.postDataJSON().shared}];await route.fulfill({json:mine[0]});return true;}
   });
-  const request=page.getByRole('button',{name:'이 조건으로 문제 만들기'});
+  const request=page.getByRole('button',{name:'이 조건으로 규칙 등록'});
   await expect(request).toBeDisabled();
   await page.getByLabel('문제 난이도',{exact:true}).selectOption('EXPERT');
   await page.getByLabel('문제 스타일',{exact:true}).selectOption('COMMAND');
-  await page.getByLabel('원하는 내용 (선택)').fill('구간 합 질의를 누적 합으로 처리하는 규칙');
+  await page.getByLabel('원하는 규칙과 조건 (선택)').fill('구간 합 질의를 누적 합으로 처리하는 규칙');
   await request.click();
   await expect(page.getByText('실행 검증 2건 완료')).toBeVisible();expect(writes).toHaveLength(1);
   expect(writes[0].body).toEqual({request:'구간 합 질의를 누적 합으로 처리하는 규칙',difficulty:'EXPERT',style:'COMMAND',category:'AUTO',publish:true,shared:false});
-  await expect(page.getByRole('button',{name:'이 조건으로 문제 만들기'})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'이 조건으로 규칙 등록'})).toBeDisabled();
   items=[{...items[0],status:'ACTIVE',label:'구간 합',difficulty:'EXPERT',style:'COMMAND',publish:true,followupStatus:'PUBLISHED',publishedVersion:'hybrid-check-x'}];mine=[{id:'rule-o1-v1',label:'구간 합',category:'누적 합',status:'ACTIVE',shared:false}];
   await expect(page.getByRole('button',{name:'등록 취소'})).toBeVisible();
   await expect(page.getByRole('list',{name:'진행 단계'})).toBeVisible();

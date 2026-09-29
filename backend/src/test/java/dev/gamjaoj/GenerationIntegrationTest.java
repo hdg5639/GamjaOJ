@@ -185,7 +185,7 @@ class GenerationIntegrationTest {
         generation.advance();
     }
     JsonNode independentReview(){
-        var value=JudgeJson.JSON.createObjectNode().put("verdict","ACCEPT");value.putArray("issues");
+        var value=JudgeJson.JSON.createObjectNode().put("verdict","ACCEPT");value.putArray("issues");value.set("requirementsReview",GenerationRequirementsTest.accepted());
         var cases=value.putArray("validCases");for(int i=1;i<=2;i++)cases.addObject().put("input",""+i).put("output","1").put("reason","boundary");
         value.putArray("invalidCases").add("").add("invalid");var mutants=value.putArray("mutants");
         for(int i=0;i<2;i++){var m=mutants.addObject().put("source","public class Main { /* mutant "+i+" */ }").put("explanation","logical mistake "+i);m.set("witness",cases.get(i).deepCopy());}return value;
@@ -202,6 +202,8 @@ class GenerationIntegrationTest {
         assertThatThrownBy(()->drafts.review("other",id,"stale")).isInstanceOf(AccountException.class);
         drafts.review("other",id,hash);drafts.review("other",id,hash);var work=generation.claim();
         assertThat(work.spec().path("phase").asText()).isEqualTo("EXPERIMENTAL_REVIEW");
+        assertThat(work.spec().path("request").asText()).isEqualTo(drafts.view("other",id).request());
+        assertThat(work.spec().path("requirementsPolicy").asText()).isEqualTo("v1");
         assertThat(work.spec().path("definition").has("referenceStrategy")).isFalse();
         assertThat(work.spec().path("definition").has("oracleStrategy")).isFalse();assertThat(generation.claim()).isNull();
         var review=independentReview();generation.complete(id,work.token(),review,null,null,null);generation.complete(id,work.token(),review,null,null,null);
@@ -230,10 +232,30 @@ class GenerationIntegrationTest {
         jdbc.sql("UPDATE generation_spec_draft SET review_payload_json='{}' WHERE id=?").param(id).update();finishReview("WA");
         assertThat(drafts.view("other",id).error()).isEqualTo("REVIEW_ARTIFACT_FENCE_MISMATCH");
     }
+    @Test void requirementsCannotBeOmittedOrFalselyAcceptedAfterDraftReviewClaim() {
+        var id=reviewableDraft();drafts.review("other",id,drafts.view("other",id).specHash());var work=generation.claim();
+        var review=(com.fasterxml.jackson.databind.node.ObjectNode)independentReview();
+        var assessment=(com.fasterxml.jackson.databind.node.ObjectNode)review.path("requirementsReview");
+        assessment.put("satisfied",false);assessment.withArray("issues").add("주요 장치 개수 요구를 축소했습니다.");
+        generation.complete(id,work.token(),review,null,null,null);
+        assertThat(drafts.view("other",id).status()).isEqualTo("REVIEW_FAILED");
+        assertThat(drafts.view("other",id).error()).isEqualTo("REQUIREMENTS_NOT_MET");
+        assertThat(queue.claim(UUID.randomUUID())).isEmpty();
+        assertThat(jdbc.sql("SELECT review_completion_json FROM generation_spec_draft WHERE id=?").param(id).query(String.class).single()).contains("주요 장치");
+        generation.complete(id,work.token(),review,null,null,null);
+    }
+    @Test void reviewWithoutRequiredAssessmentIsStoredAsFailure() {
+        var id=reviewableDraft();drafts.review("other",id,drafts.view("other",id).specHash());var work=generation.claim();
+        var review=(com.fasterxml.jackson.databind.node.ObjectNode)independentReview();review.remove("requirementsReview");
+        generation.complete(id,work.token(),review,null,null,null);
+        assertThat(drafts.view("other",id).status()).isEqualTo("REVIEW_FAILED");
+        assertThat(drafts.view("other",id).error()).isEqualTo("INVALID_REQUIREMENTS_REVIEW");
+        assertThat(queue.claim(UUID.randomUUID())).isEmpty();
+    }
     @Test void semanticRejectionPreservesIssuesAndDoesNotExecute(){
         var id=reviewableDraft();drafts.review("other",id,drafts.view("other",id).specHash());var work=generation.claim();
         var review=JudgeJson.JSON.createObjectNode().put("verdict","REVISE");review.putArray("issues").add("예제와 명세가 불일치합니다.");for(String field:List.of("validCases","invalidCases","mutants"))review.putArray(field);
-        generation.complete(id,work.token(),review,null,null,null);assertThat(drafts.view("other",id).status()).isEqualTo("REVIEW_REJECTED");assertThat(queue.claim(UUID.randomUUID())).isEmpty();
+        review.set("requirementsReview",GenerationRequirementsTest.accepted());generation.complete(id,work.token(),review,null,null,null);assertThat(drafts.view("other",id).status()).isEqualTo("REVIEW_REJECTED");assertThat(queue.claim(UUID.randomUUID())).isEmpty();
         assertThat(drafts.view("other",id).review().path("issues").get(0).asText()).contains("불일치");
     }
     JsonNode finalPlan(){return JudgeJson.parse("{\"domainDescription\":\"four literals\",\"parts\":[[\"1\",\"2\"],[\"a\",\"b\"]],\"stressInput\":\"4\",\"stressReason\":\"maximum fixture\"}");}
@@ -444,7 +466,7 @@ class GenerationIntegrationTest {
         report.putObject("runner_environment").put("dockerControl","engine").set("contract",work.runnerEnvironment()==null?null:work.runnerEnvironment().deepCopy());
         var tests=report.putArray("tests");
         if(!java.util.Set.of("CE","IE").contains(verdict)) for(JsonNode test:work.problem().path("tests")) {
-            var row=tests.addObject().put("id",test.path("id").asText()).put("verdict",verdict);
+            var row=tests.addObject().put("id",test.path("id").asText()).put("verdict",verdict).put("wall_ms",10);
             if(work.runnerPolicy().equals("java8-run-v1"))row.put("stdout","1 0\n2 1 2\n1 -1\n3 1 -2 3\n").put("stderr","").put("stdout_truncated",false);
             if(verdict.equals("WA"))break;
         }

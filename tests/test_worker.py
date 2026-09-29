@@ -113,6 +113,19 @@ class WorkerRecoveryTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'language execution snapshot'):
                     Worker(Api(),directory,forbidden).once()
 
+        assignment=base | {'executionProfile':LANGUAGES['PYTHON'] | {'testWallSeconds':2}}
+        used=[]
+        class Api:
+            def post(self,path,body):
+                if path=='/claim':return assignment
+                if path.endswith('/result'):used.append(body['report']['execution_profile'])
+        class FakeRunner:
+            def __init__(self,*args,**kwargs):pass
+            def judge(self,source,problem):return {'execution_profile':self.profile,'verdict':'AC'}
+        with tempfile.TemporaryDirectory() as directory, patch('runner.worker.docker',return_value=b''):
+            Worker(Api(),directory,FakeRunner).once()
+        self.assertEqual([assignment['executionProfile']],used)
+
     def test_stale_saved_result_is_retained_without_overwriting_active_attempt(self):
         class Api:
             def post(self, path, body):
@@ -167,4 +180,3 @@ class AttemptRetentionTests(unittest.TestCase):
         for value, expected in (("7", 7), ("0", 1), ("999", 365), ("x", 7)):
             with patch.dict(os.environ, {"GAMJAOJ_ATTEMPT_RETENTION_DAYS": value}):
                 self.assertEqual(expected, module.retention_days())
-

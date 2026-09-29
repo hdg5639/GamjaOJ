@@ -12,6 +12,7 @@ import sys
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from runner.judge import validate_problem
+from diagnostics.time_limits import limits_for
 
 def canonical(value):
     return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False)
@@ -40,6 +41,9 @@ def stage(data):
         p=item['problem'];raw=canonical(p)
         values=[p['version'],raw,hashlib.sha256(raw.encode()).hexdigest(),image,'java8-judge-v1']
         lines.append('INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,diagnostic_only) VALUES ('+','.join(map(quote,values))+',true,true);')
+        limits=limits_for(p)
+        if limits is not None:
+            lines.append('UPDATE problem_version SET time_limits_json='+quote(canonical(limits))+' WHERE id='+quote(p['version'])+';')
         values=[data['id'],str(pos),item['category'],item['difficulty'],p['version'],canonical(item['rubric'])]
         lines.append('INSERT INTO diagnostic_bank_item(bank_id,position,category,difficulty,problem_version,rubric_json) VALUES ('+','.join(map(quote,values))+');')
     lines.append('COMMIT;')

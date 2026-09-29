@@ -27,7 +27,8 @@ class GenerationWorkerTests(unittest.TestCase):
                 seen.append((context_spec(assignment['spec']),str(directory)))
                 return ({'parts':[['1','2'],['a','b']]} if len(seen)==1 else {'accepted':True,'issues':[]}),None
         with tempfile.TemporaryDirectory() as path:
-            result=Adapter(path).produce({'model':'gpt-5.6-sol','effort':'medium','spec':{'phase':'EXPERIMENTAL_FINAL_PLAN','definition':{'statement':'fixed','referenceStrategy':'PRIVATE','oracleStrategy':'PRIVATE'}}},Path(path))
+            result=Adapter(path).produce({'model':'gpt-5.6-sol','effort':'medium','spec':{'phase':'EXPERIMENTAL_FINAL_PLAN','request':'ORIGINAL_ROTATION_REQUEST','definition':{'statement':'fixed','referenceStrategy':'PRIVATE','oracleStrategy':'PRIVATE'}}},Path(path))
+        self.assertEqual('ORIGINAL_ROTATION_REQUEST',seen[1][0]['request'])
         self.assertEqual(2,len(seen));self.assertNotEqual(seen[0][1],seen[1][1]);self.assertNotIn('PRIVATE',json.dumps(seen))
         self.assertEqual('EXPERIMENTAL_FINAL_REVIEW',seen[1][0]['phase']);self.assertEqual(result['artifacts'],seen[1][0]['plan'])
         self.assertEqual('experimental-publication-v2',result['usage']['promptProfile']);self.assertTrue(result['oracle']['accepted'])
@@ -51,11 +52,12 @@ class GenerationWorkerTests(unittest.TestCase):
             def context(self,assignment,directory,oracle=False):
                 seen.append((assignment,oracle))
                 return ({'source':'independent'} if oracle else {name: ['a','b','c'] if name=='hints' else 'PRIVATE_REFERENCE' if name=='reference' else name for name in schema()['required']}), {'input_tokens':1}
-        assignment={'model':'gpt-5.6-sol','effort':'medium','spec':{'phase':'EXPERIMENTAL_IMPLEMENTATION','definition':{'statement':'fixed','referenceStrategy':'PRIVATE_STRATEGY','oracleStrategy':'exhaustive'}}}
+        assignment={'model':'gpt-5.6-sol','effort':'medium','spec':{'phase':'EXPERIMENTAL_IMPLEMENTATION','definition':{'statement':'fixed','referenceStrategy':'PRIVATE_STRATEGY','oracleStrategy':'exhaustive'},'request':'PRIVATE_ORIGINAL_REQUEST','requirementsPolicy':'v1'}}
         with tempfile.TemporaryDirectory() as path:result=Adapter(path).produce(assignment,Path(path))
         self.assertEqual(2,len(seen));self.assertTrue(seen[1][1])
         self.assertNotIn('PRIVATE_REFERENCE',json.dumps(seen[1]))
         self.assertNotIn('PRIVATE_STRATEGY',json.dumps(seen[1]))
+        self.assertNotIn('PRIVATE_ORIGINAL_REQUEST',json.dumps(seen[1]))
         self.assertIn('exhaustive',json.dumps(seen[1]))
         self.assertIn('referenceStrategy',assignment['spec']['definition'])
         self.assertEqual('experimental-implementation-v1',result['usage']['promptProfile'])
@@ -202,6 +204,8 @@ class GenerationWorkerTests(unittest.TestCase):
             self.assertIn('features.shell_tool=false',args)
             self.assertFalse(author['hasApiKey']);self.assertFalse(oracle['hasApiKey'])
             self.assertIn('Long.parseLong',author['prompt'])
+            self.assertIn('REQUIREMENT FIDELITY v1',author['prompt'])
+            self.assertNotIn('REQUIREMENT FIDELITY v1',oracle['prompt'])
             self.assertIn('PRIVATE_NOTES',author['prompt'])
             self.assertNotIn('PRIVATE_NOTES',oracle['prompt'])
             self.assertNotIn('PRIVATE_THEME',oracle['prompt'])
@@ -269,6 +273,15 @@ class GenerationWorkerTests(unittest.TestCase):
             self.assertNotIn('PRIVATE_STRATEGY',capture['prompt']);self.assertNotIn('PRIVATE_ORACLE',capture['prompt'])
             self.assertIn('REVISE',capture['prompt']);self.assertFalse(capture['hasApiKey'])
             self.assertEqual(review_schema(),json.loads((root/'review/schema.json').read_text()))
+            review['spec']['request']='PRIVATE_ORIGINAL_REQUIREMENTS'
+            review['spec']['requirementsPolicy']='v1'
+            adapter.context(review,root/'requirements-review')
+            capture=json.loads((root/'requirements-review/captured.json').read_text())
+            self.assertIn('PRIVATE_ORIGINAL_REQUIREMENTS',capture['prompt'])
+            self.assertIn('REQUIREMENT FIDELITY REVIEW v1',capture['prompt'])
+            self.assertNotIn('PRIVATE_STRATEGY',capture['prompt'])
+            self.assertEqual(review_schema(True),json.loads((root/'requirements-review/schema.json').read_text()))
+
             for phase,review in [('EXPERIMENTAL_FINAL_PLAN',False),('EXPERIMENTAL_FINAL_REVIEW',True)]:
                 work={'model':'gpt-5.6-sol','effort':'medium','spec':{'phase':phase,'definition':{'statement':'fixed','referenceStrategy':'PRIVATE_STRATEGY'}}}
                 adapter.context(work,root/phase)
@@ -280,6 +293,13 @@ class GenerationWorkerTests(unittest.TestCase):
 
 
 
+
+    def test_requirement_review_schema_is_explicit_and_preserves_legacy_shape(self):
+        legacy = review_schema()
+        current = review_schema(True)
+        self.assertNotIn('requirementsReview', legacy['properties'])
+        self.assertIn('requirementsReview', current['required'])
+        self.assertEqual({'satisfied','coverage','complexity','shortcuts','issues','timeLimits'}, set(current['properties']['requirementsReview']['required']))
 
     def test_api_auth_never_falls_back_to_api_key(self):
         with tempfile.TemporaryDirectory() as path:

@@ -71,6 +71,16 @@ class DiagnosticIntegrationTest {
         return observation;
     }
     Diagnostics.View start() { return diagnostics.start(user,UUID.randomUUID(),bank); }
+    @Test void diagnosticFreezesLimitsAtStartIncludingPublicDisplayAndLaterSubmission() {
+        jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id=?").param(ProblemTimeLimitsTest.limits(2,1,4)).param(bank+"-0").update();
+        var diagnostic=start();var q=diagnostic.current();
+        assertThat(q.languages()).extracting(LanguageProfiles.Option::timeLimitMs).containsExactly(2000,1000,4000);
+        jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id=?").param(ProblemTimeLimitsTest.limits(5,3,8)).param(q.problemVersion()).update();
+        var saved=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(q.problemVersion(),SOURCE,null,q.itemId(),"PYTHON"));
+        assertThat(saved.execution().timeLimitMs()).isEqualTo(4000);
+        var task=queue.claim(UUID.randomUUID()).orElseThrow();
+        assertThat(task.executionProfile().path("testWallSeconds").asInt()).isEqualTo(4);
+    }
     SubmissionController.Request request(Diagnostics.Question q) { return new SubmissionController.Request(q.problemVersion(),SOURCE,null,q.itemId()); }
     Submissions.View submit(Diagnostics.Question q) { return submissions.submit(user,UUID.randomUUID(),request(q)); }
     void finish(String verdict) {

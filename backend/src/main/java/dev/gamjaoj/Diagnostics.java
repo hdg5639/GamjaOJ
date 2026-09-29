@@ -23,7 +23,7 @@ public class Diagnostics {
         return out;
     }
     public record View(UUID id,String bankId,String status,List<Item> items,Question current,UUID sourceSessionId) {}
-    record Snapshot(String json,String hash,String image,String policy) {}
+    record Snapshot(String json,String hash,String image,String policy,String limits) {}
 
     public record Bank(String id,List<String> categories,int questionCount) {}
     public List<Bank> banks() {
@@ -87,13 +87,13 @@ public class Diagnostics {
             if(jdbc.sql("SELECT count(*) FROM diagnostic_exposure WHERE user_id=? AND content_sha256=?").param(user).param(content).query(Integer.class).single()==0)
                 jdbc.sql("INSERT INTO diagnostic_exposure(user_id,content_sha256) VALUES (?,?)").param(user).param(content).update();
         }
-        for(var row:rows)jdbc.sql("INSERT INTO diagnostic_item(id,session_id,position,category,difficulty,problem_version,package_json,package_sha256,runtime_image,runner_policy,rubric_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+        for(var row:rows)jdbc.sql("INSERT INTO diagnostic_item(id,session_id,position,category,difficulty,problem_version,package_json,package_sha256,runtime_image,runner_policy,rubric_json,time_limits_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
                 .param(UUID.randomUUID()).param(id).param(row.position()).param(row.category()).param(row.difficulty()).param(row.version())
-                .param(row.json()).param(row.hash()).param(row.image()).param(row.policy()).param(row.rubric()).update();
+                .param(row.json()).param(row.hash()).param(row.image()).param(row.policy()).param(row.rubric()).param(row.limits()).update();
         return view(user,id);
     }
     private List<BankItem> bankItems(String bank,List<String> categories) {
-        return jdbc.sql("SELECT b.*,p.package_json,p.package_sha256,p.runtime_image,p.runner_policy,p.ready,p.review_hold,p.diagnostic_only,p.owner_id FROM diagnostic_bank_item b JOIN problem_version p ON p.id=b.problem_version WHERE bank_id=? ORDER BY position")
+        return jdbc.sql("SELECT b.*,p.package_json,p.package_sha256,p.runtime_image,p.runner_policy,p.time_limits_json,p.ready,p.review_hold,p.diagnostic_only,p.owner_id FROM diagnostic_bank_item b JOIN problem_version p ON p.id=b.problem_version WHERE bank_id=? ORDER BY position")
                 .param(bank).query((r,n)-> {
                     if(categories!=null&&!categories.contains(r.getString("category")))return null;
                     if(!r.getBoolean("ready")||r.getBoolean("review_hold")||!r.getBoolean("diagnostic_only")||r.getObject("owner_id")!=null)
@@ -101,7 +101,7 @@ public class Diagnostics {
                     String json=r.getString("package_json"),hash=r.getString("package_sha256");
                     if(!JudgeJson.hash(JudgeJson.canonical(JudgeJson.parse(json))).equals(hash))
                         throw new AccountException(409,"진단 문항의 검증 정보를 확인해야 해요.");
-                    return new BankItem(r.getInt("position"),r.getString("category"),r.getString("difficulty"),r.getString("problem_version"),json,hash,r.getString("runtime_image"),r.getString("runner_policy"),r.getString("rubric_json"));
+                    return new BankItem(r.getInt("position"),r.getString("category"),r.getString("difficulty"),r.getString("problem_version"),json,hash,r.getString("runtime_image"),r.getString("runner_policy"),r.getString("rubric_json"),r.getString("time_limits_json"));
                 }).list().stream().filter(java.util.Objects::nonNull).toList();
     }
     @Transactional
@@ -164,7 +164,7 @@ public class Diagnostics {
         }
         return JudgeJson.canonical(mapping);
     }
-    record BankItem(int position,String category,String difficulty,String version,String json,String hash,String image,String policy,String rubric) {}
+    record BankItem(int position,String category,String difficulty,String version,String json,String hash,String image,String policy,String rubric,String limits) {}
 
     @Transactional
     public View detail(String name,UUID id) { return view(owner(name),id); }
@@ -209,8 +209,8 @@ public class Diagnostics {
             throw new AccountException(409,"진행 중인 진단 문항을 확인해 주세요.");
         Item current=saved.items().stream().filter(i->i.id().equals(item)).findFirst().orElseThrow();
         if(!run && (current.pending()>0||current.attempts()>=5))throw new AccountException(409,"진행 중인 채점이 끝난 뒤 제출해 주세요.");
-        return jdbc.sql("SELECT package_json,package_sha256,runtime_image,runner_policy FROM diagnostic_item WHERE id=?").param(item)
-                .query((r,n)->new Snapshot(r.getString(1),r.getString(2),r.getString(3),r.getString(4))).single();
+        return jdbc.sql("SELECT package_json,package_sha256,runtime_image,runner_policy,time_limits_json FROM diagnostic_item WHERE id=?").param(item)
+                .query((r,n)->new Snapshot(r.getString(1),r.getString(2),r.getString(3),r.getString(4),r.getString(5))).single();
     }
     private View view(UUID user,UUID id) {
         var session=jdbc.sql("SELECT bank_id,status FROM diagnostic_session WHERE id=? AND user_id=?").param(id).param(user)
@@ -231,7 +231,7 @@ public class Diagnostics {
         }
         Question question=current.map(i->{
             JsonNode p=JudgeJson.parse(jdbc.sql("SELECT package_json FROM diagnostic_item WHERE id=?").param(i.id()).query(String.class).single());
-            return new Question(i.id(),i.problemVersion(),p.path("title").asText(),p.path("statement").asText(),p.path("tests").path(0).path("input").asText(),p.path("tests").path(0).path("output").asText(),examples(p.path("tests")),LanguageProfiles.options());
+            return new Question(i.id(),i.problemVersion(),p.path("title").asText(),p.path("statement").asText(),p.path("tests").path(0).path("input").asText(),p.path("tests").path(0).path("output").asText(),examples(p.path("tests")),LanguageProfiles.options(jdbc.sql("SELECT time_limits_json FROM diagnostic_item WHERE id=?").param(i.id()).query((r,n)->r.getString(1)).optional().orElse(null)));
         }).orElse(null);
         UUID source=jdbc.sql("SELECT source_session_id FROM diagnostic_session WHERE id=?").param(id)
                 .query((r,n)->new UUID[]{r.getObject(1,UUID.class)}).single()[0];

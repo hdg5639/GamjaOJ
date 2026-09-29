@@ -145,7 +145,7 @@ class HybridGeneration {
                 case CORE -> HybridCoreSupport.assemble(b.input,c.payload);
                 case PRESENTATION -> HybridPresentationRules.assemble(b.input,c.payload,artifact(latest(j).get(Role.CONTRACT)));
                 case READER -> HybridArtifacts.reader(c.payload);
-                case CONTENT_REVIEW -> HybridArtifacts.contentReview(c.payload,b.inputHash);
+                case CONTENT_REVIEW -> HybridArtifacts.contentReview(c.payload,b.inputHash,b.input.has("requirements"));
                 case VALIDATION -> throw new HybridArtifacts.Invalid("VALIDATION_ADAPTER_NOT_CONNECTED");
             };
             String raw=JudgeJson.canonical(payload),hash=JudgeJson.hash(raw);
@@ -166,6 +166,10 @@ class HybridGeneration {
                 var writerInput=JudgeJson.JSON.createObjectNode().put("language","ko");
                 writerInput.set("semantics",HybridArtifacts.publicSemantics(payload));
                 if(coreInput.has("serverSupport"))writerInput.set("serverRules",HybridPresentationRules.bundle(selected.orElseThrow()));
+                jdbc.sql("SELECT requirements_json FROM hybrid_public_request WHERE generation_id=?").param(j.id)
+                        .query((r,n)->r.getString(1)).optional().filter(java.util.Objects::nonNull).map(JudgeJson::parse)
+                        .filter(r->r.path("presentation").path("policy").asText().equals("RETHEME_V1"))
+                        .ifPresent(r->writerInput.set("presentation",r.path("presentation").deepCopy()));
                 enqueue(accepted,Role.PRESENTATION,writerInput,"QUEUED");
             }
             if(b.role==Role.PRESENTATION) {

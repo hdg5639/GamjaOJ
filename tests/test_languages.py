@@ -26,6 +26,18 @@ class LanguageArtifactTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get('GAMJAOJ_DOCKER_TESTS') == '1', 'real Docker opt-in')
 class LanguageDockerTests(unittest.TestCase):
+    def test_problem_wall_budget_changes_verdict_and_is_reported_exactly(self):
+        from runner.judge import checked_profile
+        problem={'version':'time-budget-test','output_policy':'TOKEN_EXACT','tests':[{'id':'one','input':'','output':'3\n'}]}
+        source=b'import time\ntime.sleep(1.3)\nprint(3)\n'
+        for seconds,expected in [(1,'TLE'),(4,'AC')]:
+            with self.subTest(seconds=seconds), tempfile.TemporaryDirectory() as directory:
+                runner=Runner(LANGUAGES['PYTHON']['image'],directory)
+                runner.profile=checked_profile(LANGUAGES['PYTHON'] | {'testWallSeconds':seconds},'PYTHON',runner.image)
+                report=runner.judge(source,problem)
+                self.assertEqual(expected,report['verdict'],report)
+                self.assertEqual(seconds,report['execution_profile']['testWallSeconds'])
+
     def judge(self, language, source, problem, verdict):
         with tempfile.TemporaryDirectory() as directory:
             report=Runner(LANGUAGES[language]['image'],directory).judge(source.encode(),problem)

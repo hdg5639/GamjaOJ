@@ -13,9 +13,18 @@ final class LanguageProfiles {
         return value;
     }
     static JsonNode profile(String language) { return RunnerEnvironment.expected().path("languages").path(normalize(language)).deepCopy(); }
+    static JsonNode profile(String language,String limitsJson) {
+        var p=(com.fasterxml.jackson.databind.node.ObjectNode)profile(language);
+        var limits=ProblemTimeLimits.parse(limitsJson);
+        if(limits!=null)p.put("testWallSeconds",limits.path(normalize(language)).asInt());
+        return p;
+    }
     static Option option(JsonNode profile) {
         return new Option(profile.path("language").asText(),profile.path("label").asText(),profile.path("sourceFile").asText(),
                 profile.path("testWallSeconds").asInt()*1000,profile.path("memoryMb").asInt());
     }
     static List<Option> options() { return List.of(option(profile("JAVA")),option(profile("CPP")),option(profile("PYTHON"))); }
+    static List<Option> options(String limitsJson) {
+        return ProblemTimeLimits.LANGUAGES.stream().map(l->option(profile(l,limitsJson))).toList();
+    }
 }

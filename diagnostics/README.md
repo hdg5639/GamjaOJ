@@ -113,3 +113,22 @@ time gates, wrong solutions WA after passing the sample, slow solutions TLE only
 byte-identical generators across languages. On a Runner host it shares the worker's exclusive host lock.
 `algo-mix-a-v1-review.{json,md}` records the AI-assisted review and the two review changes (ASCII minus
 in statements; per-test design notes not staged).
+
+## Per-problem execution limits
+
+`algo-mix-time-limits-v1.json` records the 20 Algo Mix questions' Java/C++/Python wall budgets,
+algorithm/bounds rationale and historical per-language timing maxima. Each entry binds the exact
+v1 and v2 package hashes. V58 applies these budgets to matching stored versions; staging also imports
+them when a bank is installed later. Neither path changes statement/test bytes or the review flag.
+New diagnostic sessions freeze the budgets; already started sessions and saved submissions keep
+their prior limits. Ordinary problem lists and diagnostic questions show the same limits used at admission.
+
+The Runner accepts only a 1–20 second integer wall-budget override of an otherwise exact pinned
+language profile. Commands, images, memory and compilation budgets remain server-owned. Deployment
+requires the matching server execution contract and Runner build. Generation's independent review
+proposes language-specific budgets from complexity and bounds, with measured Java headroom checked
+at publication. C++/Python proposals are estimates unless those languages were actually run; trusted
+template generation uses a recorded Java timing policy. This is not universal performance calibration.
+
+The existing `verify_bank_runner.py` command automatically uses the hash-bound diagnostic limits,
+checks correct/incorrect/slow solutions and writes the selected budgets in its private evidence report.

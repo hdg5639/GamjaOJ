@@ -67,6 +67,39 @@ class HybridAdmissionIntegrationTest {
         mvc.perform(postRequest(UUID.randomUUID(),BODY)).andExpect(status().isServiceUnavailable());
         assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt").query(Integer.class).single()).isZero();
     }
+    @Test void originalRequirementsSnapshotSurvivesSourceDeletionAndIsNeverShared() throws Exception {
+        UUID onboarding=UUID.randomUUID(),owner=submissions.owner("owner",false);
+        String original="{\"request\":\"PRIVATE_ROTATING_FORTRESS\",\"difficulty\":\"EXPERT\",\"publish\":true,\"shared\":true}";
+        jdbc.sql("INSERT INTO hybrid_rule_onboarding(id,owner_id,request_json,request_sha256,status,version_id,budget_usd,created_at,deadline_at,updated_at) VALUES (?,?,?,?,'ACTIVE',?,1,CURRENT_TIMESTAMP,DATEADD('HOUR',1,CURRENT_TIMESTAMP),CURRENT_TIMESTAMP)")
+                .param(onboarding).param(owner).param(original).param(JudgeJson.hash(original)).param(HybridAdmission.PROFILE).update();
+        UUID id=UUID.randomUUID();mvc.perform(postRequest(id,BODY)).andExpect(status().isOk());
+        String saved=jdbc.sql("SELECT requirements_json FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).single();
+        assertThat(saved).contains("PRIVATE_ROTATING_FORTRESS","EXPERT","RETHEME_V1","ruleDesignRequest").doesNotContain("publish","shared","originalRequest");
+        assertThat(JudgeJson.parse(saved).path("sourceThemeBinding").asBoolean(true)).isFalse();
+        assertThat(jdbc.sql("SELECT input_json FROM hybrid_branch WHERE generation_id=? AND role='PRESENTATION'").param(id).query(String.class).single()).doesNotContain("PRIVATE_ROTATING_FORTRESS","ruleDesignRequest");
+        assertThat(jdbc.sql("SELECT requirements_sha256 FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).single()).isEqualTo(JudgeJson.hash(saved));
+        jdbc.sql("DELETE FROM hybrid_rule_onboarding WHERE id=?").param(onboarding).update();
+        mvc.perform(postRequest(id,BODY)).andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT requirements_json FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).single()).isEqualTo(saved);
+        jobs.cancel("owner",id);
+        // A different member selecting the same public rules gets only the selected semantic contract.
+        overrides.put("HYBRID_ALLOWED_USERS","*");UUID other=UUID.randomUUID();
+        admission.create("other",other,JudgeJson.parse(BODY));
+        assertThat(jdbc.sql("SELECT requirements_json FROM hybrid_public_request WHERE generation_id=?").param(other).query(String.class).single())
+                .contains("selectedContract").doesNotContain("PRIVATE_ROTATING_FORTRESS","originalRequest");
+    }
+    @Test void themeIsAnInstancePreferenceFrozenForWriterReviewAndRequestReplay() throws Exception {
+        UUID id=UUID.randomUUID();String body=BODY.replace("}",",\"theme\":\"해저 탐사 장비\"}");
+        mvc.perform(postRequest(id,body)).andExpect(status().isOk());
+        String writer=jdbc.sql("SELECT input_json FROM hybrid_branch WHERE generation_id=? AND role='PRESENTATION'").param(id).query(String.class).single();
+        assertThat(JudgeJson.parse(writer).path("presentation").path("theme").asText()).isEqualTo("해저 탐사 장비");
+        assertThat(JudgeJson.parse(writer).path("semantics")).isEqualTo(HybridArtifacts.publicSemantics(HybridFiniteProfile.contract()));
+        mvc.perform(postRequest(id,body)).andExpect(status().isOk());
+        mvc.perform(postRequest(id,body.replace("해저 탐사 장비","도서관"))).andExpect(status().isConflict());
+        var requirements=JudgeJson.parse(jdbc.sql("SELECT requirements_json FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).single());
+        assertThat(requirements.path("presentation").path("theme").asText()).isEqualTo("해저 탐사 장비");
+        assertThat(requirements.has("originalRequest")).isFalse();
+    }
     @Test void allowlistConfigurationConsentAndExactScopeAreRequiredBeforeSpending() throws Exception {
         mvc.perform(get("/api/generation/hybrid/options").with(user("other"))).andExpect(jsonPath("$.enabled").value(false));
         mvc.perform(postRequest(UUID.randomUUID(),BODY).with(user("other"))).andExpect(status().isServiceUnavailable());
@@ -96,8 +129,8 @@ class HybridAdmissionIntegrationTest {
     /** Drives writer, reader, all Runner checks and final review to publication; returns the version. */
     String finish(UUID id,HybridProfiles.Definition profile) {
         boolean bfs=profile.bfs(),weighted=profile.weighted();
-        var writer=execution.claimApi();var prose=weighted?HybridDijkstraProfileTest.prose():bfs?HybridBfsProfileTest.prose():f.presentation();prose.remove(List.of("semantics","ruleExplanations"));
-        assertThat(writer.request().schema().path("properties").has("ruleExplanations")).isFalse();
+        var writer=execution.claimApi();var prose=weighted?HybridDijkstraProfileTest.prose():bfs?HybridBfsProfileTest.prose():f.presentation();prose.remove("semantics");prose.set("ruleExplanations",writer.request().assignment().input().path("serverRules").path("rules").deepCopy());
+        assertThat(writer.request().schema().path("properties").has("ruleExplanations")).isTrue();
         execution.finish(writer.attemptId(),result(prose),null);execution.finish(writer.attemptId(),result(prose),null);
         var reader=execution.claimApi();
         assertThat(JudgeJson.parse(reader.request().input()).path("ruleExplanations")).isEqualTo(writer.request().assignment().input().path("serverRules").path("rules"));
@@ -178,7 +211,7 @@ class HybridAdmissionIntegrationTest {
         overrides.put("HYBRID_REFERENCE_REUSE_ENABLED","true");
         UUID id=UUID.randomUUID();mvc.perform(postRequest(id,BODY.replace(HybridAdmission.PROFILE,profile.id()))).andExpect(jsonPath("$.referenceReused").value(true));
         jdbc.sql("UPDATE problem_version SET review_hold=true WHERE id=?").param(source).update();
-        var writer=execution.claimApi();var prose=HybridDijkstraProfileTest.prose();prose.remove(List.of("semantics","ruleExplanations"));
+        var writer=execution.claimApi();var prose=HybridDijkstraProfileTest.prose();prose.remove("semantics");prose.set("ruleExplanations",writer.request().assignment().input().path("serverRules").path("rules").deepCopy());
         execution.finish(writer.attemptId(),result(prose),null);
         var reader=execution.claimApi();execution.finish(reader.attemptId(),result(HybridDijkstraProfileTest.reader()),null);
         overrides.put("HYBRID_VALIDATION_PROFILE","");overrides.put("HYBRID_PUBLIC_ADMISSION_ENABLED","false");
@@ -243,7 +276,7 @@ class HybridAdmissionIntegrationTest {
         var profile=HybridProfiles.byId("bfs-shortest-path-v1");
         overrides.put("HYBRID_FUNCTIONAL_ENABLED","true");overrides.put("HYBRID_PIPELINE_V2_ENABLED","true");
         UUID id=admitAndAuthor(profile.id());checks.advance();runReady(profile);
-        var writer=execution.claimApi();var prose=HybridBfsProfileTest.prose();prose.remove(List.of("semantics","ruleExplanations"));
+        var writer=execution.claimApi();var prose=HybridBfsProfileTest.prose();prose.remove("semantics");prose.set("ruleExplanations",writer.request().assignment().input().path("serverRules").path("rules").deepCopy());
         execution.finish(writer.attemptId(),result(prose),null);
         var reader=execution.claimApi();var ambiguous=HybridBfsProfileTest.reader();ambiguous.putArray("ambiguities").add("S와 T가 같을 때의 출력이 모순됩니다.");
         execution.finish(reader.attemptId(),result(ambiguous),null);
