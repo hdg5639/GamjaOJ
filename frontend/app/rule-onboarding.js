@@ -48,6 +48,14 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen}) {
     catch(e){if(e.status>=400&&e.status<500)pending.current=null;setError(e.message);}
     finally{setBusy(false);}
   }
+  const [removing,setRemoving]=useState(null),[removed,setRemoved]=useState('');
+  async function removeRule(rule){
+    if(busy)return;setBusy(true);setError('');setRemoved('');
+    try{const result=await api(`/api/rules/${encodeURIComponent(rule.id)}`,{method:'DELETE'});setRemoving(null);
+      setRemoved(result.outcome==='ARCHIVED'?`${rule.label} 규칙을 삭제했어요. 다른 회원이 이 규칙으로 만든 문제가 있어 규칙 기록은 사용 중지 상태로 보관돼요.`:`${rule.label} 규칙을 삭제했어요.`);
+      await refresh();onRegistered?.();}
+    catch(e){setError(e.message);}finally{setBusy(false);}
+  }
   async function act(path,options){
     if(busy)return;setBusy(true);setError('');
     try{await api(path,options);await refresh();onRegistered?.();}catch(e){setError(e.message);}finally{setBusy(false);}
@@ -83,9 +91,13 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen}) {
       {running.includes(item.status)&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/onboarding/${item.id}/cancel`,{method:'POST'})}>이 등록 취소</button>}
     </li>)}</ul>}
     <Pager paging={itemPaging} label="규칙 등록 요청 페이지"/>
+    {removed&&<p className="notice success" role="status">{removed}</p>}
     {rules.length>0&&<><h4>내가 등록한 규칙</h4><ul className="rule-onboarding-list">{rulePaging.visible.map(rule=><li key={rule.id}>
       <p><strong>{rule.label}</strong> · {rule.category} · {rule.status==='ACTIVE'?(rule.shared?'다른 회원에게 공개':'나만 사용'):'사용 중지'}</p>
       {rule.status==='ACTIVE'&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/${rule.id}/sharing`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({shared:!rule.shared})})}>{rule.shared?'공개 해제':'다른 회원에게 공개'}</button>}
+      <button className="secondary" disabled={busy} onClick={()=>{setRemoving(rule.id);setRemoved('');}}>삭제</button>
+      {removing===rule.id&&<div className="notice" role="group" aria-label={`${rule.label} 삭제 확인`}><p>이 규칙과 등록 기록을 삭제할까요? 이미 만든 문제는 그대로 남고, 이 규칙으로 새 문제를 만들 수 없게 돼요. 되돌릴 수 없어요.</p>
+        <button className="danger" disabled={busy} onClick={()=>removeRule(rule)}>삭제하기</button> <button className="secondary" disabled={busy} onClick={()=>setRemoving(null)}>취소</button></div>}
     </li>)}</ul><Pager paging={rulePaging} label="내 규칙 페이지"/></>}
   </section>;
 }
