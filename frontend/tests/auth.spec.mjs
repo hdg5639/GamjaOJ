@@ -75,11 +75,11 @@ if config.get('SUBMISSIONS_ENABLED','false').lower() != 'true':
   await problemChoice.selectOption('total-v1');
   await expect(page.getByRole('heading', { name: '수열의 합', exact: true })).toBeVisible();
   await page.getByLabel('Main.java', { exact: true }).fill('// 수열 문제 전용 초안');
-  await expect(page.getByLabel('직접 입력', { exact: true })).toHaveValue('5\n1 2 3 4 5\n');
+  await expect(page.getByLabel('직접 넣을 입력', { exact: true })).toHaveValue('5\n1 2 3 4 5\n');
   await problemChoice.selectOption('valid-parentheses-v1');
   await expect(page.getByRole('heading', { name: '올바른 괄호', exact: true })).toBeVisible();
   await expectCode(page.getByLabel('Main.java', { exact: true }), '// 수열 문제 전용 초안', true);
-  await expect(page.getByLabel('직접 입력', { exact: true })).toHaveValue('(())()\n');
+  await expect(page.getByLabel('직접 넣을 입력', { exact: true })).toHaveValue('(())()\n');
   await problemChoice.selectOption('total-v1');
   await expectCode(page.getByLabel('Main.java', { exact: true }), '// 수열 문제 전용 초안');
   await problemChoice.selectOption('sum-v1');
@@ -137,7 +137,7 @@ if config.get('SUBMISSIONS_ENABLED','false').lower() != 'true':
     }
     await route.continue();
   });
-  await page.getByRole('button', { name: '코드 제출', exact: true }).click();
+  await page.getByRole('button', { name: '제출 후 채점하기', exact: true }).click();
   await expect(page.getByRole('button', { name: '같은 제출 다시 확인' })).toBeEnabled();
   const newerDraft = code + '\n// 제출 응답을 기다리며 작성한 다음 초안\n';
   await page.getByLabel('Main.java', { exact: true }).fill(newerDraft);
@@ -178,9 +178,9 @@ r=subprocess.run(['docker','exec','-i','gamjaoj-postgres-1','psql','-U','gamjaoj
 print(r.stdout.strip())
 `);
   expect(rows.trim()).toBe('1');
-  await page.getByRole('button', { name: '실행 테스트', exact: true }).click();
-  const runPanel = page.getByRole('region', { name: '직접 입력 실행', exact: true });
-  await page.getByLabel('직접 입력', { exact: true }).fill('17 25\n');
+  await page.getByRole('button', { name: '입력 직접 넣기', exact: true }).click();
+  const runPanel = page.getByRole('region', { name: '실행 결과', exact: true });
+  await page.getByLabel('직접 넣을 입력', { exact: true }).fill('17 25\n');
   let lostRun = false;
   const runKeys = [];
   await page.route('**/api/runs', async route => {
@@ -194,11 +194,11 @@ print(r.stdout.strip())
     }
     await route.continue();
   });
-  await runPanel.getByRole('button', { name: '직접 실행', exact: true }).click();
+  await page.getByRole('button', { name: '코드 실행', exact: true }).click();
   await expect(runPanel.getByRole('button', { name: '같은 실행 다시 확인' })).toBeEnabled();
   await page.reload();
-  await page.getByRole('button', { name: '실행 테스트', exact: true }).click();
-  await page.getByLabel('직접 입력', { exact: true }).fill('100 200\n');
+  await page.getByRole('button', { name: '입력 직접 넣기', exact: true }).click();
+  await page.getByLabel('직접 넣을 입력', { exact: true }).fill('100 200\n');
   await runPanel.getByRole('button', { name: '같은 실행 다시 확인' }).click();
   await expect(page.getByLabel('실행 표준 출력')).toHaveText('42', { timeout: 20000 });
   await expect(page.getByLabel('실행한 입력')).toHaveText('17 25');
@@ -206,7 +206,6 @@ print(r.stdout.strip())
   expect(runKeys[1]).toBe(runKeys[0]);
   await page.unroute('**/api/runs');
   await page.reload();
-  await page.getByRole('button', { name: '실행 테스트', exact: true }).click();
   await expect(runPanel.getByText('최근 실행 내역',{exact:false})).toHaveCount(0);
   await expect(page.getByLabel('실행 표준 출력')).toHaveCount(0);
   const counts = await remotePython(`import subprocess
@@ -283,15 +282,15 @@ print(r.stdout.strip())
       await page.getByLabel('풀이 언어',{exact:true}).selectOption(language);
       await page.getByLabel(file,{exact:true}).fill(source);
       const acceptance=page.waitForResponse(r=>r.url().endsWith('/api/submissions')&&r.request().method()==='POST');
-      await page.getByRole('button',{name:'코드 제출',exact:true}).click();
+      await page.getByRole('button',{name:'제출 후 채점하기',exact:true}).click();
       const response=await acceptance;expect(response.status()).toBe(202);
       const saved=await response.json();expect(saved.language).toBe(language);expect(saved.execution.timeLimitMs).toBe(timeLimit);
       await expect(page.locator('#submission-heading')).toHaveText('AC · 정답',{timeout:30000});
-      await page.getByRole('button',{name:'입력 테스트',exact:true}).click();
+      await page.getByRole('button',{name:'입력 직접 넣기',exact:true}).click();
       const expectedOutput=language==='CPP'?'43':'44';
-      await page.getByLabel('직접 입력',{exact:true}).fill(`17 ${Number(expectedOutput)-17}`);
+      await page.getByLabel('직접 넣을 입력',{exact:true}).fill(`17 ${Number(expectedOutput)-17}`);
       const runAcceptance=page.waitForResponse(r=>r.url().endsWith('/api/runs')&&r.request().method()==='POST');
-      await page.getByRole('button',{name:'직접 실행',exact:true}).click();
+      await page.getByRole('button',{name:'코드 실행',exact:true}).click();
       const runResponse=await runAcceptance;expect(runResponse.status()).toBe(202);
       expect((await runResponse.json()).language).toBe(language);
       await expect(page.getByLabel('실행 표준 출력')).toHaveText(expectedOutput,{timeout:30000});

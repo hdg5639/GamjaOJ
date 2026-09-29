@@ -43,7 +43,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     sync();window.addEventListener('popstate',sync);return()=>window.removeEventListener('popstate',sync);
   },[]);
   const [generationMode,setGenerationMode]=useState('tags'),[ruleDraft,setRuleDraft]=useState(null);
-  const [tool, setTool] = useState('run');
+  const [tool, setTool] = useState('history'),[runRequest,setRunRequest]=useState(0);
   const [resultsOpen, setResultsOpen] = useState(false);
   const [resultSize, setResultSize] = useState(360);
   const [inputRequest,setInputRequest]=useState(0);
@@ -267,7 +267,6 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         body: JSON.stringify({ problemVersion: attempt.problemVersion, source: attempt.source, language:attempt.language||'JAVA', sessionId: attempt.sessionId || null }) });
       if (!live.current) return;
       setPending(null); try { sessionStorage.removeItem(storageKey); } catch { /* Browser storage disabled. */ }
-      if(intent===panelRevision.current)showTool('history');
       setHistoryOpen(false);
       setSelected(result); setHistory(items => [result, ...items.filter(item => item.id !== result.id)].slice(0,50));
       window.dispatchEvent(new Event('gamjaoj-problems-changed'));
@@ -319,7 +318,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
 
       <button aria-pressed={!resultsOpen&&mobilePane==='problem'} onClick={()=>{panelRevision.current++;setResultsOpen(false);setMobilePane('problem');}}>문제 보기</button>
       <button className="code-pane-switch" aria-pressed={mobilePane==='code'} onClick={()=>setMobilePane('code')}>코드 작성</button>
-      <div className="tool-buttons">{[['run','실행 테스트'],['history','제출 기록'],['feedback','피드백']].map(([key,name])=><button id={'tool-'+key} key={key} aria-expanded={resultsOpen&&tool===key} aria-controls="workspace-results" className={resultsOpen&&tool===key?'active':''} onClick={()=>showTool(key)}>{name}</button>)}</div>
+      <div className="tool-buttons">{[['history','제출 기록'],['feedback','피드백']].map(([key,name])=><button id={'tool-'+key} key={key} aria-expanded={resultsOpen&&tool===key} aria-controls="workspace-results" className={resultsOpen&&tool===key?'active':''} onClick={()=>showTool(key)}>{name}</button>)}</div>
     </nav>
     {problem && <div className="practice-grid" data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
       <article className="problem-card">
@@ -359,10 +358,17 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
         {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
       </form>
-        <div className="editor-actions"><button type="button" className="secondary" onClick={() => {
-          showTool('run');setInputRequest(value=>value+1);
-        }}>입력 테스트</button><button form="code-form" className="primary" disabled={!!inspected || busy || (!problem.submissionsEnabled && !pending)}>
-          {busy ? '제출 확인 중…' : pending ? '같은 제출 다시 확인' : '코드 제출'}</button></div>
+        <RunPanel key={user.id} user={user} source={source} language={language} problem={problem} api={api} sessionId={currentSession?.id || null} inputRequest={inputRequest} runRequest={runRequest} onViewCode={viewCode} onActivity={() => setActivity(value => value + 1)} />
+        {selected&&selected.problemVersion===version&&<section className="submit-console" aria-label="제출 결과" data-verdict={selected.verdict||'PENDING'}>
+          <strong>제출 결과 〉 {label(selected)}</strong>
+          {selected.verdict&&verdictHelp[selected.verdict]&&<span className="draft-help">{verdictHelp[selected.verdict]}</span>}
+          <button type="button" className="secondary" onClick={()=>showTool('history')}>제출 기록·피드백 보기</button>
+        </section>}
+        <div className="editor-actions">
+          <button type="button" className="secondary" disabled={!!inspected} onClick={() => setInputRequest(value=>value+1)}>입력 직접 넣기</button>
+          <button type="button" className="secondary" disabled={!!inspected || busy || (!problem.submissionsEnabled)} onClick={() => setRunRequest(value=>value+1)}>코드 실행</button>
+          <button form="code-form" className="primary" disabled={!!inspected || busy || (!problem.submissionsEnabled && !pending)}>
+          {busy ? '제출 확인 중…' : pending ? '같은 제출 다시 확인' : '제출 후 채점하기'}</button></div>
     {error && <p role="alert" className="notice error">{error}</p>}
     {notice && <p role="status" className="notice success">{notice}</p>}
     </div>
@@ -370,9 +376,8 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       onPointerDown={resizePanel} onPointerMove={dragPanel} onPointerUp={event=>event.currentTarget.releasePointerCapture(event.pointerId)}
       onKeyDown={event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();setResultSize(value=>event.key==='Home'?300:event.key==='End'?520:Math.max(300,Math.min(520,value+(event.key==='ArrowLeft'?20:-20)*(window.innerWidth>=1440?1:-1))));}}} />
     <aside id="workspace-results" className="result-dock" hidden={!resultsOpen} aria-label="실행과 제출 결과">
-      <div className="result-heading"><h3>{tool==='run'?'실행 테스트':tool==='history'?'제출 기록':'피드백'}</h3><button type="button" className="secondary" onClick={closeResults}>결과 접기</button></div>
-      <div className="result-content" id="run-results" hidden={tool!=='run'}><RunPanel key={user.id} user={user} source={source} language={language} problem={problem} api={api} sessionId={currentSession?.id || null} inputRequest={inputRequest} onViewCode={viewCode} onActivity={() => setActivity(value => value + 1)} /></div>
-      <div className="result-content" id="submission-results" hidden={tool==='run'}>
+      <div className="result-heading"><h3>{tool==='history'?'제출 기록':'피드백'}</h3><button type="button" className="secondary" onClick={closeResults}>결과 접기</button></div>
+      <div className="result-content" id="submission-results">
         <RecordHistory title="최근 제출 내역" items={history.filter(item=>item.problemVersion===version)} selectedId={selected?.id} open={historyOpen} onToggle={setHistoryOpen} onSelect={open} label={label}/>
         {(!selected||selected.problemVersion!==version)&&<p className="muted">제출 내역을 펼쳐 확인할 기록을 선택해 주세요.</p>}
         {selected&&selected.problemVersion===version&&<article className="submission-detail">

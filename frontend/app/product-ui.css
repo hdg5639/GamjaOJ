@@ -386,3 +386,31 @@ button.danger:disabled { opacity:.6; }
 /* New problem request: difficulty, style and field side by side, stacking on narrow screens. */
 .problem-request-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
 .catalog-level[data-level="EXPERT"] strong { color:#8a1c1c; }
+/* Coding-test style run console under the editor: always visible, dark output area, pass/fail colored. */
+.run-console { margin-top:10px; border:1px solid #1f2d2a; border-radius:10px; overflow:hidden; background:#16211f; color:#e6efec; }
+.run-console .console-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:8px 12px; background:#1f2d2a; }
+.run-console .console-head h3 { margin:0; font-size:13px; font-weight:700; color:#e6efec; }
+.run-console .console-head small { color:#9fb2ad; font-size:12px; }
+.run-console .console-body { padding:10px 12px; max-height:22rem; overflow:auto; font-size:13px; }
+.run-console .console-body .muted { color:#9fb2ad; margin:0; }
+.run-console .console-input { padding:10px 12px; border-bottom:1px solid #2c3d39; display:grid; gap:6px; }
+.run-console .console-input label { font-size:12px; color:#9fb2ad; }
+.run-console .console-input textarea { background:#0f1716; color:#e6efec; border:1px solid #2c3d39; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.run-console .console-input-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.run-console .console-input-actions .draft-help { color:#9fb2ad; margin:0; }
+.console-case { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 10px; margin:0; }
+.console-case dt { color:#9fb2ad; white-space:nowrap; }
+.console-case dt::after { content:" 〉"; }
+.console-case dt:first-child { color:#e6efec; font-weight:700; }
+.console-case dt:first-child::after { content:""; }
+.console-case dd { margin:0; min-width:0; }
+.console-case pre { margin:0; padding:0; background:none; border:0; color:#e6efec; white-space:pre-wrap; word-break:break-all; max-height:10rem; overflow:auto; font-size:12.5px; }
+.run-console .run-detail[data-passed="true"] .console-outcome { color:#7ee2a8; }
+.run-console .run-detail[data-passed="false"] .console-outcome { color:#ff8f86; }
+.run-console .notice { color:var(--ink); }
+.run-console .compiler-message, .run-console h4 + pre { background:#0f1716; color:#ffb4ad; border:1px solid #2c3d39; }
+.run-console .version { color:#9fb2ad; }
+.submit-console { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; padding:8px 12px; border-radius:10px; border:1px solid var(--line); background:var(--subtle); }
+.submit-console[data-verdict="AC"] strong { color:var(--green); }
+.submit-console:not([data-verdict="AC"]):not([data-verdict="PENDING"]) strong { color:#a1271b; }
+.editor-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:10px; }
