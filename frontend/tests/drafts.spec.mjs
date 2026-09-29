@@ -49,7 +49,7 @@ test('drafts survive immediate reload, empty edits, problem changes and account 
 test('invalid file imports preserve the draft; valid UTF-8 source downloads unchanged', async ({ page }) => {
   await workspace(page);
   const editor = page.getByLabel('Main.java', { exact: true });
-  await page.getByText('파일 불러오기 / 내려받기', { exact: true }).click();
+  await page.locator('#editor-tools > summary').click();
   const file = page.getByLabel('Java 파일 불러오기');
   const source = '// 한글 코드\npublic class Main {}\n';
   await file.setInputFiles({ name: 'Solution.java', mimeType: 'text/plain', buffer: Buffer.from(source) });
@@ -127,13 +127,12 @@ test('mobile panes retain code and input across resizing, navigation and keyboar
   await editor.press('Escape');
   await editor.press('Tab');
   await expect(editor).not.toBeFocused();
-  const shortcuts=page.getByText('편집기 단축키 · 자동완성',{exact:true});
   await expect(page.getByRole('separator',{name:'편집기 높이 조절',exact:true})).toBeFocused();
-  await page.keyboard.press('Tab');await expect(page.getByText('편집기 크기',{exact:true})).toBeFocused();await page.keyboard.press('Tab');
-  await expect(shortcuts).toBeFocused();await shortcuts.press('Enter');
-  await expect(page.locator('#editor-shortcuts')).toHaveAttribute('open','');
-  await shortcuts.press('Enter');await shortcuts.press('Tab');
-  await expect(page.getByText('파일 불러오기 / 내려받기', { exact: true })).toBeFocused();
+  const tools=page.locator('#editor-tools > summary');
+  await tools.focus();await tools.press('Enter');
+  await expect(page.locator('#editor-tools')).toHaveAttribute('open','');
+  await expect(page.getByText('편집기 단축키 · 자동완성',{exact:true})).toBeVisible();
+  await tools.press('Enter');await expect(page.locator('#editor-tools')).not.toHaveAttribute('open','');
   await expectCode(editor, '// 모바일에서도 유지할 코드');
   for (const width of [360, 768, 1024, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 });
@@ -599,10 +598,9 @@ for(const width of [390,1024,1440])test('editor size persists without changing c
  await page.reload();await expectCode(editor,'// resize keeps this draft');
  expect((await page.locator('#source').boundingBox()).height).toBeCloseTo(240,0);
  if(width>800)await expect(page.getByRole('separator',{name:'문제와 편집기 비율',exact:true})).toHaveAttribute('aria-valuenow','20');
- await page.getByText('편집기 크기',{exact:true}).click();await page.getByLabel('편집기 높이',{exact:true}).focus();await page.getByLabel('편집기 높이',{exact:true}).press('End');
+ await height.focus();await height.press('End');
  await expect(page.getByRole('button',{name:'제출 후 채점하기',exact:true})).toBeInViewport({ratio:1});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await page.getByRole('button',{name:'크기 초기화',exact:true}).click();await page.getByText('편집기 크기',{exact:true}).click();
  await expectCode(editor,'// resize keeps this draft');
  await height.focus();await height.press('Home');await switchUser('draft-user-b');
  await expect(page.getByRole('separator',{name:'편집기 높이 조절',exact:true})).not.toHaveAttribute('aria-valuenow','160');

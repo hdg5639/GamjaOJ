@@ -114,9 +114,6 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
   const height=page.getByRole('separator',{name:'진단 편집기 높이 조절',exact:true});
   await height.focus();await height.press('Home');
   expect((await page.locator('#diagnostic-source').boundingBox()).height).toBeCloseTo(158,0);
-  await page.getByRole('region',{name:'선택 진단',exact:true}).getByText('편집기 크기',{exact:true}).click();
-  await page.getByRole('button',{name:'크기 초기화',exact:true}).click();
-  await page.getByRole('region',{name:'선택 진단',exact:true}).getByText('편집기 크기',{exact:true}).click();
   if(width>850){const split=page.getByRole('separator',{name:'진단 문제와 편집기 비율',exact:true});await split.focus();await split.press('ArrowLeft');await expect(split).toHaveAttribute('aria-valuenow','48');}
   await page.getByLabel('진단 언어',{exact:true}).selectOption('PYTHON');
   const pythonEditor=page.getByLabel('진단 Python 3.12 코드',{exact:true});
@@ -269,12 +266,15 @@ for(const width of [390,1440])test('reassessment selection and known-question re
   await page.getByRole('button',{name:'이 문제나 풀이를 본 적 있어요 · 기록 후 건너뛰기'}).click();
   await page.getByRole('button',{name:'요청 다시 확인'}).click();
   await expect(page.getByRole('heading',{name:'재평가 다음 문항'})).toBeVisible();
-  await page.getByText('문항별 진행과 제출 기록',{exact:true}).click();
-  await expect(page.getByText(/본 적 있음 · 평가 근거에서 제외/)).toBeVisible();
+  await page.getByRole('button',{name:'진단 기록',exact:true}).click();
+  const records=page.getByRole('dialog',{name:'진단 기록'});
+  await expect(records.getByText(/본 적 있음 · 평가 근거에서 제외/)).toBeVisible();
+  await page.keyboard.press('Escape');await expect(records).toBeHidden();
   expect(reports).toBe(2);expect(starts).toHaveLength(2);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.getByRole('button',{name:'모르겠어요 · 건너뛰기'}).click();
   await expect(page.getByText('진단을 마쳤어요.',{exact:false})).toBeVisible();
+  await page.getByText('문항별 진행과 제출 기록',{exact:true}).click();
   await page.getByRole('button',{name:'2번 문항 · 이전에 본 문제로 정정'}).click();
   await expect(page.getByRole('button',{name:'2번 문항 · 이전에 본 문제로 정정'})).toHaveCount(0);
   await expect(page.getByText(/본 적 있음 · 평가 근거에서 제외/)).toHaveCount(2);

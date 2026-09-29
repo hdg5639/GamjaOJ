@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
 import RunConsole, { SubmitTests, Examples } from './run-console';
-import {useEditorSizing,ResizeHandle,EditorSizing,splitScale} from './editor-sizing';
+import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
 import DiagnosticPanel from './diagnostic-panel';
 import RecordHistory from './record-history';
 import MyPage from './my-page';
@@ -34,7 +34,7 @@ public class Main {
 const label = item => item.verdict ? verdictText(item.verdict) : item.status === 'RUNNING' ? '채점 중' : '채점 대기';
 
 export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar }) {
-  const [size,changeSize,resetSize]=useEditorSizing(user.id,'practice');
+  const [size,changeSize]=useEditorSizing(user.id,'practice');
   const [problems, setProblems] = useState([]);
   const [screen, updateScreen] = useState('home');
   function setScreen(next) { updateScreen(next); window.history.pushState(null,'','#'+next); if(next==='home')requestAnimationFrame(()=>document.querySelector('.catalog-view')?.scrollTo(0,0)); }
@@ -337,9 +337,16 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
             : `${activeSession.problemVersion} 훈련은 유지 중이에요. 현재 문제의 제출은 자유 풀이로 저장돼요.`}
         </p>}
         <div className="code-heading"><span>{inspected?languageInfo[recordLanguage(inspected)].file:lang.file}</span>
-          <span className="code-tools"><label className="language-choice">언어<select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+          <span className="code-tools"><label className="language-choice"><span className="visually-hidden">언어</span><select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+          {!inspected&&<details id="editor-tools" className="tool-pop"><summary>도구</summary><div className="tool-pop-panel">
+            <strong>편집기 단축키 · 자동완성</strong><span>Ctrl+Space 후보 · Enter 확정 · Tab 들여쓰기 · Esc 다음 Tab으로 나가기 · Ctrl/⌘+F 검색 · Ctrl/⌘+Enter 제출</span>
+            <strong>파일</strong>
+            <label className="file-import">{language==='JAVA'?'Java':lang.label} 파일 불러오기<input type="file" accept={lang.extension} disabled={busy} onChange={importSource} /></label>
+            <button type="button" className="secondary" onClick={downloadSource}>{lang.file} 내려받기</button>
+            <span>초안은 계정·문제·언어별로 이 브라우저에만 남아요. 다른 기기로 옮길 때는 파일을 내려받아 주세요.</span></div></details>}
           {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(starters[language]);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</span></div>
-        <p className="draft-help">{inspected?`${recordLanguageLabel(inspected)} · ${limitText(inspected.execution)}`:limitText(problem.languages?.find(l=>l.id===language))}</p>
+        {(()=>{const limits=inspected?`${recordLanguageLabel(inspected)} · ${limitText(inspected.execution)}`:limitText(problem.languages?.find(l=>l.id===language));
+          return <p className="draft-help editor-meta" title={[limits,inspected?'':draftStatus].filter(Boolean).join(' · ')}>{limits}<span className="draft-status" hidden={!!inspected} aria-live="polite">{draftStatus?`${limits?' · ':''}${draftStatus}`:''}</span></p>;})()}
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         <div className="editor-views" style={size.height==null?undefined:{flex:`0 0 ${size.height}px`,height:size.height}}><div className="editor-view" hidden={!!inspected}>
         <CodeEditor key={`${user.id}:${version}:${language}`} language={language} label={lang.file} value={source} disabled={busy} onChange={editSource}
@@ -347,14 +354,6 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
           onSubmit={() => document.getElementById('code-form')?.requestSubmit()} />
         </div>{inspected&&<div className="editor-view"><CodeEditor key={inspected.id} id="snapshot-source" label="기록 코드" language={recordLanguage(inspected)} value={inspected.source||''} disabled={true} onChange={()=>{}} onSubmit={()=>{}} onLimit={()=>{}} /></div>}</div>
         <ResizeHandle label="편집기 높이 조절" orientation="horizontal" value={size.height} min={160} max={1000} step={20} onChange={height=>changeSize({height})}/>
-        <EditorSizing size={size} onChange={changeSize} onReset={resetSize}/>
-        <p className="draft-status" hidden={!!inspected} aria-live="polite">{draftStatus}</p>
-        <details id="editor-shortcuts" hidden={!!inspected} className="draft-help"><summary>편집기 단축키 · 자동완성</summary><span>Ctrl+Space 후보 · Enter 확정 · Tab 들여쓰기 · Esc 다음 Tab으로 나가기 · Ctrl/⌘+F 검색 · Ctrl/⌘+Enter 제출</span></details>
-        <details className="file-tools" hidden={!!inspected}><summary>파일 불러오기 / 내려받기</summary><div className="editor-tools">
-          <label className="file-import">{language==='JAVA'?'Java':lang.label} 파일 불러오기<input type="file" accept={lang.extension} disabled={busy} onChange={importSource} /></label>
-          <button type="button" className="secondary" onClick={downloadSource}>{lang.file} 내려받기</button>
-        </div>
-        <p className="draft-help">초안은 계정·문제·언어별로 이 브라우저에만 남아요. 다른 기기로 이동할 때는 파일을 내려받아 주세요. 공용 기기에서는 사용 후 사이트 데이터를 지워 주세요.</p></details>
         {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
         {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
       </form>

@@ -40,8 +40,10 @@ test('isolated real diagnostic lifecycle, process restart and Docker judging',as
   await page.getByRole('button',{name:/정식 제출/}).click();
   await expect(page.getByRole('heading',{name:'격자 위 명령'})).toBeVisible({timeout:30000});
   await expect(page.getByText('이전 문항: 통과')).toBeVisible();
+  await page.getByRole('button',{name:'진단 기록',exact:true}).click();
   await page.getByRole('button',{name:'부분 판정 기록 저장'}).click();
   await expect(page.getByText('부분 결과 · 판정 기록 저장됨')).toBeVisible();
+  await page.keyboard.press('Escape');
   expect(sql("SELECT count(*) FROM ai_task")).toBe('0');
   await page.locator('#diagnostic-source .cm-content').fill(bank.items[1].mutant);
   for(let n=1;n<=5;n++){

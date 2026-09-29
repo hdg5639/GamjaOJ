@@ -114,7 +114,7 @@ if config.get('SUBMISSIONS_ENABLED','false').lower() != 'true':
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(problemChoice).toHaveValue('total-v1');
   await problemChoice.selectOption('sum-v1');
-  await page.getByText('파일 불러오기 / 내려받기', { exact: true }).click();
+  await page.locator('#editor-tools > summary').click();
   await page.getByLabel('Java 파일 불러오기').setInputFiles({ name: 'Solution.java', mimeType: 'text/plain', buffer: Buffer.from(code) });
   await expectCode(page.getByLabel('Main.java', { exact: true }), code);
   await page.reload();
