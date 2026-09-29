@@ -1,0 +1,69 @@
+/*
+ * Dark theme. public/theme.js sets html[data-theme] before paint (saved choice, else the OS setting).
+ * Shared tokens are redefined first; the remaining rules cover colors the light stylesheets hard-code.
+ * The code editor and run console are already dark and keep their own palette.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink:#e2ebe7; --muted:#9aaba5; --line:#2b3935; --green:#25896b;
+  --surface:#161e1c; --subtle:#1d2825; --canvas:#0f1513;
+}
+.theme-toggle { display:inline-flex; align-items:center; justify-content:center; min-width:36px; padding:6px 9px; }
+.account-nav .theme-toggle, .header-slot .theme-toggle { background:transparent; border-color:transparent; }
+.anonymous-theme { margin-left:auto; }
+
+/* Surfaces that are plain white in the light theme. */
+:root[data-theme="dark"] :is(.header-slot,.secondary,.catalog-list,.catalog-edit,.catalog-empty,.diagnostic-panel,.followup-panel,.session-panel,.ai-operations,
+  .tool-pop > summary,.tool-pop-panel,dialog.modal,.catalog-toolbar input) { background:var(--surface); color:var(--ink); }
+:root[data-theme="dark"] .account-nav button { background:transparent; }
+:root[data-theme="dark"] :is(input,textarea,select) { background:#121a18; border-color:#34443f; color:var(--ink); }
+:root[data-theme="dark"] :is(.generation-modes button[aria-pressed="true"],.workspace-tools button.active) { background:var(--surface); box-shadow:0 1px 4px #00000040; }
+:root[data-theme="dark"] :is(.generation-modes,.workspace-tools) { background:#1a2421; }
+:root[data-theme="dark"] .primary { box-shadow:none; }
+:root[data-theme="dark"] .login-page .card { box-shadow:0 10px 40px #00000040; }
+:root[data-theme="dark"] dialog.modal::backdrop { background:rgba(0,0,0,.62); }
+
+/* Sidebar keeps its deep green, a shade darker. */
+:root[data-theme="dark"] .app-navigation { background:#0f2b24; }
+
+/* Catalog. */
+:root[data-theme="dark"] .catalog-welcome { background:#142220; border-color:#253631; }
+:root[data-theme="dark"] .catalog-entry button { border-color:#35503f; }
+:root[data-theme="dark"] .catalog-filters { background:#161f1d; }
+:root[data-theme="dark"] .catalog-list li:hover { background:#1a2421; }
+:root[data-theme="dark"] .catalog-level { background:#1d2724; }
+:root[data-theme="dark"] .catalog-level[data-level="EASY"] { background:#16302a; color:#7fd3a3; }
+:root[data-theme="dark"] .catalog-level[data-level="MEDIUM"] { background:#302812; color:#f0c96a; }
+:root[data-theme="dark"] .catalog-level[data-level="HARD"] { background:#351c17; color:#ff9a86; }
+:root[data-theme="dark"] .catalog-level[data-level="EXPERT"] strong { color:#ff8080; }
+:root[data-theme="dark"] .catalog-problem .version { color:#8a9a94; }
+:root[data-theme="dark"] .catalog-tags span { background:#1f2a27; }
+:root[data-theme="dark"] .catalog-list .catalog-actions button:last-child { background:#16302a; border-color:#2f5a48; color:#7fd3a3; }
+:root[data-theme="dark"] .catalog-empty { border-color:#34443f; }
+:root[data-theme="dark"] :is(.catalog-list li > .catalog-remove,.remove-confirm) { background:#2a1714; border-color:#5a2e28; }
+:root[data-theme="dark"] .intro-path span { border-color:#2f4a3c; }
+
+/* Status colors. */
+:root[data-theme="dark"] .error { color:#ff9f8f; border-color:#c0604b; background:#2e1a16; }
+:root[data-theme="dark"] .success { color:#86d8a6; border-color:#3d7d55; background:#15271c; }
+:root[data-theme="dark"] .compiler-message { background:#2e1a16; color:#ffb4a6; }
+:root[data-theme="dark"] .verdict.AC, :root[data-theme="dark"] :is(.submit-console[data-verdict="AC"],.submit-tests li[data-pass="true"]) strong,
+:root[data-theme="dark"] .catalog-progress [data-solve="SOLVED"], :root[data-theme="dark"] .eyebrow { color:#7fd3a3; }
+:root[data-theme="dark"] :is(.verdict.WA,.verdict.CE,.verdict.RE,.verdict.TLE,.verdict.MLE,.verdict.OLE,.verdict.IE),
+:root[data-theme="dark"] .submit-console:not([data-verdict="AC"]):not([data-verdict="PENDING"]) strong,
+:root[data-theme="dark"] .submit-tests li[data-pass="false"] strong { color:#ff9a86; }
+:root[data-theme="dark"] .generation-status, :root[data-theme="dark"] .intro-path span { color:#7fd3a3; }
+
+/* Diagnostics. */
+:root[data-theme="dark"] .diagnostic-panel fieldset { background:#141c1a; }
+:root[data-theme="dark"] .diagnostic-habit[data-tone="STRENGTH"] .diagnostic-tone:first-child { background:#16302a; color:#7fd3a3; }
+:root[data-theme="dark"] .diagnostic-habit[data-tone="WATCH"] .diagnostic-tone:first-child { background:#302812; color:#f0c96a; }
+:root[data-theme="dark"] .diagnostic-habit[data-tone="RISK"] .diagnostic-tone:first-child { background:#351c17; color:#ff9a86; }
+:root[data-theme="dark"] .diagnostic-tone[data-kind="repeated"] { background:#1c2640; color:#9db4ff; }
+
+/* Editor surroundings. */
+:root[data-theme="dark"] .limit-chip { background:#2c2513; border-color:#5a4a1f; color:#f3dca0; }
+:root[data-theme="dark"] .limit-chip b { color:#f0c96a; }
+:root[data-theme="dark"] .editor-resize-handle span { background:#6f857b; }
+:root[data-theme="dark"] :is(.editor-resize-handle:hover,.editor-resize-handle:focus-visible) { background:#4a3f1a; outline-color:#8fb3a2; }
+:root[data-theme="dark"] .run-console { border-color:#2c3d39; }
