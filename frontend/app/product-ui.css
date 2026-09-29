@@ -472,3 +472,22 @@ dialog.modal::backdrop { background:rgba(15,23,21,.45); }
 .limit-chip { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; background:#fff7df; border:1px solid #f1d58a; color:#5b4410; font-size:12.5px; line-height:1.4; white-space:nowrap; }
 .limit-chip b { font-weight:700; color:#8a6412; }
 .editor-meta { margin:2px 0 6px; min-height:0; }
+.console-tabs { display:inline-flex; gap:4px; }
+.console-tabs button { min-height:0; padding:2px 8px; border:0; border-radius:6px; background:transparent; color:#9fb2ad; font-size:13px; font-weight:700; }
+.console-tabs button[aria-pressed="true"] { background:#2c3d39; color:#e6efec; }
+.submission-view { display:grid; gap:8px; }
+.submission-summary { margin:0; color:#e6efec; }
+.submission-view[data-verdict="AC"] .submission-summary strong { color:#7ee2a8; }
+.submission-view:not([data-verdict="AC"]):not([data-verdict="PENDING"]) .submission-summary strong { color:#ff8f86; }
+.submission-summary span { color:#9fb2ad; font-size:12px; }
+.run-console .submit-tests { max-height:none; }
+.run-console .submit-tests li[data-pass="true"] strong { color:#7ee2a8; }
+.run-console .submit-tests li[data-pass="false"] strong { color:#ff8f86; }
+.run-console .submit-tests li span, .run-console .submit-tests .skipped { color:#9fb2ad; }
+.run-console .submission-view > .secondary { justify-self:start; }
+.submit-toast { position:fixed; right:20px; bottom:20px; z-index:60; display:flex; align-items:center; gap:10px; padding:10px 12px 10px 16px; border-radius:10px; background:#16211f; color:#e6efec; box-shadow:0 10px 30px rgba(0,0,0,.25); font-size:13.5px; border-left:4px solid #7ee2a8; }
+.submit-toast:not([data-verdict="AC"]) { border-left-color:#ff8f86; }
+.submit-toast[data-verdict="AC"] strong { color:#7ee2a8; }
+.submit-toast:not([data-verdict="AC"]) strong { color:#ff8f86; }
+.submit-toast button { min-height:0; border:0; background:transparent; color:#9fb2ad; font-size:18px; line-height:1; padding:0 2px; }
+.held-note { margin-right:auto; align-self:center; font-size:13px; color:var(--muted); }

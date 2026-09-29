@@ -145,12 +145,17 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
   await page.getByRole('button',{name:'진단 이어서 풀기'}).click();
   await page.getByRole('button',{name:/정식 제출/}).click();
   await page.getByRole('button',{name:'요청 다시 확인'}).click();
-  await expect(page.getByRole('heading',{name:'진단 문항 2'})).toBeVisible();
-  await expect(page.getByText(width===1440?'이전 문항: 5회 소진':'이전 문항: 통과')).toBeVisible();
+  // The finished item stays with its per-test results until the learner moves on.
+  await expect(page.getByRole('heading',{name:'진단 문항 1'})).toBeVisible();
+  await expect(page.getByText(width===1440?'정식 제출 5회를 모두 사용했어요.':'통과했어요.',{exact:false})).toBeVisible();
+  await expect(page.locator('.submit-toast')).toContainText(width===1440?'WA · 오답':'AC · 정답');
   const tests=page.getByRole('list',{name:'테스트별 채점 결과'});
   if(width===1440){await expect(tests.getByText('테스트 2 〉 실패 (오답)')).toBeVisible();await expect(tests.getByText('테스트 3~4 〉 앞선 실패로 채점하지 않았어요')).toBeVisible();}
   else await expect(tests.locator('li')).toHaveCount(4);
+  await expect(page.getByRole('button',{name:/정식 제출/})).toHaveCount(0);
   await page.screenshot({path:`/tmp/gamja-diagnostic-${width}.png`,fullPage:true});
+  await page.getByRole('button',{name:'다음 문제',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'진단 문항 2'})).toBeVisible();
   await page.getByRole('button',{name:'모르겠어요 · 건너뛰기'}).click();
   await expect(page.getByText(/진단을 마쳤어요/)).toBeVisible();
   await expect(page.locator('.workspace-heading')).toBeVisible();

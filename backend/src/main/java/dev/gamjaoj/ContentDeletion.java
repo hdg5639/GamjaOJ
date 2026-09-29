@@ -47,6 +47,7 @@ class ContentDeletion {
         // Judge jobs/attempts, AI tasks and execution checks cascade from the submissions.
         jdbc.sql("DELETE FROM submission WHERE problem_version=?").param(version).update();
         jdbc.sql("DELETE FROM training_session WHERE problem_version=?").param(version).update();
+        jdbc.sql("DELETE FROM code_draft WHERE scope=?").param("p:"+version).update();
         jdbc.sql("DELETE FROM problem_version WHERE id=?").param(version).update();
         return new Result(Result.DELETED);
     }

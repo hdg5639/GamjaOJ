@@ -38,8 +38,8 @@ test('isolated real diagnostic lifecycle, process restart and Docker judging',as
   await expect(page.locator('#diagnostic-source')).toContainText('t/60%24');
   await page.getByRole('button',{name:'진단 이어서 풀기'}).click();
   await page.getByRole('button',{name:/정식 제출/}).click();
+  await page.getByRole('button',{name:'다음 문제',exact:true}).click({timeout:30000});
   await expect(page.getByRole('heading',{name:'격자 위 명령'})).toBeVisible({timeout:30000});
-  await expect(page.getByText('이전 문항: 통과')).toBeVisible();
   await page.getByRole('button',{name:'진단 기록',exact:true}).click();
   await page.getByRole('button',{name:'부분 판정 기록 저장'}).click();
   await expect(page.getByText('부분 결과 · 판정 기록 저장됨')).toBeVisible();

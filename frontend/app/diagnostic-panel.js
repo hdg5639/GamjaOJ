@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {languageInfo,starters,recordLanguageLabel,limitText} from './languages';
 import RunConsole,{SubmitTests,Examples} from './run-console';
 import LimitChips from './limit-chips';
+import {scheduleServerDraft,loadServerDraft,readLocalDraft,writeLocalDraft,newer} from './server-drafts';
 import dynamic from 'next/dynamic';
 import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
 import Modal from './modal';
@@ -20,23 +21,34 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
   const [banks,setBanks]=useState([]),[sessions,setSessions]=useState([]),[session,setSession]=useState(null);
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false);
   const [language,setLanguage]=useState('JAVA'),[finishing,setFinishing]=useState(false);
-  const [source,setSource]=useState(starter),[result,setResult]=useState(null),[banner,setBanner]=useState('');
+  const [source,setSource]=useState(starter),[result,setResult]=useState(null),[held,setHeld]=useState(null),[saveNote,setSaveNote]=useState('');
   const [request,setRequest]=useState(null),[records,setRecords]=useState([]),[record,setRecord]=useState(null);
   const [scope,setScope]=useState({});
   const [runRequest,setRunRequest]=useState(0),[casesRequest,setCasesRequest]=useState(0),[caseCount,setCaseCount]=useState(0);
-  const lock=useRef(false),revision=useRef(0),active=useRef(null),heading=useRef(null);
+  const lock=useRef(false),revision=useRef(0),active=useRef(null),heading=useRef(null),draftTicket=useRef(0),submitted=useRef(null);
   const requestKey=`gamjaoj-diagnostic-request-${user.id}`;
-  const current=session?.current,item=session?.items.find(i=>i.id===current?.itemId);
+  // A finished item stays on screen (read-only, with its result) until the learner moves on with 다음 문제.
+  const current=held?.question||session?.current,item=session?.items.find(i=>i.id===current?.itemId);
   // Items arrive ordered by bank position; the learner sees 1..N within this session (selected fields only).
   const number=id=>(session?.items.findIndex(i=>i.id===id)??-1)+1;
   const draftKey=(id,chosen=language)=>`gamjaoj-diagnostic-draft-${user.id}-${id}${chosen==='JAVA'?'':'-'+chosen}`;
   const languageKey=`gamjaoj-diagnostic-language-${user.id}`;
-  function changeLanguage(chosen){if(busy||request)return;setLanguage(chosen);try{localStorage.setItem(languageKey,chosen);setSource(localStorage.getItem(draftKey(current.itemId,chosen))??starters[chosen]);}catch{setSource(starters[chosen]);}}
+  function loadDraft(id,chosen){
+    let local=null;try{local=readLocalDraft(draftKey(id,chosen));}catch{}
+    setSource(local?.source??(chosen==='JAVA'?starter:starters[chosen]));
+    const ticket=++draftTicket.current;
+    loadServerDraft(api,'d:'+id,chosen).then(server=>{
+      if(ticket!==draftTicket.current||!newer(local,server)||server.source.length>65536)return;
+      setSource(server.source);try{writeLocalDraft(draftKey(id,chosen),server.source,Date.parse(server.updatedAt));}catch{}
+    });
+  }
+  function changeLanguage(chosen){if(busy||request)return;setLanguage(chosen);try{localStorage.setItem(languageKey,chosen);}catch{}loadDraft(current.itemId,chosen);}
   function accept(next){
     const prior=active.current;
     if(prior?.current&&prior.current.itemId!==next.current?.itemId){
       const closed=next.items.find(i=>i.id===prior.current.itemId);
-      setBanner(`이전 문항: ${closed?.externallySeen?'이전에 본 문제로 기록 · 평가 근거에서 제외':outcomes[closed?.status]||'완료'}`);
+      // Finished by a formal submission (passed or out of attempts): keep it until 다음 문제. Skips move on at once.
+      if(submitted.current===prior.current.itemId&&['PASSED','EXHAUSTED'].includes(closed?.status))setHeld(h=>h||{question:prior.current});
     }
     active.current=next;setSession(next);
   }
@@ -58,7 +70,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
     let chosen='JAVA';try{const pending=JSON.parse(sessionStorage.getItem(requestKey));chosen=pending?.body?.source!=null ? (pending.body.language||'JAVA') : (localStorage.getItem(languageKey)||'JAVA');}catch{}
     if(!(current.languages||[languageInfo.JAVA]).some(l=>l.id===chosen))chosen='JAVA';
     setLanguage(chosen);
-    try{setSource(localStorage.getItem(draftKey(current.itemId,chosen))??(chosen==='JAVA'?starter:starters[chosen]));}catch{setSource(starters[chosen]);}
+    loadDraft(current.itemId,chosen);
     setRecord(null);heading.current?.focus();
   },[current?.itemId]);
   useEffect(()=>{
@@ -85,20 +97,26 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
     try{
       const data=await api(pending.path,{method:'POST',headers:{'Content-Type':'application/json',...(pending.key?{'Idempotency-Key':pending.key}:{})},body:JSON.stringify(pending.body)});
       if(retain){setRequest(null);try{sessionStorage.removeItem(requestKey);}catch{}}
-      if(data.items)accept(data);else setResult(data);
+      if(data.items)accept(data);else{setResult(data);if(path==='/api/submissions')submitted.current=body.diagnosticItemId;}
       await refresh();
     }catch(e){
       if(retain&&e.status>=400&&e.status<500){setRequest(null);try{sessionStorage.removeItem(requestKey);}catch{}}
       setError(e.message);
     }finally{lock.current=false;setBusy(false);}
   }
-  function edit(value){setSource(value);try{localStorage.setItem(draftKey(current.itemId),value);}catch{setError('브라우저 저장 공간을 사용할 수 없어 초안을 보관하지 못했어요.');}}
+  function edit(value){
+    setSource(value);draftTicket.current++;
+    try{writeLocalDraft(draftKey(current.itemId),value);}catch{setError('브라우저 저장 공간을 사용할 수 없어 초안을 보관하지 못했어요.');}
+    const id=current.itemId;setSaveNote('초안을 저장하고 있어요…');
+    scheduleServerDraft(api,'d:'+id,language,value,ok=>setSaveNote(ok?'초안을 서버에 저장했어요.':'서버에 저장하지 못했어요. 이 브라우저에는 저장돼 있어요.'));
+  }
   async function history(){try{
     const rows=await api(current?`/api/submissions?problemVersion=${encodeURIComponent(current.problemVersion)}`:'/api/submissions');const ids=new Set(session.items.map(i=>i.id));
     setRecords(rows.filter(r=>ids.has(r.diagnosticItemId)));setError('');
   }catch(e){setError(e.message);}}
   const [problemExpanded,setProblemExpanded]=useState(false);
-  const disabled=busy||!!request||session?.status!=='ACTIVE';
+  const disabled=busy||!!request||!!held||session?.status!=='ACTIVE';
+  function next(){setHeld(null);submitted.current=null;setResult(null);}
   const body={problemVersion:current?.problemVersion,source,language,diagnosticItemId:current?.itemId};
   const recordsView=session&&<><ul>{session.items.map(i=><li key={i.id}>{number(i.id)}. {categories[i.category]||i.category} · {i.externallySeen?'본 적 있음 · 평가 근거에서 제외':outcomes[i.status]} · 제출 {i.attempts}회{session.sourceSessionId&&session.status==='COMPLETED'&&!i.externallySeen&&<button className="secondary" disabled={busy||!!request} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${i.id}/exposure`,{},true)}>{number(i.id)}번 문항 · 이전에 본 문제로 정정</button>}</li>)}</ul><p>미완료·건너뛴 문항은 약점으로 판정하지 않습니다.</p>{session.sourceSessionId&&session.status==='COMPLETED'&&<p>이전에 본 문제로 정정하면 기존 판정은 유지하고 해당 문항을 새 평가 근거에서 제외합니다. 이전 해석과 계획은 보류되며, 위에서 평가를 다시 요청할 수 있어요. 정정은 되돌리지 않습니다.</p>}<button className="secondary" onClick={history}>최근 제출 기록 불러오기</button>{records.filter(r=>!current||r.problemVersion===current.problemVersion).map(r=><button className="secondary" key={r.id} onClick={()=>api(`/api/submissions/${r.id}`).then(setRecord).catch(e=>setError(e.message))}>{verdictText(r.verdict)||'채점 중'} · {recordLanguageLabel(r)} · {new Date(r.createdAt).toLocaleString()}</button>)}{record&&(!current||record.problemVersion===current.problemVersion)&&<><p>{recordLanguageLabel(record)} · {limitText(record.execution)}</p><pre aria-label="제출 당시 코드">{record.source}</pre></>}</>;
   return <section className="diagnostic-panel" data-solving={!!current} aria-label="선택 진단">
@@ -128,33 +146,33 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
       </fieldset>)}
     </>}
     {session&&<>
-      {banner&&<p role="status" className="notice">{banner}</p>}
-      {result&&result.input==null&&result.diagnosticItemId!==current?.itemId&&<div role="status" className="notice previous-result"><strong>{number(result.diagnosticItemId)||''}번 문항 제출 결과: {verdictText(result.verdict)||'채점 중'}</strong>{verdictHelp[result.verdict]&&<p>{verdictHelp[result.verdict]}</p>}<SubmitTests submission={result}/></div>}
       {current&&<div className="diagnostic-workspace" style={{'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}><article data-expanded={problemExpanded}><h2 ref={heading} tabIndex={-1}>{current.title}</h2><p><strong>{number(item.id)}번 / {session.items.length}문항</strong> · {categories[item.category]||item.category} · {item.difficulty==='EASY'?'하':'중'} · 제출 {item.attempts}/5{item.pending?' · 채점 중':''}</p><LimitChips profile={current.languages?.find(l=>l.id===language)} label={current.languages?.find(l=>l.id===language)?.label}/><button className="diagnostic-problem-toggle secondary" aria-expanded={problemExpanded} aria-controls="diagnostic-problem-content" onClick={()=>setProblemExpanded(value=>!value)}>{problemExpanded?'문제 접기':'문제 보기'}</button><div id="diagnostic-problem-content"><p className="diagnostic-statement">{current.statement}</p><Examples examples={current.examples?.length?current.examples:[{input:current.sampleInput,output:current.sampleOutput}]}/></div></article>
         <ResizeHandle className="diagnostic-resizer" label="진단 문제와 편집기 비율" value={size.ratio} min={20} max={70} step={2} scale={splitScale} onChange={ratio=>changeSize({ratio})}/>
         <div className="diagnostic-code-column"><div className="code-tools"><label className="language-choice">언어<select aria-label="진단 언어" title="언어를 바꿔도 제출 횟수는 유지돼요." value={language} disabled={disabled||!!item.pending} onChange={e=>changeLanguage(e.target.value)}>{(current.languages||[languageInfo.JAVA]).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
         <ResetCode disabled={disabled||!!item.pending} onReset={()=>edit(language==='JAVA'?starter:starters[language])}/></div>
         <div className="diagnostic-editor" style={{height:size.height}}><Editor key={`${current.itemId}:${language}`} language={language} id="diagnostic-source" label={`진단 ${language==='JAVA'?'Java':languageInfo[language].label} 코드`} value={source} disabled={disabled} onChange={edit} onSubmit={()=>{if(!disabled&&!item.pending)mutate('/api/submissions',body,true);}} onLimit={()=>setError('코드는 64 KiB 이내로 작성해 주세요.')}/></div>
           <ResizeHandle label="진단 편집기 높이 조절" orientation="horizontal" value={size.height} min={160} max={1000} step={20} onChange={height=>changeSize({height})}/>
-          <p className="muted">초안은 이 브라우저에 저장됩니다. 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.</p>
+          <p className="muted">{saveNote||'초안은 자동 저장돼요.'} 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.</p>
           {session.sourceSessionId&&<div><p className="muted">이 문제나 풀이를 이미 알고 있으면 아래에 알려 주세요. 기록 후 건너뛰며 약점이나 독립적인 실력 향상 근거로 쓰지 않습니다.</p><button className="secondary" disabled={disabled||!!item.pending} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${current.itemId}/exposure`,{},true)}>이 문제나 풀이를 본 적 있어요 · 기록 후 건너뛰기</button></div>}
           <RunConsole user={user} api={api} scope={current.problemVersion} disabled={disabled} examples={current.examples?.length?current.examples:[{input:current.sampleInput,output:current.sampleOutput}]}
-            body={body} runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount}/>
-          {result&&result.input==null&&result.diagnosticItemId===current.itemId&&<section className="submit-console" aria-label="제출 결과" data-verdict={result.verdict||'PENDING'}><strong>제출 결과 〉 {verdictText(result.verdict)||'채점 중'}</strong>{verdictHelp[result.verdict]&&<span className="draft-help">{verdictHelp[result.verdict]}</span>}{result.compileMessage&&<pre className="compiler-message">{result.compileMessage}</pre>}<SubmitTests submission={result}/></section>}
-          <div className="editor-actions">
+            body={body} runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount}
+            submission={result&&result.input==null&&result.diagnosticItemId===current.itemId?result:null}/>
+          {held?<div className="editor-actions"><span className="held-note">{item?.status==='PASSED'?'통과했어요.':'정식 제출 5회를 모두 사용했어요.'} 결과를 확인한 뒤 다음으로 넘어가세요.</span>
+            <button className="primary" onClick={next}>{session.current?'다음 문제':'진단 결과 보기'}</button></div>
+          :<div className="editor-actions">
             <button className="secondary" disabled={disabled||!!item.pending} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${current.itemId}/skip`,{})}>모르겠어요 · 건너뛰기</button>
             <button className="secondary" disabled={disabled} onClick={()=>setCasesRequest(value=>value+1)}>테스트 케이스 추가{caseCount?` (${caseCount})`:''}</button>
             <button className="secondary" disabled={disabled} onClick={()=>setRunRequest(value=>value+1)}>코드 실행</button>
             <button className="primary" disabled={disabled||!!item.pending} onClick={()=>mutate('/api/submissions',body,true)}>정식 제출 ({5-item.attempts}회 남음)</button>
-          </div>
+          </div>}
         </div></div>}
 
-      {session.status==='COMPLETED'&&<p className="notice">진단을 마쳤어요. 판정 기록을 확인하고 아래에서 종합 평가를 요청할 수 있어요.</p>}
-      {session.status==='COMPLETED'&&<DiagnosticReassessment key={`reassessment-${session.id}`} api={api} session={session} busy={busy||!!request} onStart={mutate}/> }
-      {session.status==='COMPLETED'&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} />}
-      {session.status==='COMPLETED'?<details><summary>문항별 진행과 제출 기록</summary>{recordsView}</details>
+      {session.status==='COMPLETED'&&!held&&<p className="notice">진단을 마쳤어요. 판정 기록을 확인하고 아래에서 종합 평가를 요청할 수 있어요.</p>}
+      {session.status==='COMPLETED'&&!held&&<DiagnosticReassessment key={`reassessment-${session.id}`} api={api} session={session} busy={busy||!!request} onStart={mutate}/> }
+      {session.status==='COMPLETED'&&!held&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} />}
+      {session.status==='COMPLETED'?!held&&<details><summary>문항별 진행과 제출 기록</summary>{recordsView}</details>
         :<Modal open={sheet==='records'} title="진단 기록" onClose={()=>setSheet(null)} wide><h4>문항별 진행과 제출 기록</h4>{recordsView}<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} /></Modal>}
-      {session.status==='COMPLETED'&&<button className="secondary" onClick={()=>{active.current=null;setSession(null);setBanner('');setRecords([]);setRecord(null);}}>다른 진단 보기</button>}
+      {session.status==='COMPLETED'&&!held&&<button className="secondary" onClick={()=>{active.current=null;setSession(null);setHeld(null);setRecords([]);setRecord(null);}}>다른 진단 보기</button>}
     </>}
     {!session&&sessions.length>0&&<details><summary>지난 진단</summary>{sessions.map(s=><button className="secondary" key={s.id} onClick={()=>accept(s)}>{s.items.length}문항 · {s.status==='COMPLETED'?'완료':'이어서 보기'}</button>)}</details>}
   </section>;
