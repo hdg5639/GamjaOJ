@@ -9,7 +9,7 @@ import time
 def functional_slots():
     """Physical cap on concurrent FUNCTIONAL sandboxes on this host (GAMJAOJ_FUNCTIONAL_SLOTS, default 2)."""
     try:
-        return max(1, min(16, int(os.environ.get("GAMJAOJ_FUNCTIONAL_SLOTS", "2"))))
+        return max(1, min(32, int(os.environ.get("GAMJAOJ_FUNCTIONAL_SLOTS", "2"))))
     except ValueError:
         return 2
 
