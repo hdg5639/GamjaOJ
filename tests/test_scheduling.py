@@ -70,7 +70,7 @@ class ConfiguredSlotTests(unittest.TestCase):
     def test_slot_count_comes_from_environment_with_bounds(self):
         with patch.dict(os.environ, {"GAMJAOJ_FUNCTIONAL_SLOTS": "8"}):
             self.assertEqual(8, functional_slots())
-        for value, expected in (("0", 1), ("99", 16), ("x", 2)):
+        for value, expected in (("0", 1), ("20", 20), ("99", 32), ("x", 2)):
             with patch.dict(os.environ, {"GAMJAOJ_FUNCTIONAL_SLOTS": value}):
                 self.assertEqual(expected, functional_slots())
         with patch.dict(os.environ, {}, clear=True):

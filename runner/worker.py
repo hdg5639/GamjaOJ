@@ -204,7 +204,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-dir", type=Path, default=ROOT / ".state/worker")
     parser.add_argument("--once", action="store_true")
-    parser.add_argument("--slots", type=int, choices=range(1, 17), default=1, metavar="1-16")
+    parser.add_argument("--slots", type=int, choices=range(1, 33), default=1, metavar="1-32")
     args = parser.parse_args()
     # Never drop a persistent slot identity: its unfinished attempts must remain recoverable.
     existing = [int(p.parent.name) for p in (args.state_dir / 'slots').glob('*/identity.json') if p.parent.name.isdigit()]

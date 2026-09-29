@@ -18,7 +18,7 @@ public class JudgeQueue {
     /** functionalSlots must match the Runner host's GAMJAOJ_FUNCTIONAL_SLOTS; the host lock is the physical cap. */
     public JudgeQueue(JdbcClient jdbc,org.springframework.context.ApplicationEventPublisher events,
                       @org.springframework.beans.factory.annotation.Value("${RUNNER_FUNCTIONAL_SLOTS:2}") int functionalSlots) {
-        this.jdbc = jdbc;this.events=events;this.functionalSlots=Math.max(1,Math.min(16,functionalSlots));
+        this.jdbc = jdbc;this.events=events;this.functionalSlots=Math.max(1,Math.min(32,functionalSlots));
     }
     record Job(UUID submissionId, String status, int attempt, UUID token, UUID workerId,
                OffsetDateTime leaseUntil, String verdict, String resultJson, String resultSha256, String executionMode) {}
