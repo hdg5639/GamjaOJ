@@ -492,3 +492,43 @@ dialog.modal::backdrop { background:rgba(15,23,21,.45); }
 .submit-toast button { min-height:0; border:0; background:transparent; color:#9fb2ad; font-size:18px; line-height:1; padding:0 2px; }
 .held-note { margin-right:auto; align-self:center; font-size:13px; color:var(--muted); }
 .catalog-note.catalog-held { color:#8a5a00; font-weight:600; }
+/* Rule onboarding: request log as status cards, registered rules as a card grid. */
+.onboard-section { margin-top:24px; }
+.onboard-section h4 { display:flex; align-items:baseline; gap:8px; margin:0 0 10px; font-size:15px; }
+.onboard-section h4 small { color:var(--muted); font-weight:500; font-size:12px; }
+.onboard-list, .rule-grid { list-style:none; margin:0; padding:0; }
+.onboard-list { display:grid; gap:10px; }
+.onboard-card { display:flex; gap:14px; align-items:flex-start; justify-content:space-between; padding:14px 16px; border:1px solid var(--line); border-left:4px solid var(--line); border-radius:10px; background:var(--surface); }
+.onboard-card[data-state="running"] { border-left-color:#3b82c4; }
+.onboard-card[data-state="active"] { border-left-color:#1f9d6b; }
+.onboard-card[data-state="failed"] { border-left-color:#c2513f; }
+.onboard-main { min-width:0; flex:1; display:grid; gap:6px; }
+.onboard-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.onboard-head time { color:var(--muted); font-size:12px; white-space:nowrap; }
+.state-badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:700; background:var(--subtle); color:var(--muted); }
+.state-badge[data-state="running"] { background:#e7f0fa; color:#245f95; }
+.state-badge[data-state="active"] { background:#e3f4ec; color:#16765d; }
+.state-badge[data-state="failed"] { background:#fde8e6; color:#a1271b; }
+.onboard-title, .rule-card-title { margin:0; font-weight:650; font-size:14px; line-height:1.45; overflow-wrap:anywhere; }
+.onboard-chips { display:flex; flex-wrap:wrap; gap:5px; margin:0; }
+.onboard-chips span { padding:1px 8px; border-radius:6px; background:var(--subtle); color:var(--muted); font-size:11.5px; }
+.onboard-chips span[data-kind="level"] { background:#fff5dc; color:#795b0c; font-weight:700; }
+.onboard-chips span[data-kind="target"] { background:#e8eefc; color:#2a4a9a; }
+.onboard-chips span[data-kind="shared"] { background:#e3f4ec; color:#16765d; }
+.onboard-chips span[data-kind="off"] { background:#f3f3f3; color:#888; }
+.onboard-note { margin:0; font-size:13px; color:var(--ink); }
+.onboard-reason { color:#a1271b; }
+.onboard-cost { margin:0; font-size:11.5px; color:var(--muted); }
+.onboard-steps { display:flex; flex-wrap:wrap; gap:4px; list-style:none; margin:2px 0 0; padding:0; counter-reset:step; }
+.onboard-steps li { display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--muted); padding:2px 8px 2px 4px; border-radius:999px; background:var(--subtle); }
+.onboard-steps li::before { counter-increment:step; content:counter(step); display:grid; place-items:center; width:16px; height:16px; border-radius:50%; background:var(--line); color:var(--ink); font-size:10px; font-weight:700; }
+.onboard-steps li[data-done="true"]::before { content:"✓"; background:#1f9d6b; color:#fff; }
+.onboard-steps li[data-current="true"] { background:#e7f0fa; color:#245f95; font-weight:700; }
+.onboard-steps li[data-current="true"]::before { background:#3b82c4; color:#fff; }
+.onboard-actions { display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
+.rule-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
+.rule-card { display:grid; gap:8px; align-content:start; padding:14px 16px; border:1px solid var(--line); border-radius:10px; background:var(--surface); }
+.rule-card[data-status]:not([data-status="ACTIVE"]) { opacity:.75; }
+.rule-card-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.rule-card-actions button, .onboard-actions button { min-height:32px; padding:5px 12px; font-size:12.5px; }
+@media (max-width:600px) { .onboard-card { flex-direction:column; } .onboard-actions { flex-direction:row; } }

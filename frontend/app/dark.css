@@ -68,3 +68,10 @@
 :root[data-theme="dark"] :is(.editor-resize-handle:hover,.editor-resize-handle:focus-visible) { background:#4a3f1a; outline-color:#8fb3a2; }
 :root[data-theme="dark"] .run-console { border-color:#2c3d39; }
 :root[data-theme="dark"] .catalog-note.catalog-held { color:#f0c96a; }
+:root[data-theme="dark"] .state-badge[data-state="running"], :root[data-theme="dark"] .onboard-steps li[data-current="true"] { background:#16273a; color:#8cbcf0; }
+:root[data-theme="dark"] .state-badge[data-state="active"], :root[data-theme="dark"] .onboard-chips span[data-kind="shared"] { background:#16302a; color:#7fd3a3; }
+:root[data-theme="dark"] .state-badge[data-state="failed"] { background:#351c17; color:#ff9a86; }
+:root[data-theme="dark"] .onboard-reason { color:#ff9a86; }
+:root[data-theme="dark"] .onboard-chips span[data-kind="level"] { background:#302812; color:#f0c96a; }
+:root[data-theme="dark"] .onboard-chips span[data-kind="target"] { background:#1c2640; color:#9db4ff; }
+:root[data-theme="dark"] .onboard-chips span[data-kind="off"] { background:#222; color:#888; }

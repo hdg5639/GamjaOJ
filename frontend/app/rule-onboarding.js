@@ -6,9 +6,13 @@ import {categoryLabels} from './diagnostic-categories';
 
 const labels={QUEUED:'대기',AUTHORING:'규칙·코드 작성 중',AUTHORED:'독립 검증 코드 준비',ORACLE:'독립 검증 코드 작성 중',QUALIFYING:'실행 검증 중',ACTIVE:'등록 완료',HELD:'검증 보류',FAILED:'등록 실패',CANCELLED:'취소됨',DEADLINE_EXCEEDED:'처리 기한 초과'};
 const running=['QUEUED','AUTHORING','AUTHORED','ORACLE','QUALIFYING'];
+const steps=['대기','규칙·코드 작성','독립 검증 코드','실행 검증'];
+const stepOf=status=>({QUEUED:'대기',AUTHORING:'규칙·코드 작성',AUTHORED:'독립 검증 코드',ORACLE:'독립 검증 코드',QUALIFYING:'실행 검증'})[status];
+const stateOf=status=>running.includes(status)?'running':status==='ACTIVE'?'active':status==='CANCELLED'?'cancelled':'failed';
+const when=value=>value?new Date(value).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 const difficulties={EASY:'하',MEDIUM:'중',HARD:'상',EXPERT:'최상'};
-const styles={GENERAL:'일반',SIMULATION:'시뮬레이션 · SW 역량테스트형',COMMAND:'명령 처리 · B형'};
-const styleHelp={GENERAL:'새로운 규칙의 세계에서 어떤 기법을 써야 할지 스스로 판단하는 문제예요.',SIMULATION:'격자나 세계가 여러 규칙에 따라 단계별로 변하고, 과정 뒤의 결과를 구하는 문제예요.',COMMAND:'추가·변경·질의 명령이 수만 번 섞여 들어오고, 질의마다 답을 출력하는 문제예요.'};
+const styles={GENERAL:'일반',SIMULATION:'시뮬레이션',COMMAND:'명령 API 구현'};
+const styleHelp={GENERAL:'새로운 규칙의 세계에서 어떤 기법을 써야 할지 스스로 판단하는 문제예요.',SIMULATION:'격자나 세계가 여러 규칙에 따라 단계별로 변하고, 과정 뒤의 결과를 구하는 문제예요.',COMMAND:'초기화·변경·질의 같은 명령을 처리하는 기능을 구현하고, 질의마다 답을 출력하는 문제예요.'};
 const followups={QUEUED:'문제 생성 대기',DESIGNING:'문제 작성 중',BUILDING:'문제 작성 중',VALIDATING:'문제 검증 중',REVIEWING:'최종 검토 중',PUBLISHED:'문제 게시 완료',FAILED:'문제 생성 실패',HELD:'문제 생성 보류',DEADLINE_EXCEEDED:'문제 생성 기한 초과',CANCELLED:'문제 생성 취소'};
 const reasons={REFERENCE_ORACLE_DISAGREEMENT:'정답 코드와 독립 검증 코드의 결과가 달랐어요.',MUTANT_SURVIVED:'일부러 틀리게 만든 코드를 작은 입력으로 걸러내지 못했어요.',DUPLICATE_RULE_CONTRACT:'이미 등록된 규칙과 같아요.',ONBOARDING_BUDGET_CAP:'이 요청의 예산 한도를 넘었어요.',MONTHLY_BUDGET_EXHAUSTED:'이번 달 AI 예산이 부족해요.',STRESS_RESOURCE_MARGIN:'최대 입력에서 실행 시간 기준을 넘었어요.',LARGE_TESTS_NOT_DISCRIMINATING:'대형 입력이 느린 풀이와 효율적인 풀이를 구분하지 못했어요.',SLOW_SOLUTION_INCORRECT:'비교용 느린 풀이가 작은 입력에서 틀렸어요.',DOMAIN_VALIDATOR_REJECTED:'작성된 입력 일부가 입력 조건 검사를 통과하지 못했어요.',ONBOARDING_DEADLINE_EXCEEDED:'처리 기한 안에 마치지 못했어요.',INTERRUPTED_BY_RESTART:'서비스 재시작으로 작성이 중단됐어요. 같은 조건으로 다시 요청해 주세요.'};
 
@@ -82,22 +86,48 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen}) {
       {!target&&category==='AUTO'&&text.trim().length<10&&<p className="draft-help">분야를 고르거나 원하는 내용을 10자 이상 적어 주세요.</p>}
       {busyWork&&<p className="draft-help" role="status">진행 중인 등록이 끝나면 새로 요청할 수 있어요.</p>}
     </form>
-    {items.length>0&&<ul className="rule-onboarding-list">{itemPaging.visible.map(item=><li key={item.id}>
-      <p><strong>{labels[item.status]||item.status}</strong> · {item.label||item.request.slice(0,60)||'자동 주제'}{item.difficulty?` · ${difficulties[item.difficulty]||item.difficulty}`:''}{item.style&&item.style!=='GENERAL'?` · ${styles[item.style]}`:''}{item.targeted?' · 진단 습관 겨냥':''}{item.repairs>0?` · 자동 수정 ${item.repairs}회`:''}</p>
-      {item.status==='ACTIVE'&&item.publish&&<p className="draft-help">{item.followupError?`문제를 바로 만들지 못했어요: ${item.followupError}`:item.followupStatus?followups[item.followupStatus]||item.followupStatus:'문제 생성 준비 중'}
-        {item.publishedVersion&&onOpen&&<> <button className="primary" disabled={busy} onClick={()=>onOpen(item.publishedVersion)}>문제 풀기</button></>}</p>}
-      {item.status==='QUALIFYING'&&<p className="draft-help">실행 검증 {Object.values(item.checks||{}).filter(v=>['AC','OK','WA'].includes(v)).length}건 완료</p>}
-      {['HELD','FAILED','DEADLINE_EXCEEDED'].includes(item.status)&&<p className="draft-help">{reasons[item.error]||'검증 조건을 충족하지 못해 등록하지 않았어요.'}{item.failedCheck?` (실패한 검사: ${item.failedCheck})`:''} 사용한 AI 비용: ${Number(item.spentUsd||0).toFixed(3)}</p>}
-      {running.includes(item.status)&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/onboarding/${item.id}/cancel`,{method:'POST'})}>이 등록 취소</button>}
-    </li>)}</ul>}
-    <Pager paging={itemPaging} label="규칙 등록 요청 페이지"/>
+    {items.length>0&&<section className="onboard-section" aria-labelledby="onboard-log-heading">
+      <h4 id="onboard-log-heading">등록 요청 기록 <small>{items.length}건</small></h4>
+      <ul className="onboard-list">{itemPaging.visible.map(item=>{
+        const state=stateOf(item.status),step=steps.indexOf(stepOf(item.status));
+        return <li key={item.id} className="onboard-card" data-state={state}>
+          <div className="onboard-main">
+            <div className="onboard-head"><span className="state-badge" data-state={state}>{labels[item.status]||item.status}</span>
+              <time dateTime={item.createdAt}>{when(item.createdAt)}</time></div>
+            <p className="onboard-title">{item.label||item.request?.slice(0,80)||'자동으로 고른 주제'}</p>
+            <p className="onboard-chips">{item.difficulty&&<span data-kind="level">{difficulties[item.difficulty]||item.difficulty}</span>}
+              {item.style&&<span>{styles[item.style]||item.style}</span>}
+              {item.category&&item.category!=='AUTO'&&<span>{categoryLabels[item.category]||item.category}</span>}
+              {item.targeted&&<span data-kind="target">진단 습관 겨냥</span>}
+              {item.repairs>0&&<span>자동 수정 {item.repairs}회</span>}</p>
+            {state==='running'&&<ol className="onboard-steps" aria-label="진행 단계">{steps.map((name,index)=><li key={name} data-done={index<step} data-current={index===step}>{name}</li>)}</ol>}
+            {item.status==='QUALIFYING'&&<p className="onboard-note">실행 검증 {Object.values(item.checks||{}).filter(v=>['AC','OK','WA'].includes(v)).length}건 완료</p>}
+            {item.status==='ACTIVE'&&item.publish&&<p className="onboard-note">{item.followupError?`문제를 바로 만들지 못했어요: ${item.followupError}`:item.followupStatus?followups[item.followupStatus]||item.followupStatus:'문제 생성 준비 중'}</p>}
+            {state==='failed'&&<p className="onboard-note onboard-reason">{reasons[item.error]||'검증 조건을 충족하지 못해 등록하지 않았어요.'}{item.failedCheck?` · 실패한 검사: ${item.failedCheck}`:''}</p>}
+            {Number(item.spentUsd||0)>0&&<p className="onboard-cost">AI 비용 ${Number(item.spentUsd).toFixed(3)}</p>}
+          </div>
+          <div className="onboard-actions">
+            {item.publishedVersion&&onOpen&&<button className="primary" disabled={busy} onClick={()=>onOpen(item.publishedVersion)}>문제 풀기</button>}
+            {running.includes(item.status)&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/onboarding/${item.id}/cancel`,{method:'POST'})}>등록 취소</button>}
+          </div>
+        </li>;})}</ul>
+      <Pager paging={itemPaging} label="규칙 등록 요청 페이지"/>
+    </section>}
     {removed&&<p className="notice success" role="status">{removed}</p>}
-    {rules.length>0&&<><h4>내가 등록한 규칙</h4><ul className="rule-onboarding-list">{rulePaging.visible.map(rule=><li key={rule.id}>
-      <p><strong>{rule.label}</strong> · {rule.category} · {rule.status==='ACTIVE'?(rule.shared?'다른 회원에게 공개':'나만 사용'):'사용 중지'}</p>
-      {rule.status==='ACTIVE'&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/${rule.id}/sharing`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({shared:!rule.shared})})}>{rule.shared?'공개 해제':'다른 회원에게 공개'}</button>}
-      <button className="secondary" disabled={busy} onClick={()=>{setRemoving(rule.id);setRemoved('');}}>삭제</button>
-      {removing===rule.id&&<div className="remove-confirm" role="group" aria-label={`${rule.label} 삭제 확인`}><p>이 규칙과 등록 기록을 삭제할까요? 이미 만든 문제는 그대로 남고, 이 규칙으로 새 문제를 만들 수 없게 돼요. 되돌릴 수 없어요.</p>
-        <button className="danger" disabled={busy} onClick={()=>removeRule(rule)}>삭제하기</button> <button className="secondary" disabled={busy} onClick={()=>setRemoving(null)}>취소</button></div>}
-    </li>)}</ul><Pager paging={rulePaging} label="내 규칙 페이지"/></>}
+    {rules.length>0&&<section className="onboard-section" aria-labelledby="my-rules-heading">
+      <h4 id="my-rules-heading">내가 등록한 규칙 <small>{rules.length}개</small></h4>
+      <ul className="rule-grid">{rulePaging.visible.map(rule=><li key={rule.id} className="rule-card" data-status={rule.status}>
+        <p className="rule-card-title">{rule.label}</p>
+        <p className="onboard-chips"><span>{categoryLabels[rule.category]||rule.category}</span>
+          <span data-kind={rule.status!=='ACTIVE'?'off':rule.shared?'shared':'private'}>{rule.status==='ACTIVE'?(rule.shared?'다른 회원에게 공개':'나만 사용'):'사용 중지'}</span></p>
+        <div className="rule-card-actions">
+          {rule.status==='ACTIVE'&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/${rule.id}/sharing`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({shared:!rule.shared})})}>{rule.shared?'공개 해제':'공개하기'}</button>}
+          <button className="secondary" disabled={busy} onClick={()=>{setRemoving(rule.id);setRemoved('');}}>삭제</button>
+        </div>
+        {removing===rule.id&&<div className="remove-confirm" role="group" aria-label={`${rule.label} 삭제 확인`}><p>이 규칙과 등록 기록을 삭제할까요? 이미 만든 문제는 그대로 남고, 이 규칙으로 새 문제를 만들 수 없게 돼요. 되돌릴 수 없어요.</p>
+          <button className="danger" disabled={busy} onClick={()=>removeRule(rule)}>삭제하기</button> <button className="secondary" disabled={busy} onClick={()=>setRemoving(null)}>취소</button></div>}
+      </li>)}</ul>
+      <Pager paging={rulePaging} label="내 규칙 페이지"/>
+    </section>}
   </section>;
 }

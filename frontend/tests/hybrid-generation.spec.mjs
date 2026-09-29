@@ -187,11 +187,13 @@ test('member rule registration submits once, shows qualification progress and to
   expect(writes[0].body).toEqual({request:'구간 합 질의를 누적 합으로 처리하는 규칙',difficulty:'EXPERT',style:'COMMAND',category:'AUTO',publish:true,shared:false});
   await expect(page.getByRole('button',{name:'이 조건으로 문제 만들기'})).toBeDisabled();
   items=[{...items[0],status:'ACTIVE',label:'구간 합',difficulty:'EXPERT',style:'COMMAND',publish:true,followupStatus:'PUBLISHED',publishedVersion:'hybrid-check-x'}];mine=[{id:'rule-o1-v1',label:'구간 합',category:'누적 합',status:'ACTIVE',shared:false}];
-  await page.getByRole('button',{name:'이 등록 취소'}).isVisible();
+  await expect(page.getByRole('button',{name:'등록 취소'})).toBeVisible();
+  await expect(page.getByRole('list',{name:'진행 단계'})).toBeVisible();
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(page.getByText('나만 사용')).toBeVisible({timeout:8000});
   await expect(page.getByText('문제 게시 완료',{exact:false})).toBeVisible();await expect(page.locator('.rule-onboarding').getByRole('button',{name:'문제 풀기',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'다른 회원에게 공개'}).click();
+  await expect(page.locator('.onboard-card .onboard-chips').getByText('명령 API 구현',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'공개하기'}).click();
   await expect(page.getByText('다른 회원에게 공개',{exact:false}).first()).toBeVisible();
 });
 test('generation history pages five results at a time',async({page})=>{
