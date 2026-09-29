@@ -653,3 +653,27 @@ test('formal submission results show per test in the console with a short popup'
   await console.getByRole('button',{name:'실행 결과',exact:true}).click();
   await expect(console.getByText('테스트 2 〉 실패 (오답)')).toHaveCount(0);
 });
+
+test('vim mode edits with normal and insert modes and keeps completion', async ({ page }) => {
+  await workspace(page);
+  const editor = page.getByLabel('Main.java', { exact: true });
+  await editor.fill('first line\nsecond line');
+  await page.locator('#editor-tools > summary').click();
+  await page.getByLabel('Vim 모드',{exact:false}).check();
+  await page.locator('#editor-tools > summary').click();
+  await expect(page.locator('.cm-vim-panel')).toBeVisible();
+  await editor.click();
+  await page.keyboard.press('Escape');
+  await page.keyboard.type('ggdd');
+  await expectCode(editor, 'second line');
+  await page.keyboard.type('Go');
+  await page.keyboard.type('Sys');
+  await expect(page.locator('.cm-tooltip-autocomplete')).toBeVisible();
+  await page.keyboard.press('Escape');await page.keyboard.press('Escape');
+  await page.keyboard.type('u');
+  await page.reload();
+  await expect(page.locator('.cm-vim-panel')).toBeVisible();
+  await page.locator('#editor-tools > summary').click();
+  await page.getByLabel('Vim 모드',{exact:false}).uncheck();
+  await expect(page.locator('.cm-vim-panel')).toHaveCount(0);
+});

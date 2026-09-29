@@ -79,6 +79,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
   }
   const profile=options?.profiles?.find(item=>item.id===profileId);
   const jobPaging=usePage(jobs,5);
+  const [sideTab,setSideTab]=useState('results'),[sideHost,setSideHost]=useState(null),[counts,setCounts]=useState({log:0,rules:0,running:false});
   const profileLabel=id=>options?.profiles?.find(item=>item.id===id)?.label||(id==='dijkstra-shortest-path-v1'?'다익스트라 · 가중치 최단 거리':id==='bfs-shortest-path-v1'?'BFS · 무방향 그래프 최단 거리':id&&id!=='zero-one-items-v1'?'규칙 고정 연습 문제':'0/1 배낭 · 물건 선택');
   return <div className="generation-layout hybrid-generation">
     <section className="generation-compose" aria-labelledby="hybrid-heading">
@@ -102,9 +103,15 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
         <button className="primary" disabled={busy||(!pending&&(!options?.enabled||!profile||!consent||running||otherActive||!loaded))}>{busy?'처리 중…':pending?'기존 요청 확인':'이 규칙으로 생성·게시'}</button>
       </form>
       {error&&<p className="notice error" role="alert">{error}</p>}
-      <RuleOnboarding api={api} onRegistered={loadOptions} draft={ruleDraft} onOpen={onOpen}/>
+      <RuleOnboarding api={api} onRegistered={loadOptions} draft={ruleDraft} onOpen={onOpen} listHost={sideHost} sideTab={sideTab} onRequested={()=>setSideTab('log')} onCounts={setCounts}/>
     </section>
-    <section className="generation-results" aria-labelledby="hybrid-generation-results">
+    <section className="generation-results generation-side" aria-labelledby="hybrid-generation-results">
+      <div className="side-tabs" role="tablist" aria-label="오른쪽 패널">
+        {[['results','진행·결과',jobs.length],['log','등록 기록',counts.log],['rules','내 규칙',counts.rules]].map(([id,label,count])=>
+          <button key={id} type="button" role="tab" aria-selected={sideTab===id} onClick={()=>setSideTab(id)}>{label}{count?<small>{count}</small>:null}{id==='log'&&counts.running?<span className="side-dot" aria-label="진행 중"/>:null}</button>)}
+      </div>
+      <div ref={setSideHost} hidden={sideTab==='results'}/>
+      <div hidden={sideTab!=='results'}>
       <h3 id="hybrid-generation-results" tabIndex={-1} ref={results}>진행·결과</h3>
       <p className="draft-help">최근 30건 · 화면을 벗어나도 접수된 요청은 계속됩니다. 다음에 돌아와 이어서 확인할 수 있어요.</p>
       {listError&&<p className="notice error" role="alert">진행 상태를 새로 확인하지 못했어요. {listError} <button className="secondary" onClick={refresh} disabled={busy}>상태 다시 확인</button></p>}
@@ -124,6 +131,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
         </div>
       </details>)}</div>
       <Pager paging={jobPaging} label="규칙 고정 출제 결과 페이지"/>
+      </div>
     </section>
   </div>;
 }

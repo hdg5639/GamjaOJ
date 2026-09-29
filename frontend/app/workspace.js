@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
 import RunConsole, { SubmitTests, Examples } from './run-console';
 import LimitChips from './limit-chips';
+import {useVimMode} from './editor-settings';
 import {scheduleServerDraft,loadServerDraft,readLocalDraft,writeLocalDraft,newer} from './server-drafts';
 import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
 import DiagnosticPanel from './diagnostic-panel';
@@ -68,6 +69,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
   const [notice, setNotice] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [draftStatus, setDraftStatus] = useState('');
+  const [vim,setVim]=useVimMode();
   const draftTicket=useRef(0),versionRef=useRef(null);
   versionRef.current=version;
   const storageKey = `gamjaoj-pending-${user.id}`;
@@ -354,6 +356,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         <div className="code-heading"><span>{inspected?languageInfo[recordLanguage(inspected)].file:lang.file}</span>
           <span className="code-tools"><label className="language-choice"><span className="visually-hidden">언어</span><select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
           {!inspected&&<details id="editor-tools" className="tool-pop"><summary>도구</summary><div className="tool-pop-panel">
+            <label className="check-row vim-toggle"><input type="checkbox" checked={vim} onChange={e=>setVim(e.target.checked)}/>Vim 모드 <small>Esc 명령 모드 · i 입력 모드</small></label>
             <strong>편집기 단축키 · 자동완성</strong><span>Ctrl+Space 후보 · Enter 확정 · Tab 들여쓰기 · Esc 다음 Tab으로 나가기 · Ctrl/⌘+F 검색 · Ctrl/⌘+Enter 제출</span>
             <strong>파일</strong>
             <label className="file-import">{language==='JAVA'?'Java':lang.label} 파일 불러오기<input type="file" accept={lang.extension} disabled={busy} onChange={importSource} /></label>
@@ -363,7 +366,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         <p className="draft-help editor-meta" title={inspected?'':draftStatus}><span className="draft-status" hidden={!!inspected} aria-live="polite">{draftStatus}</span></p>
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         <div className="editor-views" style={size.height==null?undefined:{flex:`0 0 ${size.height}px`,height:size.height}}><div className="editor-view" hidden={!!inspected}>
-        <CodeEditor key={`${user.id}:${version}:${language}`} language={language} label={lang.file} value={source} disabled={busy} onChange={editSource}
+        <CodeEditor key={`${user.id}:${version}:${language}`} language={language} label={lang.file} value={source} disabled={busy} onChange={editSource} vim={vim}
           onLimit={() => setError('너무 긴 코드는 입력할 수 없어요. 기존 내용을 유지했어요. 제출 코드는 UTF-8 기준 64 KiB 이내여야 해요.')}
           onSubmit={() => document.getElementById('code-form')?.requestSubmit()} />
         </div>{inspected&&<div className="editor-view"><CodeEditor key={inspected.id} id="snapshot-source" label="기록 코드" language={recordLanguage(inspected)} value={inspected.source||''} disabled={true} onChange={()=>{}} onSubmit={()=>{}} onLimit={()=>{}} /></div>}</div>

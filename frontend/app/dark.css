@@ -75,3 +75,4 @@
 :root[data-theme="dark"] .onboard-chips span[data-kind="level"] { background:#302812; color:#f0c96a; }
 :root[data-theme="dark"] .onboard-chips span[data-kind="target"] { background:#1c2640; color:#9db4ff; }
 :root[data-theme="dark"] .onboard-chips span[data-kind="off"] { background:#222; color:#888; }
+:root[data-theme="dark"] .side-tabs button[aria-selected="true"] { box-shadow:0 1px 4px #00000040; }
