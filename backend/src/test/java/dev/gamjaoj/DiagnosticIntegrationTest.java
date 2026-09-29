@@ -81,6 +81,25 @@ class DiagnosticIntegrationTest {
         var task=queue.claim(UUID.randomUUID()).orElseThrow();
         assertThat(task.executionProfile().path("testWallSeconds").asInt()).isEqualTo(4);
     }
+    @Test void alignmentMigrationUpdatesOpenSessionsButPreservesAdmittedExecution() throws Exception {
+        var diagnostic=start();var q=diagnostic.current();
+        var admitted=submit(q);
+        assertThat(admitted.execution().timeLimitMs()).isEqualTo(5000);
+        String limits=ProblemTimeLimitsTest.limits(2,1,4);
+        jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id=?").param(limits).param(q.problemVersion()).update();
+        String migration=new org.springframework.core.io.ClassPathResource("db/migration/V59__align_open_diagnostic_time_limits.sql")
+                .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        jdbc.sql(migration).update();
+        assertThat(jdbc.sql("SELECT time_limits_json FROM diagnostic_item WHERE id=?").param(q.itemId()).query(String.class).single()).isEqualTo(limits);
+        assertThat(submissions.detail(user,admitted.id()).execution().timeLimitMs()).isEqualTo(5000);
+        finish("WA");
+        var later=submit(q);
+        assertThat(later.execution().timeLimitMs()).isEqualTo(2000);
+        var task=queue.claim(UUID.randomUUID()).orElseThrow();
+        assertThat(task.submissionId()).isEqualTo(later.id());
+        assertThat(task.executionProfile().path("testWallSeconds").asInt()).isEqualTo(2);
+        assertThat(jdbc.sql(migration).update()).isZero();
+    }
     SubmissionController.Request request(Diagnostics.Question q) { return new SubmissionController.Request(q.problemVersion(),SOURCE,null,q.itemId()); }
     Submissions.View submit(Diagnostics.Question q) { return submissions.submit(user,UUID.randomUUID(),request(q)); }
     void finish(String verdict) {
