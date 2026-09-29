@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18788';
 for(const width of [390,1440])test('optional diagnostic survives retry and advances at '+width,async({page})=>{
   await page.setViewportSize({width,height:900});
-  let session=null,keys=[],submission=null,evaluations=[],correctionKeys=[],plans=[],training=[],planKeys=[],generationCalls=0,orderCalls=0;
+  let runInputs=[],session=null,keys=[],submission=null,evaluations=[],correctionKeys=[],plans=[],training=[],planKeys=[],generationCalls=0,orderCalls=0;
   const q=n=>({itemId:'item'+n,problemVersion:'v'+n,title:'진단 문항 '+n,statement:'두 수를 더하세요.',sampleInput:'1 2',sampleOutput:'3',examples:[{input:'1 2',output:'3'},{input:'10 -4',output:'6'}],languages:[{id:'JAVA',label:'Java 8',timeLimitMs:5000,memoryMb:384},{id:'CPP',label:'C++17',timeLimitMs:3000,memoryMb:256},{id:'PYTHON',label:'Python 3.12',timeLimitMs:8000,memoryMb:256}]});
   await page.route('**/api/**',async route=>{
     const req=route.request(),path=new URL(req.url()).pathname;let data=[];
@@ -25,6 +25,7 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
       if(keys.length===1)return route.abort();
       expect(keys[1]).toBe(keys[0]);data=submission;
     }
+    if(path==='/api/runs'&&req.method()==='POST'){const body=req.postDataJSON();runInputs.push(body.input);data={id:'run'+runInputs.length,input:body.input,status:'FINISHED',verdict:'OK',stdout:body.input==='1 2'?'3':'7',stderr:'',createdAt:new Date().toISOString()};}
     if(path==='/api/submissions'&&req.method()==='GET')data=submission?[submission]:[];
     if(path==='/api/diagnostics/session/items/item2/skip'){session={...session,status:'COMPLETED',current:null,items:session.items.map((i,n)=>n===1?{...i,status:'SKIPPED'}:i)};data=session;}
     if(path==='/api/diagnostic-plans/order'){
@@ -91,6 +92,19 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
     await expect(page.locator('#diagnostic-problem-content')).toBeHidden();
   }
   await page.screenshot({path:`/tmp/gamja-diagnostic-compact-${width}.png`,fullPage:true});
+  await page.getByRole('button',{name:'코드 실행',exact:true}).click();
+  const console=page.getByRole('region',{name:'실행 결과',exact:true});
+  await expect(console.getByText('예제 1 / 2개 통과')).toBeVisible();
+  await expect(console.getByText('테스트를 통과하였습니다.')).toBeVisible();
+  await expect(console.getByText('실행한 결괏값이 기댓값과 다릅니다.')).toBeVisible();
+  expect(runInputs).toEqual(['1 2','10 -4']);
+  await page.getByRole('button',{name:'입력 직접 넣기',exact:true}).click();
+  await page.getByLabel('직접 넣을 입력',{exact:true}).fill('5 5');
+  await page.getByRole('button',{name:'코드 실행',exact:true}).click();
+  await expect(console.getByText('직접 넣은 입력이라 기댓값과 비교하지 않았어요.',{exact:false})).toBeVisible();
+  expect(runInputs).toEqual(['1 2','10 -4','5 5']);
+  await page.screenshot({path:`/tmp/gamja-diagnostic-console-${width}.png`,fullPage:true});
+  await page.getByRole('button',{name:'예제로 실행하기',exact:true}).click();
 
   const height=page.getByRole('separator',{name:'진단 편집기 높이 조절',exact:true});
   await height.focus();await height.press('Home');

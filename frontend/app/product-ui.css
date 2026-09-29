@@ -414,3 +414,5 @@ button.danger:disabled { opacity:.6; }
 .submit-console[data-verdict="AC"] strong { color:var(--green); }
 .submit-console:not([data-verdict="AC"]):not([data-verdict="PENDING"]) strong { color:#a1271b; }
 .editor-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.run-console .run-detail + .run-detail { margin-top:10px; padding-top:10px; border-top:1px solid #2c3d39; }
+.diagnostic-code-column .editor-actions > :first-child { margin-right:auto; }

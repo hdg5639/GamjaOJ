@@ -19,6 +19,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
   const [source,setSource]=useState(starter),[input,setInput]=useState(''),[result,setResult]=useState(null),[banner,setBanner]=useState('');
   const [request,setRequest]=useState(null),[records,setRecords]=useState([]),[record,setRecord]=useState(null);
   const [scope,setScope]=useState({});
+  const [runs,setRuns]=useState(null),[inputOpen,setInputOpen]=useState(false);
   const lock=useRef(false),revision=useRef(0),active=useRef(null),heading=useRef(null);
   const requestKey=`gamjaoj-diagnostic-request-${user.id}`;
   const current=session?.current,item=session?.items.find(i=>i.id===current?.itemId);
@@ -54,7 +55,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
     if(!(current.languages||[languageInfo.JAVA]).some(l=>l.id===chosen))chosen='JAVA';
     setLanguage(chosen);
     try{setSource(localStorage.getItem(draftKey(current.itemId,chosen))??(chosen==='JAVA'?starter:starters[chosen]));}catch{setSource(starters[chosen]);}
-    setInput(current.sampleInput||'');setRecord(null);heading.current?.focus();
+    setInput(current.sampleInput||'');setRecord(null);setInputOpen(false);heading.current?.focus();
   },[current?.itemId]);
   useEffect(()=>{
     if(!session||session.status==='COMPLETED')return;
@@ -86,6 +87,23 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
       if(retain&&e.status>=400&&e.status<500){setRequest(null);try{sessionStorage.removeItem(requestKey);}catch{}}
       setError(e.message);
     }finally{lock.current=false;setBusy(false);}
+  }
+  /** Like coding-test sites: run every public example (or the custom input) one by one and compare with the expected output.
+   *  Sequential so the per-user limit of three unfinished jobs is never hit by the run itself. */
+  async function runCode(){
+    if(lock.current||!current)return;lock.current=true;setBusy(true);setError('');
+    const examples=current.examples?.length?current.examples:[{input:current.sampleInput,output:current.sampleOutput}];
+    const cases=inputOpen?[{label:'직접 입력',input,output:null}]:examples.map((e,i)=>({label:`테스트 ${i+1}`,input:e.input,output:e.output}));
+    setRuns({itemId:current.itemId,cases});
+    const update=(index,result)=>setRuns(state=>state&&{...state,cases:state.cases.map((c,j)=>j===index?{...c,result}:c)});
+    try{
+      for(let index=0;index<cases.length;index++){
+        let run=await api('/api/runs',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({...body,input:cases[index].input})});
+        update(index,run);
+        while(run.status!=='FINISHED'){await new Promise(resolve=>setTimeout(resolve,900));run=await api(`/api/runs/${run.id}`);update(index,run);}
+        if(run.verdict==='CE')break;
+      }
+    }catch(e){setError(e.message);}finally{lock.current=false;setBusy(false);}
   }
   function edit(value){setSource(value);try{localStorage.setItem(draftKey(current.itemId),value);}catch{setError('브라우저 저장 공간을 사용할 수 없어 초안을 보관하지 못했어요.');}}
   async function history(){try{
@@ -132,12 +150,17 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
           <ResizeHandle label="진단 편집기 높이 조절" orientation="horizontal" value={size.height} min={160} max={1000} step={20} onChange={height=>changeSize({height})}/>
           <EditorSizing size={size} onChange={changeSize} onReset={resetSize} diagnostic/>
           <p className="muted">초안은 이 브라우저에 저장됩니다. 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.</p>
-          <button className="primary" disabled={disabled||!!item.pending} onClick={()=>mutate('/api/submissions',body,true)}>정식 제출 ({5-item.attempts}회 남음)</button>
-          <button className="secondary" disabled={disabled||!!item.pending} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${current.itemId}/skip`,{})}>모르겠어요 · 건너뛰기</button>
           {session.sourceSessionId&&<div><p className="muted">이 문제나 풀이를 이미 알고 있으면 아래에 알려 주세요. 기록 후 건너뛰며 약점이나 독립적인 실력 향상 근거로 쓰지 않습니다.</p><button className="secondary" disabled={disabled||!!item.pending} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${current.itemId}/exposure`,{},true)}>이 문제나 풀이를 본 적 있어요 · 기록 후 건너뛰기</button></div>}
-          <label>직접 실행 입력<textarea value={input} disabled={disabled} onChange={e=>setInput(e.target.value)} rows={4}/></label><button className="secondary" disabled={disabled} onClick={()=>mutate('/api/runs',{...body,input},true)}>직접 실행</button>
+          <RunConsole current={current} runs={runs?.itemId===current.itemId?runs:null} inputOpen={inputOpen} input={input} setInput={setInput} disabled={disabled}/>
+          {result&&result.input==null&&result.diagnosticItemId===current.itemId&&<section className="submit-console" aria-label="제출 결과" data-verdict={result.verdict||'PENDING'}><strong>제출 결과 〉 {verdictText(result.verdict)||'채점 중'}</strong>{verdictHelp[result.verdict]&&<span className="draft-help">{verdictHelp[result.verdict]}</span>}{result.compileMessage&&<pre className="compiler-message">{result.compileMessage}</pre>}</section>}
+          <div className="editor-actions">
+            <button className="secondary" disabled={disabled||!!item.pending} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${current.itemId}/skip`,{})}>모르겠어요 · 건너뛰기</button>
+            <button className="secondary" disabled={disabled} onClick={()=>setInputOpen(open=>!open)}>{inputOpen?'예제로 실행하기':'입력 직접 넣기'}</button>
+            <button className="secondary" disabled={disabled} onClick={runCode}>코드 실행</button>
+            <button className="primary" disabled={disabled||!!item.pending} onClick={()=>mutate('/api/submissions',body,true)}>정식 제출 ({5-item.attempts}회 남음)</button>
+          </div>
         </div></div>}
-      {result&&<div role="status" className="notice"><strong>{number(result.diagnosticItemId)||''}번 문항 {result.input==null?'제출 결과':'실행 결과'}: {verdictText(result.verdict)||'채점 중'}</strong>{verdictHelp[result.verdict]&&<p>{verdictHelp[result.verdict]}</p>}{result.compileMessage&&<pre>{result.compileMessage}</pre>}{result.input!=null&&<><pre>{result.stdout}</pre><pre>{result.stderr}</pre></>}</div>}
+      {result&&result.input==null&&result.diagnosticItemId!==current?.itemId&&<div role="status" className="notice"><strong>{number(result.diagnosticItemId)||''}번 문항 제출 결과: {verdictText(result.verdict)||'채점 중'}</strong>{verdictHelp[result.verdict]&&<p>{verdictHelp[result.verdict]}</p>}</div>}
       {session.status==='COMPLETED'&&<p className="notice">진단을 마쳤어요. 판정 기록을 확인하고 아래에서 종합 평가를 요청할 수 있어요.</p>}
       {session.status==='COMPLETED'&&<DiagnosticReassessment key={`reassessment-${session.id}`} api={api} session={session} busy={busy||!!request} onStart={mutate}/> }
       <DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} />
@@ -145,5 +168,42 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
       {session.status==='COMPLETED'&&<button className="secondary" onClick={()=>{active.current=null;setSession(null);setBanner('');setRecords([]);setRecord(null);}}>다른 진단 보기</button>}
     </>}
     {!session&&sessions.length>0&&<details><summary>지난 진단</summary>{sessions.map(s=><button className="secondary" key={s.id} onClick={()=>accept(s)}>{s.items.length}문항 · {s.status==='COMPLETED'?'완료':'이어서 보기'}</button>)}</details>}
+  </section>;
+}
+
+const tokens=text=>(text||'').trim().split(/\s+/).filter(Boolean);
+function caseOutcome(c){
+  const r=c.result;
+  if(!r)return['대기 중이에요.',undefined];
+  if(r.status!=='FINISHED')return['실행 중이에요…',undefined];
+  if(r.verdict!=='OK')return[`${verdictText(r.verdict)}${verdictHelp[r.verdict]?' · '+verdictHelp[r.verdict]:''}`,false];
+  if(c.output==null)return['실행을 마쳤어요. 직접 넣은 입력이라 기댓값과 비교하지 않았어요.',undefined];
+  return tokens(r.stdout).join(' ')===tokens(c.output).join(' ')?['테스트를 통과하였습니다.',true]:['실행한 결괏값이 기댓값과 다릅니다.',false];
+}
+function RunConsole({current,runs,inputOpen,input,setInput,disabled}){
+  const outcomes=runs?runs.cases.map(caseOutcome):[];
+  const compared=runs&&runs.cases.every(c=>c.output!=null)&&outcomes.every(o=>o[1]!==undefined);
+  return <section className="run-console" aria-label="실행 결과">
+    <div className="console-head"><h3>실행 결과</h3>{compared&&<small>예제 {outcomes.filter(o=>o[1]).length} / {outcomes.length}개 통과</small>}</div>
+    {inputOpen&&<div className="console-input">
+      <label htmlFor="diagnostic-input">직접 넣을 입력</label>
+      <textarea id="diagnostic-input" value={input} disabled={disabled} onChange={e=>setInput(e.target.value)} rows={4} maxLength={16384} spellCheck="false"/>
+      <div className="console-input-actions"><button type="button" className="secondary" disabled={disabled} onClick={()=>setInput(current.sampleInput||'')}>예제 입력으로 되돌리기</button>
+        <span className="draft-help">입력창이 열려 있으면 ‘코드 실행’이 이 입력으로 실행해요. 실행은 제출 횟수에 포함되지 않아요.</span></div>
+    </div>}
+    <div className="console-body" aria-live="polite">
+      {!runs&&<p className="muted">아래 ‘코드 실행’을 누르면 예제 {(current.examples||[0]).length}개로 차례로 실행하고 기댓값과 비교한 결과가 여기에 나와요. 실행은 제출 횟수에 포함되지 않아요.</p>}
+      {runs?.cases.map((c,index)=><article className="run-detail" key={index} data-passed={outcomes[index][1]===undefined?undefined:String(outcomes[index][1])}>
+        <dl className="console-case">
+          <dt>{c.label}</dt><dd></dd>
+          <dt>입력값</dt><dd><pre aria-label={`${c.label} 입력`}>{c.input||'(빈 입력)'}</pre></dd>
+          {c.output!=null&&<><dt>기댓값</dt><dd><pre aria-label={`${c.label} 기댓값`}>{c.output}</pre></dd></>}
+          {c.result?.status==='FINISHED'&&<><dt>출력</dt><dd><pre aria-label={`${c.label} 출력`}>{c.result.stdout||'(출력 없음)'}</pre></dd></>}
+          <dt>실행 결과</dt><dd><strong className="console-outcome">{outcomes[index][0]}</strong></dd>
+        </dl>
+        {c.result?.compileMessage&&<pre className="compiler-message">{c.result.compileMessage}</pre>}
+        {c.result?.stderr&&<><h4>표준 오류</h4><pre>{c.result.stderr}</pre></>}
+      </article>)}
+    </div>
   </section>;
 }
