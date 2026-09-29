@@ -105,8 +105,7 @@ footer { border-top: 1px solid var(--line); padding: 18px 0; font-size: 12px; co
 .code-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .language-badge { font-size: 12px; color: var(--muted); }
 #source, #custom-input, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 4; }
-.code-editor { height: 100%; min-height: 0; min-width: 0; overflow: hidden; border: 1px solid #3c3f41; border-radius: var(--radius); }
-#source:focus-within { outline: 2px solid var(--green); outline-offset: 2px; }
+.code-editor { height: 100%; min-height: 0; min-width: 0; overflow: hidden; border-radius: var(--radius); }
 .code-editor .cm-focused { outline: none; }
 .code-editor .cm-search { display: flex; flex-wrap: wrap; gap: 4px; }
 .code-editor .cm-search input { width: auto; min-width: 0; }
@@ -332,7 +331,7 @@ pre[aria-label$="코드"] { white-space: pre; overflow-wrap: normal; }
 .diagnostic-workspace { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:24px; margin-top:20px; }
 .diagnostic-workspace > * { min-width:0; }
 .diagnostic-statement { white-space:pre-wrap; }
-.diagnostic-editor { height:390px; overflow:hidden; border:1px solid var(--border,#666); }
+.diagnostic-editor { height:390px; overflow:hidden; border-radius:var(--radius); }
 .diagnostic-panel pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:360px; overflow:auto; }
 .diagnostic-panel button { margin:4px; }
 .diagnostic-panel fieldset { margin:16px 0; padding:16px; }
