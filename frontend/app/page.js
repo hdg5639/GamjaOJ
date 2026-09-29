@@ -112,7 +112,7 @@ export default function Home() {
 
   return <div className={`shell ${user ? 'signed-in' : ''}`} data-sidebar-collapsed={sidebarCollapsed}>
     <a className="skip-link" href="#main-content">본문으로 이동</a>
-    <AppHeader key={user?.id || 'anonymous'}><a href="/" className="brand"><span className="potato" aria-hidden="true">●</span> GamjaOJ</a>
+    <AppHeader key={user?.id || 'anonymous'}><a href="/" className="brand"><img className="brand-symbol" src="/gamjaoj-favicon.svg" alt="" width="34" height="34"/><span>Gamja<span className="brand-accent">OJ</span></span></a>
       <span className="header-note">문제를 풀고, 나의 다음 단계를 찾다.</span>
       {user && <nav className="account-nav" aria-label="계정 메뉴"><span className="user-name">{user.nickname}님</span>
         <button className="secondary" onClick={() => setSettings(value => !value)}>{settings ? '문제 풀기' : '내 설정'}</button>

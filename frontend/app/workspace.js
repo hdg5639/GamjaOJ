@@ -293,7 +293,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       <nav className="workspace-nav" aria-label="작업 화면">{[
         ['home','문제 탐색'],['practice','문제 풀기'],['diagnostic','선택 진단'],['generation','내 문제 생성'],['training','훈련 기록'],['mypage','마이페이지']
       ].map(([id,title])=><button key={id} title={title} aria-pressed={screen===id||(id==='home'&&screen==='catalog')} className={screen===id||(id==='home'&&screen==='catalog')?'active':''} onClick={()=>setScreen(id)}><NavIcon name={id}/><span>{title}</span></button>)}</nav>
-      <div className="navigation-note"><span className="potato" aria-hidden="true">●</span><p>한 문제씩,<br/>내 것으로.</p><small>GamjaOJ · CODE & LEARN</small></div>
+      <div className="navigation-note"><img className="brand-symbol" src="/gamjaoj-favicon.svg" alt="" width="36" height="36"/><p>한 문제씩,<br/>내 것으로.</p><small>GamjaOJ · CODE & LEARN</small></div>
     </aside>
     <div className="workspace-heading"><div><span className="page-kicker">{['home','catalog'].includes(screen)?'PROBLEM LIBRARY':screen==='practice'?'WORKSPACE':'MY LEARNING'}</span><h1 className="workspace-title">{{home:'문제 탐색',catalog:'문제 탐색',practice:'문제 풀기',diagnostic:'선택 진단',generation:'내 문제 생성',training:'훈련 기록',mypage:'마이페이지'}[screen]}</h1></div>
       {screen==='practice'&&<span className="muted">{currentSession ? `훈련 중 · ${currentSession.goal || '자유 연습'}` : activeSession ? `자유 풀이 · ${activeSession.problemVersion} 훈련은 유지 중` : `${lang.label} · ${lang.file}`}</span>}

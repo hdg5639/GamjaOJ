@@ -465,3 +465,6 @@ dialog.modal::backdrop { background:rgba(15,23,21,.45); }
 .code-heading .code-tools .reset-code, .code-heading .code-tools .tool-pop > summary { padding:5px 9px; }
 .modal-body h4 { margin:4px 0 6px; }
 .modal-body > h2, .modal-body section > h2 { margin-top:18px; font-size:18px; }
+.brand-symbol { display:block; flex-shrink:0; }
+.brand .brand-accent { color:#08B85B; }
+.navigation-note .brand-symbol { margin-bottom:12px; }
