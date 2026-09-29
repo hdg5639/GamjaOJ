@@ -22,9 +22,18 @@ if docker network inspect gamjaoj_generation >/dev/null 2>&1; then
   owner="$(docker network inspect gamjaoj_generation --format '{{index .Labels "com.gamjaoj.owner"}}')"
   [[ "$owner" = gamjaoj-generation ]] || { echo 'Generation network ownership mismatch.' >&2; exit 1; }
 fi
-cli="$(readlink -f "$HOME/.local/bin/codex")"
-version="$("$cli" --version)"
-[[ "$version" = 'codex-cli 0.155.1' || "$version" = 'codex-cli 0.154.0' ]] || { echo 'Unreviewed Codex CLI version.' >&2; exit 1; }
+# The host CLI may auto-update; the container keeps a reviewed version, taken from a retained standalone
+# release when the host's current one has not been reviewed.
+reviewed=(0.155.1 0.154.0)
+cli=""
+for candidate in "$(readlink -f "$HOME/.local/bin/codex")" "${reviewed[@]/#/$HOME/.codex/packages/standalone/releases/}"; do
+  [[ "$candidate" = "$HOME/.codex/packages/standalone/releases/"* && "$candidate" != */bin/codex ]] && candidate="$candidate-x86_64-unknown-linux-musl/bin/codex"
+  [[ -x "$candidate" ]] || continue
+  version="$("$candidate" --version 2>/dev/null | tail -1)"
+  for allowed in "${reviewed[@]}"; do [[ "$version" = "codex-cli $allowed" ]] && { cli="$candidate"; break 2; }; done
+done
+[[ -n "$cli" ]] || { echo 'Unreviewed Codex CLI version.' >&2; exit 1; }
+echo "Using reviewed $version"
 mkdir "releases/$release"
 tar -xzf "releases/$release.tar.gz" -C "releases/$release"
 rm "releases/$release.tar.gz"
