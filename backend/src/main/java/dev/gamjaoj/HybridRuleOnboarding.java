@@ -163,6 +163,7 @@ class HybridRuleOnboarding {
             +" Never name the technique, algorithm or data structure in the contract, rules or catalog label, description and rules; only catalog category and tags may name it for internal filtering."
             +" Make naive modeling fail through the rules themselves: extra state (direction, keys, time, parity, remaining budget), special cells or edges, constrained turns, contact or overlap rules, tie-breaking, or several interacting operations."
             +" Define coordinates, boundaries, ties and every exceptional case explicitly, and make the tiny inputs exercise each rule. Avoid textbook statements and never reproduce a known published problem."
+            +" When a rule moves, rotates, reflects or wraps the board or coordinates, write the exact coordinate mapping as a formula in the rules (for example: after one clockwise rotation an H by W board becomes W by H and cell (r, c) moves to (c, H-1-r))."
             +" Calibrate difficulty to Baekjoon (solved.ac) tiers."
             +" EASY = Bronze III to I: a straightforward implementation (loops, conditions, simple counting or direct simulation) with small bounds and one clearly stated rule to follow carefully; no algorithmic technique is needed."
             +" MEDIUM = Silver V to I: one standard technique (sorting, prefix sums, basic BFS or DFS, simple greedy, two pointers, simple DP) applied to a story whose model is not immediately obvious; bounds force that technique."
