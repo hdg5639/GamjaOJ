@@ -159,6 +159,7 @@ class Worker:
                 runner.compile_cache = self.compile_cache
                 runner.generated_cache = self.generated_cache
                 runner.execution_mode = execution_mode
+                runner.judge_all = assignment.get("judgeAll") is True
                 report = timings.call("judge_total", runner.judge, source, assignment["problem"])
             timings.call("completion_save", atomic_json, path, {"submissionId": job_id, "token": token, "report": report})
             self.deliver(path)

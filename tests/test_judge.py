@@ -217,6 +217,19 @@ class DockerTests(unittest.TestCase):
         regular = self.check('System.out.println(3);', 'AC')
         self.assertNotIn("stdout", regular["tests"][0])
 
+    def test_judge_all_continues_after_failure_and_keeps_first_failure_verdict(self):
+        problem = {"version": "test-v1", "output_policy": "TOKEN_EXACT", "tests": [
+            {"id": "one", "input": "", "output": "3\n"}, {"id": "two", "input": "", "output": "4\n"},
+            {"id": "three", "input": "", "output": "3\n"}]}
+        source = b'public class Main { public static void main(String[] a) { System.out.println(3); } }'
+        stop = self.runner.judge(source, problem)
+        self.assertEqual(("WA", ["AC", "WA"]), (stop["verdict"], [t["verdict"] for t in stop["tests"]]))
+        self.assertNotIn("judge_all", stop)
+        self.runner.judge_all = True
+        full = self.runner.judge(source, problem)
+        self.assertEqual(("WA", ["AC", "WA", "AC"]), (full["verdict"], [t["verdict"] for t in full["tests"]]))
+        self.assertTrue(full["judge_all"])
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

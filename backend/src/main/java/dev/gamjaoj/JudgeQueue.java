@@ -24,7 +24,7 @@ public class JudgeQueue {
                OffsetDateTime leaseUntil, String verdict, String resultJson, String resultSha256, String executionMode) {}
     public record Assignment(UUID submissionId, int attempt, UUID token, String source,
                              String sourceSha256, JsonNode problem, String problemSha256,
-                             String runtimeImage, String runnerPolicy, int heartbeatSeconds, String executionMode, JsonNode runnerEnvironment, String language, JsonNode executionProfile) {}
+                             String runtimeImage, String runnerPolicy, int heartbeatSeconds, String executionMode, JsonNode runnerEnvironment, String language, JsonNode executionProfile, boolean judgeAll) {}
     private static final String JOB_COLUMNS = "submission_id,status,attempt,token,worker_id,lease_until,verdict,result_json,result_sha256,execution_mode";
     private static OffsetDateTime now() { return OffsetDateTime.now(ZoneOffset.UTC); }
     private Job job(UUID id) {
@@ -74,10 +74,10 @@ public class JudgeQueue {
     private Assignment assignment(Job job) {
         String environment=jdbc.sql("SELECT execution_environment_json FROM judge_attempt WHERE submission_id=? AND attempt=?")
                 .param(job.submissionId()).param(job.attempt()).query(String.class).optional().orElse(null);
-        return jdbc.sql("SELECT s.source_code,s.source_sha256,COALESCE(s.run_package,d.package_json,p.package_json) AS package_json,COALESCE(s.run_package_sha256,d.package_sha256,p.package_sha256) AS package_sha256,s.runtime_image,s.runner_policy,s.language,s.execution_profile_json FROM submission s JOIN problem_version p ON p.id=s.problem_version LEFT JOIN diagnostic_item d ON d.id=s.diagnostic_item_id WHERE s.id=?")
+        return jdbc.sql("SELECT s.source_code,s.source_sha256,COALESCE(s.run_package,d.package_json,p.package_json) AS package_json,COALESCE(s.run_package_sha256,d.package_sha256,p.package_sha256) AS package_sha256,s.runtime_image,s.runner_policy,s.language,s.execution_profile_json,(s.run_input IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL) AS judge_all FROM submission s JOIN problem_version p ON p.id=s.problem_version LEFT JOIN diagnostic_item d ON d.id=s.diagnostic_item_id WHERE s.id=?")
                 .param(job.submissionId()).query((row, index) -> new Assignment(job.submissionId(), job.attempt(), job.token(),
                         row.getString("source_code"), row.getString("source_sha256"), JudgeJson.parse(row.getString("package_json")),
-                        row.getString("package_sha256"), row.getString("runtime_image"), row.getString("runner_policy"), 10, job.executionMode(), environment==null?null:JudgeJson.parse(environment), row.getString("language"),row.getString("execution_profile_json")==null?null:JudgeJson.parse(row.getString("execution_profile_json")))).single();
+                        row.getString("package_sha256"), row.getString("runtime_image"), row.getString("runner_policy"), 10, job.executionMode(), environment==null?null:JudgeJson.parse(environment), row.getString("language"),row.getString("execution_profile_json")==null?null:JudgeJson.parse(row.getString("execution_profile_json")),row.getBoolean("judge_all"))).single();
     }
 
     @Transactional
@@ -131,11 +131,17 @@ public class JudgeQueue {
         int explicit = expectedTests.size();
         for (JsonNode g : expected.problem().path("generated").path("tests")) expectedTests.add(g);
         if (!tests.isArray() || tests.size() > expectedTests.size()) throw new AccountException(400, "Invalid test evidence");
+        // Learner formal submissions may continue after a failure (judge_all); every other plan stops at the first one.
+        boolean judgeAll = report.path("judge_all").asBoolean(false);
+        if (judgeAll && !expected.judgeAll()) throw new AccountException(400, "Judge-all report for a plan that stops at the first failure");
+        String firstFailure = null;
         for (int i = 0; i < tests.size(); i++) {
+            String testVerdict = tests.get(i).path("verdict").asText();
             if (!tests.get(i).path("id").equals(expectedTests.get(i).path("id"))
                     || (i >= explicit) != "generated".equals(tests.get(i).path("kind").asText())
-                    || (i < tests.size()-1 && !tests.get(i).path("verdict").asText().equals(success)))
+                    || (!judgeAll && i < tests.size()-1 && !testVerdict.equals(success)))
                 throw new AccountException(400, "Invalid test order or evidence");
+            if (firstFailure == null && !testVerdict.equals(success)) firstFailure = testVerdict;
         }
         if (verdict.equals(success) && (tests.size() != expectedTests.size()
                 || tests.findValuesAsText("verdict").stream().anyMatch(value -> !value.equals(success))))
@@ -147,7 +153,7 @@ public class JudgeQueue {
                 throw new AccountException(400, "Invalid custom execution output");
         }
         if (!Set.of("CE","IE").contains(verdict) && (tests.isEmpty()
-                || !verdict.equals(tests.get(tests.size()-1).path("verdict").asText())))
+                || !verdict.equals(firstFailure == null ? success : firstFailure)))
             throw new AccountException(400, "Final verdict does not match evidence");
     }
 }
