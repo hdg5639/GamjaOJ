@@ -491,3 +491,4 @@ dialog.modal::backdrop { background:rgba(15,23,21,.45); }
 .submit-toast:not([data-verdict="AC"]) strong { color:#ff8f86; }
 .submit-toast button { min-height:0; border:0; background:transparent; color:#9fb2ad; font-size:18px; line-height:1; padding:0 2px; }
 .held-note { margin-right:auto; align-self:center; font-size:13px; color:var(--muted); }
+.catalog-note.catalog-held { color:#8a5a00; font-weight:600; }

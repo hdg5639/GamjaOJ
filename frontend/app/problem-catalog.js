@@ -17,7 +17,8 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
   }
   useEffect(()=>{ const media=window.matchMedia('(min-width: 801px)'); const sync=()=>setFiltersOpen(media.matches); sync(); media.addEventListener('change',sync); return ()=>media.removeEventListener('change',sync); },[]);
   const filterCount=[category,difficulty,tag,solve].filter(Boolean).length;
-  problems=problems.filter(p=>!p.problemHeld);
+  // Held problems leave the shared lists; their owner still sees them under 내가 만든 문제 to review or delete.
+  problems=problems.filter(p=>!p.problemHeld||(p.mine&&scope==='mine'));
   const term=query.trim().toLocaleLowerCase();
   const matches=problems.filter(p=>(scope==='mine'?p.mine:scope==='others'?p.shared&&!p.mine&&p.generated:p.shared!==false)
     &&(!category||(p.category||'미분류')===category)&&(!difficulty||(p.difficulty||'UNRATED')===difficulty)&&(!tag||(p.tags||[]).includes(tag))
@@ -72,10 +73,11 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
             <p className="catalog-tags"><span>{p.category||'미분류'}</span>{(p.tags||[]).map(t=><span key={t}>#{t}</span>)}</p>
             <p className="catalog-progress"><strong data-solve={p.solveStatus}>{solveLabels[p.solveStatus]||'풀이 기록 확인 전'}</strong>{p.pendingSubmissions>0&&<span> · 채점 중 {p.pendingSubmissions}건</span>}</p>
             {p.mine&&<span className="catalog-note">내가 만든 문제 · {p.shared?'공개':'비공개'}</span>}
-            {!p.submissionsEnabled&&<span className="catalog-note">채점 준비 중 · 코드 작성 가능</span>}</div>
-          <div className="catalog-actions">{p.mine&&api&&<button className="secondary" disabled={saving} onClick={()=>{setEditing(p);setSaveError('');setSaved('');requestAnimationFrame(()=>document.querySelector('.catalog-edit input')?.focus());}}>공개·분류 설정</button>}
+            {p.problemHeld&&<span className="catalog-note catalog-held">검토 보류 중{p.reviewReason?` · ${p.reviewReason}`:''} · 새 풀이는 막혀 있고 삭제할 수 있어요</span>}
+            {!p.submissionsEnabled&&!p.problemHeld&&<span className="catalog-note">채점 준비 중 · 코드 작성 가능</span>}</div>
+          <div className="catalog-actions">{p.mine&&api&&!p.problemHeld&&<button className="secondary" disabled={saving} onClick={()=>{setEditing(p);setSaveError('');setSaved('');requestAnimationFrame(()=>document.querySelector('.catalog-edit input')?.focus());}}>공개·분류 설정</button>}
           {p.mine&&api&&<button className="secondary" disabled={saving} onClick={()=>{setRemoving(p.version);setSaved('');setSaveError('');}}>삭제</button>}
-          <button className="secondary" disabled={locked} aria-label={`${p.title} · ${p.version} ${selectedVersion===p.version?'이어서 풀기':'풀기'}`} onClick={()=>onChoose(p.version)}>{selectedVersion===p.version?'이어서 풀기':'풀기'}</button></div>
+          <button className="secondary" disabled={locked} aria-label={`${p.title} · ${p.version} ${selectedVersion===p.version?'이어서 풀기':'풀기'}`} onClick={()=>onChoose(p.version)}>{p.problemHeld?'기록 보기':selectedVersion===p.version?'이어서 풀기':'풀기'}</button></div>
           {removing===p.version&&<div className="notice catalog-remove" role="group" aria-label={`${p.title} 삭제 확인`}>
             <p>이 문제를 삭제할까요? 이 문제에 대한 내 제출·훈련 기록도 함께 삭제되고 되돌릴 수 없어요. 다른 회원이 이미 푼 문제라면 목록에서만 내려가고 그들의 기록은 유지돼요.</p>
             {saveError&&!editing&&<p role="alert" className="notice error">{saveError}</p>}

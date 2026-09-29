@@ -136,3 +136,28 @@ test('own problem deletion asks first and refreshes the catalog',async({page})=>
   expect(deletes).toEqual(['/api/problems/mine']);
   await expect(page.getByRole('heading',{name:'내가 만든 연습'})).toHaveCount(0);
 });
+
+test('own held problems appear only under my problems where they can be deleted',async({page})=>{
+  let problems=[{version:'seed',title:'두 수의 합',category:'구현',tags:[],shared:true},
+    {version:'held-mine',title:'보류된 내 문제',category:'그래프',tags:[],shared:false,mine:true,generated:true,problemHeld:true,reviewReason:'예제 출력 오류'},
+    {version:'held-other',title:'보류된 남의 문제',category:'그래프',tags:[],shared:true,mine:false,generated:true,problemHeld:true}]
+    .map(p=>({...p,statement:'합',sampleInput:'1 2',sampleOutput:'3',submissionsEnabled:!p.problemHeld}));
+  await page.route('**/api/**',async route=>{
+    const req=route.request(),path=new URL(req.url()).pathname;let data=[];
+    if(path==='/api/me')data={id:'learner',username:'learner',nickname:'감자'};
+    if(path==='/api/problems')data=problems;
+    if(path==='/api/auth/csrf')data={headerName:'X-CSRF-TOKEN',token:'fixture'};
+    if(path==='/api/problems/held-mine'&&req.method()==='DELETE'){problems=problems.filter(p=>p.version!=='held-mine');data={outcome:'DELETED'};}
+    await route.fulfill({json:data});
+  });
+  await page.goto(base);
+  await expect(page.getByRole('heading',{name:'두 수의 합'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'보류된 내 문제'})).toHaveCount(0);
+  await page.getByRole('button',{name:'내가 만든 문제',exact:true}).click();
+  await expect(page.getByText('검토 보류 중 · 예제 출력 오류',{exact:false})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'보류된 남의 문제'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'공개·분류 설정'})).toHaveCount(0);
+  await page.getByRole('button',{name:'삭제',exact:true}).click();
+  await page.getByRole('group',{name:'보류된 내 문제 삭제 확인'}).getByRole('button',{name:'삭제하기'}).click();
+  await expect(page.getByText('보류된 내 문제을(를) 삭제했어요.')).toBeVisible();
+});
