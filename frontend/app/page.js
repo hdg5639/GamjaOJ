@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Workspace from './workspace';
 import AppHeader from './auto-header';
 import ThemeToggle from './theme-toggle';
+import SiteNotice from './site-notice';
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers);
@@ -172,6 +173,6 @@ export default function Home() {
       {error && <p role="alert" className="notice error">{error}</p>}
       <Workspace key={user.id} user={user} api={api} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={toggleSidebar} />
     </main>}
-    <footer>GamjaOJ <span>잘하는 것보다, 어제보다 한 걸음.</span></footer>
+    <footer><div className="footer-line">GamjaOJ <span>잘하는 것보다, 어제보다 한 걸음.</span></div><SiteNotice/></footer>
   </div>;
 }

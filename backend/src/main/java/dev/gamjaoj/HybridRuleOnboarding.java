@@ -157,6 +157,7 @@ class HybridRuleOnboarding {
             +" Every Java program: Java 8 and the standard library only, no package declaration, create readers inside main, keep no static mutable state between calls of main, never call System.exit. Do not claim executed tests.";
     /** Difficulty, style, category and habit targeting; appended to the author instructions. */
     static final String AUTHOR_TARGETING=" The request JSON may also carry difficulty, style, category and target; treat missing fields as difficulty MEDIUM, style GENERAL and category AUTO. When the request text is empty, choose a fresh topic yourself."
+            +HybridModels.ORIGINALITY
             +" Write an original, high-quality coding-test problem in the spirit of real hiring and olympiad tests: invent a concrete world (campus, factory floor, game board, delivery network, archive, ...) with precise rules whose solving technique must be discovered by modeling."
             +" The learner should have to decide whether it is a grid search, DFS or backtracking, a shortest path over an expanded state, DP over some state, union-find, greedy with sorting, binary search on the answer, a sweep, or a data structure."
             +" Never name the technique, algorithm or data structure in the contract, rules or catalog label, description and rules; only catalog category and tags may name it for internal filtering."
