@@ -13,7 +13,15 @@ public class Diagnostics {
     public Diagnostics(JdbcClient jdbc) { this.jdbc=jdbc; }
     public record Item(UUID id,int position,String category,String difficulty,String problemVersion,
                        String status,int attempts,int pending,boolean externallySeen) {}
-    public record Question(UUID itemId,String problemVersion,String title,String statement,String sampleInput,String sampleOutput,List<LanguageProfiles.Option> languages) {}
+    public record Example(String input,String output) {}
+    public record Question(UUID itemId,String problemVersion,String title,String statement,String sampleInput,String sampleOutput,List<Example> examples,List<LanguageProfiles.Option> languages) {}
+    /** The first test and the EX-prefixed tests right after it are public examples; every later test stays hidden. */
+    static List<Example> examples(JsonNode tests) {
+        var out=new java.util.ArrayList<Example>();
+        for(int i=0;i<tests.size()&&(i==0||tests.get(i).path("id").asText().startsWith("EX"));i++)
+            out.add(new Example(tests.get(i).path("input").asText(),tests.get(i).path("output").asText()));
+        return out;
+    }
     public record View(UUID id,String bankId,String status,List<Item> items,Question current,UUID sourceSessionId) {}
     record Snapshot(String json,String hash,String image,String policy) {}
 
@@ -223,7 +231,7 @@ public class Diagnostics {
         }
         Question question=current.map(i->{
             JsonNode p=JudgeJson.parse(jdbc.sql("SELECT package_json FROM diagnostic_item WHERE id=?").param(i.id()).query(String.class).single());
-            return new Question(i.id(),i.problemVersion(),p.path("title").asText(),p.path("statement").asText(),p.path("tests").path(0).path("input").asText(),p.path("tests").path(0).path("output").asText(),LanguageProfiles.options());
+            return new Question(i.id(),i.problemVersion(),p.path("title").asText(),p.path("statement").asText(),p.path("tests").path(0).path("input").asText(),p.path("tests").path(0).path("output").asText(),examples(p.path("tests")),LanguageProfiles.options());
         }).orElse(null);
         UUID source=jdbc.sql("SELECT source_session_id FROM diagnostic_session WHERE id=?").param(id)
                 .query((r,n)->new UUID[]{r.getObject(1,UUID.class)}).single()[0];

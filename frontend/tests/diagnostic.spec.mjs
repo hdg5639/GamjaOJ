@@ -3,7 +3,7 @@ const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18788';
 for(const width of [390,1440])test('optional diagnostic survives retry and advances at '+width,async({page})=>{
   await page.setViewportSize({width,height:900});
   let session=null,keys=[],submission=null,evaluations=[],correctionKeys=[],plans=[],training=[],planKeys=[],generationCalls=0,orderCalls=0;
-  const q=n=>({itemId:'item'+n,problemVersion:'v'+n,title:'진단 문항 '+n,statement:'두 수를 더하세요.',sampleInput:'1 2',sampleOutput:'3',languages:[{id:'JAVA',label:'Java 8',timeLimitMs:5000,memoryMb:384},{id:'CPP',label:'C++17',timeLimitMs:3000,memoryMb:256},{id:'PYTHON',label:'Python 3.12',timeLimitMs:8000,memoryMb:256}]});
+  const q=n=>({itemId:'item'+n,problemVersion:'v'+n,title:'진단 문항 '+n,statement:'두 수를 더하세요.',sampleInput:'1 2',sampleOutput:'3',examples:[{input:'1 2',output:'3'},{input:'10 -4',output:'6'}],languages:[{id:'JAVA',label:'Java 8',timeLimitMs:5000,memoryMb:384},{id:'CPP',label:'C++17',timeLimitMs:3000,memoryMb:256},{id:'PYTHON',label:'Python 3.12',timeLimitMs:8000,memoryMb:256}]});
   await page.route('**/api/**',async route=>{
     const req=route.request(),path=new URL(req.url()).pathname;let data=[];
     if(path==='/api/me')data={id:'learner',username:'learner',nickname:'연습'};
@@ -76,6 +76,8 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
   await page.goto(base);await page.getByRole('button',{name:'선택 진단',exact:true}).click();
   await page.getByRole('button',{name:'선택한 2문항 시작'}).click();
   await expect(page.getByRole('heading',{name:'진단 문항 1'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'예제 입력 2',exact:true,includeHidden:true})).toBeAttached();
+  await expect(page.locator('#diagnostic-problem-content pre').filter({hasText:'10 -4'})).toBeAttached();
   await expect(page.locator('.workspace-heading')).toBeHidden();
   // The sidebar starts expanded; collapsing it gives the compact solving layout checked below.
   await page.getByRole('button',{name:'사이드바 접기'}).click();
