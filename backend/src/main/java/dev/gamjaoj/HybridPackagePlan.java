@@ -117,9 +117,28 @@ final class HybridPackagePlan {
         }
         // Mechanically sourced, already checked by both implementations; never guessed by a writer.
         var samples=p.putArray("samples");
-        candidates.stream().filter(c->!checkOnly(c)&&profile.tiny(c.path("input").asText())).limit(2).forEach(c->{
+        for(var c:samples(candidates,profile)) {
             var sample=samples.addObject();sample.set("input",c.path("input"));sample.set("output",c.path("output"));
-        });
+        }
         return p;
+    }
+    /**
+     * Up to three public examples from answer-bearing tiny tests. Mutant witnesses and fixed stress cases are
+     * minimal trap inputs, so random, reader and generated inputs come first; among them the richest input
+     * (longest, with a non-trivial answer, distinct answers first). Shown shortest first.
+     */
+    static List<JsonNode> samples(List<JsonNode> candidates,HybridProfiles.Definition profile) {
+        var pool=candidates.stream().filter(c->!checkOnly(c)&&profile.tiny(c.path("input").asText())
+                &&c.path("input").asText().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=1200).toList();
+        java.util.function.Predicate<JsonNode> illustrative=c->c.path("id").asText().matches("(random|reader|generated)-\\d+");
+        java.util.function.Predicate<JsonNode> trivial=c->Set.of("","0","-1","NO","IMPOSSIBLE").contains(c.path("output").asText().strip());
+        var ranked=pool.stream().sorted(java.util.Comparator.<JsonNode,Boolean>comparing(c->!illustrative.test(c))
+                .thenComparing(c->trivial.test(c)).thenComparing(c->-c.path("input").asText().length())
+                .thenComparing(c->c.path("id").asText())).toList();
+        var chosen=new java.util.ArrayList<JsonNode>();var outputs=new HashSet<String>();
+        for(var c:ranked)if(chosen.size()<3&&outputs.add(c.path("output").asText().strip()))chosen.add(c);
+        for(var c:ranked)if(chosen.size()<3&&!chosen.contains(c))chosen.add(c);
+        chosen.sort(java.util.Comparator.comparingInt(c->c.path("input").asText().length()));
+        return chosen;
     }
 }

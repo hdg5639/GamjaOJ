@@ -226,7 +226,7 @@ class HybridRunnerIntegrationTest {
         var saved=jdbc.sql("SELECT package_json,package_sha256 FROM problem_version WHERE id=?").param(a.problem().path("version").asText())
                 .query((r,n)->new String[]{r.getString(1),r.getString(2)}).single();
         assertThat(a.problem()).isEqualTo(JudgeJson.parse(saved[0]));assertThat(a.problemSha256()).isEqualTo(saved[1]);
-        assertThat(a.problem().path("samples").size()).isEqualTo(2);complete(a,"AC","");drainPackage();checks.advance();
+        assertThat(a.problem().path("samples").size()).isBetween(2,3);complete(a,"AC","");drainPackage();checks.advance();
         assertThat(hybrid.view("owner",id).error()).isEqualTo("CONTENT_REVIEW_REQUIRED");
         var report=JudgeJson.parse(jdbc.sql("SELECT completion_json FROM hybrid_branch WHERE generation_id=? AND role='VALIDATION'").param(id).query(String.class).single());
         assertThat(report.path("executionChecksComplete").asBoolean()).isTrue();assertThat(report.path("remaining").size()).isEqualTo(2);
