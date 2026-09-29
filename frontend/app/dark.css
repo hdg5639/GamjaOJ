@@ -67,3 +67,4 @@
 :root[data-theme="dark"] .editor-resize-handle span { background:#6f857b; }
 :root[data-theme="dark"] :is(.editor-resize-handle:hover,.editor-resize-handle:focus-visible) { background:#4a3f1a; outline-color:#8fb3a2; }
 :root[data-theme="dark"] .run-console { border-color:#2c3d39; }
+:root[data-theme="dark"] .catalog-note.catalog-held { color:#f0c96a; }
