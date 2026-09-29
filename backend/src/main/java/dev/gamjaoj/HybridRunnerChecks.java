@@ -11,8 +11,46 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 class HybridRunnerChecks {
     static final String POLICY="hybrid-execution-smoke-v1";
-    private final JdbcClient jdbc;private final AiSettings settings;
-    HybridRunnerChecks(JdbcClient jdbc,AiSettings settings){this.jdbc=jdbc;this.settings=settings;}
+    private final JdbcClient jdbc;private final AiSettings settings;private final AiTasks ledger;
+    HybridRunnerChecks(JdbcClient jdbc,AiSettings settings,AiTasks ledger){this.jdbc=jdbc;this.settings=settings;this.ledger=ledger;}
+    /** A check that ran the independent reader's own code failed: the reader may have mis-implemented a correct statement. */
+    static final class ReaderCodeFailure extends IllegalArgumentException { ReaderCodeFailure(String code){super(code);} }
+    static boolean readerCode(String role){return Set.of("domain-oracle","batch-oracle").contains(role)||role.matches("oracle-[0-7]");}
+    /**
+     * Budgeted generations get up to two fresh, independent reader attempts after a reader-code failure: the same
+     * model first, then a stronger one. The reader never sees the expected answers. Validation restarts from a new
+     * branch once the new reader succeeds; the old checks close as abandoned. False when no retry is possible.
+     */
+    private boolean retryReader(State s,String error) {
+        if(s.verifyOnly||jdbc.sql("SELECT count(*) FROM hybrid_api_reservation WHERE generation_id=?").param(s.generation).query(Integer.class).single()==0)return false;
+        var readers=jdbc.sql("SELECT id,attempt,status,input_json,input_sha256,contract_sha256,public_sha256 FROM hybrid_branch WHERE generation_id=? AND revision=? AND role='READER' ORDER BY attempt")
+                .param(s.generation).param(s.revision).query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getInt(2),r.getString(3),r.getString(4),r.getString(5),r.getString(6),r.getString(7)}).list();
+        if(readers.isEmpty()||readers.size()>=3)return false;
+        var last=readers.get(readers.size()-1);if(!"SUCCEEDED".equals(last[2]))return false;
+        AiSettings.Model model;
+        try{model=readers.size()==1?HybridModels.slot(settings,HybridGeneration.Role.READER):HybridModels.escalatedReader(settings);}catch(AccountException unavailable){return false;}
+        var amount=HybridExecution.reserve(HybridGeneration.Role.READER,model);var budget=ledger.budget();
+        if(budget.spentUsd().add(budget.reservedUsd()).add(amount).compareTo(budget.limitUsd())>0)return false;
+        var now=java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
+        jdbc.sql("UPDATE hybrid_branch SET status='SUPERSEDED',error_code=?,finished_at=? WHERE id=?").param(error).param(now).param(s.branch).update();
+        jdbc.sql("UPDATE hybrid_branch SET status='SUPERSEDED' WHERE id=? AND status='SUCCEEDED'").param(last[0]).update();
+        jdbc.sql("INSERT INTO hybrid_branch(id,generation_id,revision,role,attempt,status,input_json,input_sha256,contract_sha256,public_sha256,created_at) VALUES (?,?,?,'READER',?,'QUEUED',?,?,?,?,?)")
+                .param(UUID.randomUUID()).param(s.generation).param(s.revision).param((Integer)last[1]+1).param(last[3]).param(last[4]).param(last[5]).param(last[6]).param(now).update();
+        UUID attempt=UUID.randomUUID();
+        jdbc.sql("INSERT INTO ai_attempt(id,month_key,status,reserved_usd,settings_json) VALUES (?,?,'HYBRID_RESERVED',?,?)")
+                .param(attempt).param(java.time.YearMonth.now(java.time.ZoneOffset.UTC).toString()).param(amount).param(JudgeJson.canonical(JudgeJson.JSON.valueToTree(model))).update();
+        jdbc.sql("INSERT INTO hybrid_api_reservation(attempt_id,generation_id,revision,role,retry) VALUES (?,?,?,'READER',?)").param(attempt).param(s.generation).param(s.revision).param(readers.size()).update();
+        // The retry gets its own time: a new reader call plus a full validation pass.
+        long seconds;try{seconds=Math.max(240,Math.min(1200,Long.parseLong(settings.value("HYBRID_READER_RETRY_SECONDS","480").trim())));}catch(NumberFormatException e){seconds=480;}
+        jdbc.sql("UPDATE hybrid_generation SET status='BUILDING',error_code=NULL,deadline_at=CASE WHEN deadline_at<? THEN ? ELSE deadline_at END,updated_at=? WHERE id=?")
+                .param(now.plusSeconds(seconds)).param(now.plusSeconds(seconds)).param(now).param(s.generation).update();
+        return true;
+    }
+    private void fail(State s,IllegalArgumentException e) {
+        String error=e.getMessage()==null?"INVALID_RUNNER_EVIDENCE":e.getMessage();
+        if(e instanceof ReaderCodeFailure&&retryReader(s,error))return;
+        finish(s,error,null);
+    }
     private record State(UUID branch,UUID generation,int revision,String manifest,String hash,boolean verifyOnly) {
         State(UUID b,UUID g,int r,String m,String h){this(b,g,r,m,h,false);}
         /** Reader-independent checks run before the public snapshot and reader exist. */
@@ -124,7 +162,7 @@ class HybridRunnerChecks {
                 jdbc.sql("INSERT INTO hybrid_validation_profile(branch_id,policy,profile_hash,scheduling) VALUES (?,?,?,?)").param(branch).param(profile.policy()).param(profile.hash()).param(PIPELINE).update();
                 placeholder(s);
                 for(String role:List.of("domain-valid","domain-invalid","domain-reference"))queue(s,role,source(data,profile,role),profile.tests(role),false);
-            } catch(IllegalArgumentException e){finish(s,e.getMessage()==null?"INVALID_RUNNER_EVIDENCE":e.getMessage(),null);}
+            } catch(IllegalArgumentException e){fail(s,e);}
         }
     }
     private void placeholder(State s) {
@@ -155,7 +193,7 @@ class HybridRunnerChecks {
                 try {
                     String early=jdbc.sql("SELECT policy FROM hybrid_validation_profile WHERE branch_id=?").param(s.branch).query(String.class).single();
                     advanceResults(s,artifacts(s),early);
-                } catch(IllegalArgumentException e){finish(s,e.getMessage()==null?"INVALID_RUNNER_EVIDENCE":e.getMessage(),null);}
+                } catch(IllegalArgumentException e){fail(s,e);}
                 continue;
             }
             // A branch started early already owns its profile, placeholder and first checks.
@@ -200,7 +238,7 @@ class HybridRunnerChecks {
                     jdbc.sql("UPDATE hybrid_branch SET status='RUNNING',started_at=CURRENT_TIMESTAMP WHERE id=?").param(s.branch).update();
                     jdbc.sql("UPDATE hybrid_generation SET status='VALIDATING',error_code=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?").param(s.generation).update();
                 } else advanceResults(s,data,policy);
-            } catch(IllegalArgumentException e){finish(s,e.getMessage()==null?"INVALID_RUNNER_EVIDENCE":e.getMessage(),null);}
+            } catch(IllegalArgumentException e){fail(s,e);}
         }
     }
     private record Evidence(String role,String verdict,String report,String hash,JsonNode plan) {}
@@ -234,8 +272,10 @@ class HybridRunnerChecks {
             if(!mode(s,row[0]).equals(JudgeJson.parse(row[9]).path("execution_mode").asText()))throw new IllegalArgumentException("RUNNER_SCHEDULING_FENCE");
             if(finite&&!HybridProfiles.byPolicy(policy).roles().contains(row[0]))throw new IllegalArgumentException("UNKNOWN_FINITE_ROLE");
             String expected=row[0].equals("package-generator")?"OK":extended&&row[0].startsWith("mutant-")?"WA":finite||row[0].equals("validator")?"AC":"OK";
-            if(!expected.equals(row[8]))throw new IllegalArgumentException(extended&&row[0].startsWith("mutant-")
-                    ?row[8].equals("AC")?"MUTANT_SURVIVED":"MUTANT_"+row[8]:"RUNNER_"+row[8]);
+            if(!expected.equals(row[8])) {
+                if(readerCode(row[0]))throw new ReaderCodeFailure("RUNNER_"+row[8]);
+                throw new IllegalArgumentException(extended&&row[0].startsWith("mutant-")?row[8].equals("AC")?"MUTANT_SURVIVED":"MUTANT_"+row[8]:"RUNNER_"+row[8]);
+            }
             evidence.put(row[0],new Evidence(row[0],row[8],row[9],row[10],JudgeJson.parse(row[5])));
         }
         if(finite&&PIPELINE.equals(jdbc.sql("SELECT scheduling FROM hybrid_validation_profile WHERE branch_id=?").param(s.branch).query(String.class).single())) {
@@ -280,7 +320,7 @@ class HybridRunnerChecks {
                 if(e==null||!e.plan.path("tests").path(0).path("input").asText().equals(inputs.get(i)))throw new IllegalArgumentException("PROBE_INPUT_FENCE");
             }
             String a=output(evidence.get("reference-"+i)),b=output(evidence.get("oracle-"+i));
-            if(!Arrays.equals(a.strip().split("(?U)\\s+"),b.strip().split("(?U)\\s+")))throw new IllegalArgumentException("REFERENCE_ORACLE_DISAGREEMENT");
+            if(!Arrays.equals(a.strip().split("(?U)\\s+"),b.strip().split("(?U)\\s+")))throw new ReaderCodeFailure("REFERENCE_ORACLE_DISAGREEMENT");
             samples.addObject().put("input",inputs.get(i)).put("observedOutput",a);
         }
         var checks=report.putArray("results");evidence.values().stream().sorted(Comparator.comparing(Evidence::role)).forEach(e->checks.addObject().put("role",e.role).put("reportHash",e.hash));
