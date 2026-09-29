@@ -23,7 +23,7 @@ public class Submissions {
         this.jdbc = jdbc; this.enabled = enabled; this.diagnostics=diagnostics;
     }
     public record Problem(String version, String title, String statement, String sampleInput,
-                          String sampleOutput, int sourceLimitBytes, boolean submissionsEnabled, boolean problemHeld, String reviewReason, boolean mine, boolean shared, boolean generated, String category, List<String> tags, String difficulty, String difficultySource, String solveStatus, long pendingSubmissions, List<LanguageProfiles.Option> languages) {}
+                          String sampleOutput, List<Diagnostics.Example> examples, int sourceLimitBytes, boolean submissionsEnabled, boolean problemHeld, String reviewReason, boolean mine, boolean shared, boolean generated, String category, List<String> tags, String difficulty, String difficultySource, String solveStatus, long pendingSubmissions, List<LanguageProfiles.Option> languages) {}
     public record View(UUID id, String problemVersion, String sourceSha256, String source,
                        String status, String verdict, String compileMessage, OffsetDateTime createdAt,
                        OffsetDateTime finishedAt, String input, String stdout, String stderr, boolean outputTruncated, UUID sessionId, String runnerPolicy, boolean problemHeld, UUID diagnosticItemId, String language, LanguageProfiles.Option execution,
@@ -36,6 +36,15 @@ public class Submissions {
         int number = 1;
         for (JsonNode t : JudgeJson.parse(result).path("tests"))
             out.add(new TestResult(number++, t.path("verdict").asText(), t.has("wall_ms") ? t.path("wall_ms").asInt() : null));
+        return out;
+    }
+    /** Published samples when the package lists them (generated problems), otherwise the first test. */
+    static List<Diagnostics.Example> examples(JsonNode data) {
+        var out = new java.util.ArrayList<Diagnostics.Example>();
+        for (JsonNode s : data.path("samples"))
+            if (s.path("input").isTextual() && s.path("output").isTextual() && out.size() < 5)
+                out.add(new Diagnostics.Example(s.path("input").asText(), s.path("output").asText()));
+        if (out.isEmpty()) out.add(new Diagnostics.Example(data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText()));
         return out;
     }
     private static int testCount(String plan) {
@@ -61,7 +70,7 @@ public class Submissions {
                     // Explicit public fields only: never serialize a private problem package.
                     return new Problem(row.getString("id"), data.path("title").asText(), data.path("statement").asText(),
                             data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText(),
-                            65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options());
+                            examples(data), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options());
                 }).list();
     }
 

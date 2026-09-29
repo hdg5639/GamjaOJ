@@ -31,7 +31,13 @@ class HybridPackagePlanTest {
         var oracle=HybridPackagePlan.tests(candidates,"batch-oracle");assertThat(oracle).allMatch(c->HybridPackagePlan.parse(c.path("input").asText()).tiny());
         assertThat(candidates.size()).isGreaterThan(oracle.size()).isLessThanOrEqualTo(20);
         var pack=HybridPackagePlan.pack("version",candidates,f.presentation());
-        assertThat(pack.path("samples").size()).isEqualTo(2);
+        assertThat(pack.path("samples").size()).isBetween(2,3);
+        // Illustrative inputs come before mutant witnesses and fixed stress cases, shortest shown first.
+        var chosen=HybridPackagePlan.samples(candidates,HybridProfiles.KNAPSACK);
+        var illustrative=candidates.stream().filter(c->c.path("id").asText().matches("(random|reader|generated)-\\d+")
+                &&HybridPackagePlan.parse(c.path("input").asText()).tiny()).count();
+        assertThat(chosen.stream().filter(c->c.path("id").asText().matches("(random|reader|generated)-\\d+")).count()).isEqualTo(Math.min(3,illustrative));
+        for(int i=1;i<chosen.size();i++)assertThat(chosen.get(i).path("input").asText().length()).isGreaterThanOrEqualTo(chosen.get(i-1).path("input").asText().length());
         for(var sample:pack.path("samples"))assertThat(sample.path("output").asText()).isEqualTo(HybridPackagePlan.parse(sample.path("input").asText()).answer());
         // Learner sections replace the English contract dump; the contract stays in semantics for review only.
         assertThat(pack.path("statement").asText()).contains("각 장비는 최대 한 번","입력\n","제한\n1 ≤ N ≤ 100").doesNotContain("total chosen value","at most once per item");

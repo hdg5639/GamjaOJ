@@ -323,7 +323,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     {problem && <div className="practice-grid" data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
       <article className="problem-card">
         <span className="version">문제 · {problem.version}</span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2><p>{problem.statement}</p>
-        <Examples examples={[{input:problem.sampleInput,output:problem.sampleOutput}]}/>
+        <Examples examples={problem.examples?.length?problem.examples:[{input:problem.sampleInput,output:problem.sampleOutput}]}/>
         {problem.problemHeld&&<p className="notice">문제 검토 중 · {problem.reviewReason} · 기존 코드와 기록은 보존되며 새 실행·제출·분석은 보류됩니다.</p>}
         {!problem.problemHeld&&<ProblemTeaching key={version} version={version} api={api} />}
         <p className="muted">{language==='JAVA'?'클래스 이름은 Main으로 작성해 주세요. ':''}제출한 코드는 기록에서 다시 확인할 수 있어요.</p>
@@ -359,7 +359,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
       </form>
         <RunConsole key={user.id} user={user} api={api} scope={version} disabled={!!inspected || !problem.submissionsEnabled}
-          body={{problemVersion:version,source,language,sessionId:currentSession?.id || null}} examples={[{input:problem.sampleInput||'',output:problem.sampleOutput||''}]}
+          body={{problemVersion:version,source,language,sessionId:currentSession?.id || null}} examples={problem.examples?.length?problem.examples:[{input:problem.sampleInput||'',output:problem.sampleOutput||''}]}
           runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount} onActivity={() => setActivity(value => value + 1)}>
           {problem.problemHeld&&<p className="notice">문제 검토 중 · 새 실행은 보류돼요.</p>}
         </RunConsole>
