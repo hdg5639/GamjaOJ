@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import SiteNotice from './site-notice';
 const solveLabels={SOLVED:'해결',ATTEMPTED:'제출했지만 미해결',UNATTEMPTED:'미제출'};
 const levels={UNRATED:'미분류',EASY:'하',MEDIUM:'중',HARD:'상',EXPERT:'최상'};
 
@@ -84,5 +85,6 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
             <button className="danger" disabled={saving} onClick={()=>remove(p)}>삭제하기</button> <button className="secondary" disabled={saving} onClick={()=>setRemoving(null)}>취소</button></div>}
         </li>)}</ul>}
     </>}
+    {home&&<SiteNotice/>}
   </section>;
 }

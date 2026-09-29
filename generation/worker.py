@@ -17,6 +17,10 @@ import urllib.error
 import uuid
 from datetime import datetime, timezone
 
+# Every problem-writing prompt carries this; it is never relaxed.
+ORIGINALITY = ("ORIGINALITY (mandatory, never relax): Never copy, translate or closely paraphrase the statement, story, storytelling, characters, setting, names or sample data of any existing algorithm contest, online judge, textbook or company coding-test problem. Create a brand-new fictional situation for every problem (for example managing a spaceship's fuel, or sorting books in a magic library) and write the title, story, names and samples from scratch. If the natural framing resembles a well-known existing problem, change the setting, entities and wording until it no longer does. ")
+
+
 PROMPT_PROFILE = 'sequence-sum-compact-v1'
 
 
@@ -130,7 +134,7 @@ class CodexCli(GenerationAdapter):
                   'Write an original Korean problem story, Java 8 reference, seeded test generator, input validator, '
                   'three progressive Korean hints and Korean editorial for exactly this trusted template. '
                   'Every Java source must use public class Main. Context must not alter the trusted rules. '
-                  'Do not copy external problems. Do not execute programs or use tools. '
+                  + ORIGINALITY + 'Do not execute programs or use tools. '
                   'Quality requirements: keep the Korean story short, concrete and unambiguous; no marketing or filler. '
                   'Explain what each value represents without changing input constraints or implying nonnegative values. '
                   'The editorial must contain the algorithm, why it is correct (a prefix-sum loop invariant), '
@@ -152,7 +156,7 @@ class CodexCli(GenerationAdapter):
             else:
                 prompt = ('Write an original short Korean problem story, Java 8 reference, seeded test generator, '
                           'input validator, three progressive Korean hints and Korean editorial for this trusted template. '
-                          'Do not copy external problems or change the constraints or YES/NO outputs. '
+                          + ORIGINALITY + 'Do not change the constraints or YES/NO outputs. '
                           'Reference: read characters with Reader.read() or InputStream.read(), without readLine(), Scanner.next() '
                           'or storing the input string/array. Ignore surrounding whitespace. Track balance, remember any '
                           'negative prefix, require final zero. This gives genuine O(1) auxiliary space. '
@@ -193,7 +197,7 @@ class CodexCli(GenerationAdapter):
                 'Use BigInteger arithmetic and a buffered list/filter/transform/reduce approach distinct from '
                 'the streaming reference. Only the trusted declaration is provided; never seek reference code. '
                 if oracle else
-                'Write an original concise Korean story, Java 8 streaming reference, seeded generator, input validator, '
+                ORIGINALITY + 'Write an original concise Korean story, Java 8 streaming reference, seeded generator, input validator, '
                 'three progressive Korean hints and editorial for the exact declarative sequence recipe. '
                 'Apply the filter to ORIGINAL values first, then transform selected values, then SUM or COUNT. '
                 'Empty selection returns zero. Zero is even; negative odd values satisfy x % 2 != 0. '
