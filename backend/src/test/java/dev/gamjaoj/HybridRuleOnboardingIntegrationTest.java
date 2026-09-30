@@ -65,6 +65,7 @@ class HybridRuleOnboardingIntegrationTest {
     String role(JudgeQueue.Assignment a){return jdbc.sql("SELECT role FROM hybrid_execution_check WHERE submission_id=?").param(a.submissionId()).query(String.class).single();}
     /** Fake Runner: correct programs agree; mutant-a differs on case 4, mutant-b on case 0. */
     String slowVerdict="TLE",validVerdict="AC";
+    long measuredMs=10;
     int drain(boolean disagree,boolean survivor) {
         int n=0;Optional<JudgeQueue.Assignment> next;
         while((next=queue.claim(UUID.randomUUID())).isPresent()) {
@@ -77,18 +78,19 @@ class HybridRuleOnboardingIntegrationTest {
                 case "q-mutant-a-batch"->{verdict="OK";var r=new ArrayList<>(answers);if(!survivor)r.set(4,"0\n");stdout=batchOf(r);}
                 case "q-mutant-b-batch"->{verdict="OK";var r=new ArrayList<>(answers);r.set(0,"7\n");stdout=batchOf(r);}
                 case "q-mutant-a","q-mutant-b"->verdict="WA";
-                case "q-slow"->verdict=slowVerdict;
+                case "q-slow","q-final-slow"->verdict=slowVerdict;
                 case "q-valid"->verdict=validVerdict;
                 default->{if(role.startsWith("q-stress-run-")){verdict="OK";stdout=HybridFiniteProfile.stress().get(Integer.parseInt(role.substring(13))).output();}}
             }
-            boolean timedOut=role.equals("q-slow")&&verdict.equals("TLE");
+            boolean timedOut=(role.equals("q-slow")||role.equals("q-final-slow"))&&verdict.equals("TLE");
             var r=new GenerationIntegrationTest().report(a,timedOut?"AC":verdict);
             if(timedOut){var tests=(com.fasterxml.jackson.databind.node.ArrayNode)r.path("tests");((ObjectNode)tests.get(tests.size()-1)).put("verdict","TLE");r.put("verdict","TLE");}
-            for(var t:r.path("tests"))((ObjectNode)t).put("stdout",stdout).put("stderr","").put("stdout_truncated",false).put("wall_ms",10);
+            for(var t:r.path("tests"))((ObjectNode)t).put("stdout",stdout).put("stderr","").put("stdout_truncated",false).put("wall_ms",timedOut?(a.executionProfile()==null?5000:a.executionProfile().path("testWallSeconds").asLong()*1000):measuredMs);
             queue.complete(a.submissionId(),a.token(),r);
         }
         return n;
     }
+    void finishQualification(){for(int i=0;i<4;i++){drain(false,false);onboarding.advance();}}
     HybridRuleOnboarding.View view(UUID id){return onboarding.list("owner").stream().filter(v->v.id().equals(id)).findFirst().orElseThrow();}
     UUID request() throws Exception {
         UUID id=UUID.randomUUID();
@@ -133,6 +135,7 @@ class HybridRuleOnboardingIntegrationTest {
         assertThat(drain(false,false)).isEqualTo(8);onboarding.advance();
         assertThat(drain(false,false)).isEqualTo(7);onboarding.advance();
         assertThat(drain(false,false)).isEqualTo(4);onboarding.advance();
+        assertThat(drain(false,false)).isEqualTo(2);onboarding.advance();
         var v=view(id);assertThat(v.status()).isEqualTo("ACTIVE");assertThat(v.versionId()).startsWith("rule-");assertThat(v.label()).isEqualTo("등록 규칙 · 물건 고르기");
         assertThat(v.spentUsd()).isPositive();assertThat(ledger.budget().reservedUsd()).isEqualByComparingTo("0");
         var d=HybridProfiles.byId(v.versionId());assertThat(d.pkg().tiny()).hasSize(tiny.size());
@@ -145,8 +148,45 @@ class HybridRuleOnboardingIntegrationTest {
         mvc.perform(put("/api/rules/"+v.versionId()+"/sharing").with(user("other")).with(csrf()).contentType("application/json").content("{\"shared\":true}")).andExpect(status().isNotFound());
         mvc.perform(put("/api/rules/"+v.versionId()+"/sharing").with(user("owner")).with(csrf()).contentType("application/json").content("{\"shared\":true}")).andExpect(jsonPath("$.shared").value(true));
         // The same contract cannot be registered twice while active.
-        UUID again=request();worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
+        UUID again=request();worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
         assertThat(view(again).status()).isEqualTo("FAILED");assertThat(view(again).error()).isEqualTo("DUPLICATE_RULE_CONTRACT");
+    }
+    @Test void measuredSixSecondReferenceGetsTwelveSecondsAndReplaysAtThatBudget() throws Exception {
+        measuredMs=6000;provide(author());UUID id=request();worker.runOnce();worker.runOnce();
+        drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
+        assertThat(view(id).status()).isEqualTo("QUALIFYING");
+        var pending=jdbc.sql("SELECT e.role,s.execution_profile_json FROM hybrid_execution_check e JOIN submission s ON s.id=e.submission_id WHERE e.role LIKE 'q-final-%'")
+                .query((r,n)->new String[]{r.getString(1),r.getString(2)}).list();
+        assertThat(pending).hasSize(2);
+        for(var row:pending)assertThat(JudgeJson.parse(row[1]).path("testWallSeconds").asInt()).isEqualTo(12);
+        onboarding.advance(); // replaying the coordinator must not duplicate queued work
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_execution_check WHERE role LIKE 'q-final-%'").query(Integer.class).single()).isEqualTo(2);
+        drain(false,false);onboarding.advance();
+        assertThat(view(id).status()).isEqualTo("ACTIVE");
+        assertThat(HybridProfiles.byId(view(id).versionId()).pkg().qualifiedJavaSeconds()).isEqualTo(12);
+        assertThat(HybridProfiles.byId(view(id).versionId()).pkg().referenceMaxWallMs()).isEqualTo(6000);
+    }
+    @Test void measuredReferenceCannotIncreaseBudgetPastInfrastructureCapacity() throws Exception {
+        measuredMs=10001;provide(author());UUID id=request();worker.runOnce();worker.runOnce();finishQualification();
+        assertThat(view(id).error()).isEqualTo("TIME_LIMIT_CAPACITY_EXCEEDED");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_execution_check WHERE role LIKE 'q-final-%'").query(Integer.class).single()).isZero();
+    }
+    @Test void replayRegressionCannotSilentlyIncreaseTheFrozenBudget() throws Exception {
+        provide(author());UUID id=request();worker.runOnce();worker.runOnce();
+        for(int i=0;i<3;i++){drain(false,false);onboarding.advance();}
+        measuredMs=501;drain(false,false);onboarding.advance();
+        assertThat(view(id).error()).isEqualTo("TIME_LIMIT_REFERENCE_MARGIN");
+    }
+    @Test void anAlreadyStartedLegacyCarrierKeepsItsOriginalQualificationContract() throws Exception {
+        provide(author());UUID id=request();worker.runOnce();worker.runOnce();
+        var saved=(ObjectNode)JudgeJson.parse(jdbc.sql("SELECT answers_json FROM hybrid_rule_onboarding WHERE id=?").param(id).query(String.class).single());
+        saved.remove("timingPolicy");
+        jdbc.sql("UPDATE hybrid_rule_onboarding SET answers_json=? WHERE id=?").param(JudgeJson.canonical(saved)).param(id).update();
+        jdbc.sql("UPDATE submission SET execution_profile_json=NULL").update();
+        for(int i=0;i<3;i++){drain(false,false);onboarding.advance();}
+        assertThat(view(id).status()).isEqualTo("ACTIVE");
+        assertThat(HybridProfiles.byId(view(id).versionId()).pkg().qualifiedJavaSeconds()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_execution_check WHERE role LIKE 'q-final-%'").query(Integer.class).single()).isZero();
     }
     @Autowired HybridRuleFollowup followup;
     @Test void styledRequestReachesTheAuthorWithoutPublicationPreferencesAndFollowupRecordsRefusal() throws Exception {
@@ -168,7 +208,7 @@ class HybridRuleOnboardingIntegrationTest {
         assertThat(input.has("publish")||input.has("shared")).isFalse();
         assertThat(authorCall.instructions()).contains("Never name the technique","style COMMAND","mutants[0] must be a realistic");
         assertThat(authorCall.model().maxOutputTokens()).isEqualTo(28000);
-        worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
+        worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
         assertThat(view(id).status()).isEqualTo("ACTIVE");
         followup.advance(); // rule-based admission is disabled in this environment: the refusal is recorded, not retried forever
         var v=view(id);assertThat(v.followupGenerationId()).isNull();assertThat(v.followupError()).isNotBlank();
@@ -235,13 +275,13 @@ class HybridRuleOnboardingIntegrationTest {
         provide(author());slowVerdict="AC";UUID id=UUID.randomUUID();
         mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",id).contentType("application/json")
                 .content("{\"request\":\"물건을 한 번씩만 골라 가치 합을 최대로 만드는 규칙\",\"difficulty\":\"EASY\"}")).andExpect(status().isOk());
-        worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
+        worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
         assertThat(view(id).status()).isEqualTo("ACTIVE");
     }
     @Test void largeTestsMustMakeTheSlowSolutionTimeOut() throws Exception {
-        provide(author());slowVerdict="AC";UUID id=request();worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
+        provide(author());slowVerdict="AC";UUID id=request();worker.runOnce();worker.runOnce();finishQualification();
         assertThat(view(id).error()).isEqualTo("LARGE_TESTS_NOT_DISCRIMINATING");
-        slowVerdict="WA";UUID wrong=request();worker.runOnce();worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
+        slowVerdict="WA";UUID wrong=request();worker.runOnce();worker.runOnce();finishQualification();
         assertThat(view(wrong).error()).isEqualTo("SLOW_SOLUTION_INCORRECT");
         assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_version WHERE engine='PACKAGE_V1'").query(Integer.class).single()).isZero();
     }

@@ -15,7 +15,7 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
                          List<HybridFiniteProfile.Case> tiny,List<HybridFiniteProfile.Case> invalid,List<HybridFiniteProfile.Case> stress,
                          Map<String,String> mutantSources,Map<String,HybridFiniteProfile.Case> witnesses,
                          String oracleDomain,String enumeration,String authorGuidance,String teachingGuidance,String readerGuidance,
-                         String largeGenerator,List<String> largeSeeds) {
+                         String largeGenerator,List<String> largeSeeds,int qualifiedJavaSeconds,long referenceMaxWallMs) {
     static final String ENGINE="PACKAGE_V1";
     static final int MIN_TINY=6,MAX_TINY=24,MAX_STRESS=3,MAX_INVALID=10;
     String policy(){return "pkg-"+versionId;}
@@ -43,7 +43,7 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
     }
     /** Parses a stored package; any structural deviation rejects the version rather than repairing it. */
     static HybridRulePackage parse(String versionId,JsonNode p) {
-        var names=new HashSet<String>();p.fieldNames().forEachRemaining(names::add);names.remove("large");
+        var names=new HashSet<String>();p.fieldNames().forEachRemaining(names::add);names.remove("large");names.remove("timing");
         HybridArtifacts.require(names.equals(Set.of("contract","rules","catalog","generator","validator","tiny","invalid","stress","mutants","oracleDomain","enumeration","guidance")),"RULE_PACKAGE_FIELDS");
         // Optional generated large tests: a qualified generator and seeds; answers come from the reference in the Runner.
         String largeGenerator=null;var seeds=new ArrayList<String>();
@@ -51,6 +51,14 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
             HybridArtifacts.fields(p.path("large"),"generator","seeds");largeGenerator=text(p.path("large").path("generator"),65536);
             var s=p.path("large").path("seeds");if(!s.isArray()||s.size()<1||s.size()>3)throw new HybridArtifacts.Invalid("RULE_PACKAGE_LARGE");
             for(var seed:s){if(!seed.isTextual()||!seed.asText().matches("-?[0-9]{1,18}")||seeds.contains(seed.asText()))throw new HybridArtifacts.Invalid("RULE_PACKAGE_LARGE");seeds.add(seed.asText());}
+        }
+        int qualifiedSeconds=0;long referenceMs=0;
+        if(p.has("timing")) {
+            var timing=p.path("timing");HybridArtifacts.fields(timing,"javaSeconds","referenceMaxWallMs");
+            HybridArtifacts.require(timing.path("javaSeconds").isInt()&&timing.path("referenceMaxWallMs").isIntegralNumber()
+                    &&timing.path("referenceMaxWallMs").canConvertToLong(),"RULE_TIMING_EVIDENCE");
+            qualifiedSeconds=timing.path("javaSeconds").asInt();referenceMs=timing.path("referenceMaxWallMs").asLong();
+            HybridArtifacts.require(referenceMs>0&&referenceMs<=10000&&qualifiedSeconds==ProblemTimeLimits.calibratedJavaSeconds(referenceMs),"RULE_TIMING_EVIDENCE");
         }
         var contract=HybridArtifacts.contract(p.path("contract"));
         // Exactly one Korean normative explanation per contract action, as the public snapshot requires.
@@ -77,7 +85,7 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
         return new HybridRulePackage(versionId,contract,rules.deepCopy(),catalog.deepCopy(),text(p.path("generator"),65536),text(p.path("validator"),65536),
                 tiny,invalid,stress,Collections.unmodifiableMap(sources),Collections.unmodifiableMap(witnesses),
                 p.path("oracleDomain").asText(),p.path("enumeration").asText(),g.path("author").asText(),g.path("teaching").asText(),g.path("reader").asText(),
-                largeGenerator,List.copyOf(seeds));
+                largeGenerator,List.copyOf(seeds),qualifiedSeconds,referenceMs);
     }
     /** Display and guidance limits in UTF-8 bytes (Korean is three bytes per character). */
     static void metadata(JsonNode catalog,JsonNode guidance,JsonNode oracleDomain,JsonNode enumeration) {

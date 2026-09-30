@@ -5,6 +5,20 @@ import java.util.List;
 
 /** Per-test wall budgets; estimates and measured Java evidence are deliberately distinguished. */
 final class ProblemTimeLimits {
+    // Infrastructure safety ceiling, not a problem-design target or a published default.
+    static final int PROFILING_SECONDS=20;
+    static int calibratedJavaSeconds(long maximumMs) {
+        HybridArtifacts.require(maximumMs>0,"TIME_LIMIT_EVIDENCE_MISSING");
+        HybridArtifacts.require(maximumMs<=PROFILING_SECONDS*500L,"TIME_LIMIT_CAPACITY_EXCEEDED");
+        long seconds=Math.max(1,(maximumMs*2+999)/1000);
+        HybridArtifacts.require(seconds<=PROFILING_SECONDS,"TIME_LIMIT_CAPACITY_EXCEEDED");
+        return (int)seconds;
+    }
+    static String javaProfile(int seconds) {
+        HybridArtifacts.require(seconds>=1&&seconds<=PROFILING_SECONDS,"INVALID_TIME_LIMITS");
+        var profile=(com.fasterxml.jackson.databind.node.ObjectNode)LanguageProfiles.profile("JAVA");
+        profile.put("testWallSeconds",seconds);return JudgeJson.canonical(profile);
+    }
     static final List<String> LANGUAGES=List.of("JAVA","CPP","PYTHON");
     static JsonNode parse(String json) {return json==null?null:validate(JudgeJson.parse(json));}
     static JsonNode validate(JsonNode limits) {
