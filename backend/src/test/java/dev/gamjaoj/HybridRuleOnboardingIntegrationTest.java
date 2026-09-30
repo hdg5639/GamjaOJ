@@ -22,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:ruleonboarding;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.username=sa","spring.datasource.password=","gamjaoj.invite-code=test",
+        "GENERATION_WORKER_TOKEN=fixture-generation-worker-token-12345678",
         "AI_API_ENABLED=true","OPENAI_API_KEY=fixture-no-network","AI_POLL_MS=3600000","HYBRID_RULE_ONBOARDING_ENABLED=true","HYBRID_RULE_ONBOARDING_WORKER_ENABLED=false",
         "AI_HYBRID_AUTHOR_MODEL=fixture-author","AI_HYBRID_AUTHOR_REASONING=medium","AI_HYBRID_AUTHOR_INPUT_USD_PER_M=2",
         "AI_HYBRID_AUTHOR_CACHED_USD_PER_M=0.2","AI_HYBRID_AUTHOR_OUTPUT_USD_PER_M=10","AI_HYBRID_AUTHOR_MAX_OUTPUT_TOKENS=8192","AI_HYBRID_AUTHOR_PRICING_VERSION=fixture"})
@@ -43,6 +44,77 @@ class HybridRuleOnboardingIntegrationTest {
         HybridProfiles.all().stream().filter(d->d.pkg()!=null).forEach(d->HybridProfiles.unregister(d.id()));
     }
     @AfterEach void reset(){env.getPropertySources().remove("onboarding-test");}
+    HybridRuleOnboarding.CodexCompletion codexResult(JsonNode work,JsonNode payload,String error) {
+        var a=work.path("spec").path("assignment");
+        return new HybridRuleOnboarding.CodexCompletion(UUID.fromString(a.path("attemptId").asText()),UUID.fromString(a.path("token").asText()),a.path("inputHash").asText(),payload,
+                JudgeJson.JSON.createObjectNode().put("executor","CODEX_CLI").put("billingMode","CHATGPT_MANAGED"),error);
+    }
+    UUID hard(String difficulty) {
+        UUID id=UUID.randomUUID();onboarding.create("owner",id,new HybridRuleOnboarding.Spec("",difficulty,"GENERAL","bfs",null,false,false));return id;
+    }
+    @Test void codexAuthorEndpointsRequireWorkerTokenAndAcceptTheExactEnvelope() throws Exception {
+        UUID id=hard("HARD");
+        mvc.perform(post("/internal/generation/rule-author/claim").with(user("owner")).with(csrf())).andExpect(status().isForbidden());
+        var response=mvc.perform(post("/internal/generation/rule-author/claim").header("Authorization","Bearer fixture-generation-worker-token-12345678"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.pipelineVersion").value("RULE_AUTHOR_V1")).andReturn();
+        var work=JudgeJson.parse(response.getResponse().getContentAsString());
+        mvc.perform(post("/internal/generation/rule-author/result").header("Authorization","Bearer fixture-generation-worker-token-12345678")
+                .contentType("application/json").content(JudgeJson.canonical(JudgeJson.JSON.valueToTree(codexResult(work,author(),null)))))
+                .andExpect(status().isNoContent());
+        assertThat(view(id).status()).isEqualTo("AUTHORED");
+    }
+    @Test void hardAndExpertUseCodexAndKeepIndependentApiOracle() {
+        for(String difficulty:List.of("HARD","EXPERT")) {
+            UUID id=hard(difficulty);assertThat(onboarding.claimCall()).isNull();
+            var work=onboarding.claimCodexAuthor();assertThat(work).isNotNull();
+            assertThat(onboarding.claimCodexAuthor()).isNull();
+            assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt").query(Integer.class).single()).isZero();
+            onboarding.releaseInterruptedCalls(); // The external worker survives an application restart.
+            assertThat(view(id).status()).isEqualTo("AUTHORING");
+            var completion=codexResult(work,author(),null);
+            onboarding.finishCodexAuthor(completion);onboarding.finishCodexAuthor(completion);
+            assertThat(view(id).status()).isEqualTo("AUTHORED");
+            var oracle=onboarding.claimCall();assertThat(oracle.role()).isEqualTo("ORACLE");
+            assertThat(oracle.input()).doesNotContain("reference").doesNotContain("mutant");
+            onboarding.finishCall(oracle.attemptId(),result(oracle()),null);
+            assertThat(view(id).status()).isEqualTo("QUALIFYING");
+            onboarding.cancel("owner",id);
+            jdbc.sql("DELETE FROM hybrid_rule_onboarding").update();jdbc.sql("DELETE FROM ai_attempt").update();
+        }
+    }
+    @Test void codexQuotaDoesNotFallBackToApiAndLateCancelledResultsDoNotAdvance() {
+        UUID id=hard("EXPERT");var work=onboarding.claimCodexAuthor();
+        onboarding.finishCodexAuthor(codexResult(work,null,"CODEX_QUOTA_EXHAUSTED"));
+        assertThat(view(id).status()).isEqualTo("HELD");assertThat(view(id).error()).isEqualTo("CODEX_QUOTA_EXHAUSTED");
+        assertThat(onboarding.claimCall()).isNull();assertThat(onboarding.claimCodexAuthor()).isNull();
+        id=hard("HARD");work=onboarding.claimCodexAuthor();onboarding.cancel("owner",id);
+        onboarding.finishCodexAuthor(codexResult(work,author(),null));assertThat(view(id).status()).isEqualTo("CANCELLED");
+    }
+    @Test void codexRepairStaysOnCodexAndFencesOldResults() {
+        overrides.put("HYBRID_RULE_ONBOARDING_REPAIRS","1");
+        UUID id=hard("EXPERT");var first=onboarding.claimCodexAuthor();
+        var invalid=author();invalid.put("reference","not Java");
+        var failed=codexResult(first,invalid,null);onboarding.finishCodexAuthor(failed);
+        assertThat(view(id).status()).isEqualTo("QUEUED");assertThat(onboarding.claimCall()).isNull();
+        var second=onboarding.claimCodexAuthor();
+        assertThat(second.path("spec").path("input").has("repair")).isTrue();
+        assertThat(second.path("token")).isNotEqualTo(first.path("token"));
+        onboarding.finishCodexAuthor(failed);assertThat(view(id).status()).isEqualTo("AUTHORING");
+        var valid=codexResult(second,author(),null);
+        var stale=new HybridRuleOnboarding.CodexCompletion(valid.attemptId(),UUID.randomUUID(),valid.inputHash(),valid.payload(),valid.usage(),null);
+        assertThatThrownBy(()->onboarding.finishCodexAuthor(stale)).isInstanceOf(AccountException.class);
+        onboarding.finishCodexAuthor(valid);assertThat(view(id).status()).isEqualTo("AUTHORED");
+        assertThatThrownBy(()->onboarding.finishCodexAuthor(codexResult(second,null,"CODEX_TIMEOUT"))).isInstanceOf(AccountException.class);
+    }
+    @Test void hardQueueDoesNotBlockEasyApiAndExpiredCodexCannotAdvance() {
+        overrides.put("HYBRID_RULE_ONBOARDING_MAX_ACTIVE","3");
+        UUID id=hard("HARD");
+        onboarding.create("other",UUID.randomUUID(),new HybridRuleOnboarding.Spec("쉬운 그래프 규칙을 만들어 주세요","EASY","GENERAL","bfs",null,false,false));
+        assertThat(onboarding.claimCall().role()).isEqualTo("AUTHOR");
+        var work=onboarding.claimCodexAuthor();
+        jdbc.sql("UPDATE hybrid_rule_onboarding SET deadline_at=CURRENT_TIMESTAMP-INTERVAL '1' SECOND WHERE id=?").param(id).update();
+        onboarding.finishCodexAuthor(codexResult(work,author(),null));assertThat(view(id).status()).isEqualTo("DEADLINE_EXCEEDED");
+    }
     ObjectNode author() {
         var p=HybridAdmissionIntegrationTest.fixturePackage();var a=JudgeJson.JSON.createObjectNode();
         for(String k:List.of("contract","rules","catalog","generator","validator","guidance"))a.set(k,p.path(k));
@@ -228,12 +300,13 @@ class HybridRuleOnboardingIntegrationTest {
         mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",id).contentType("application/json")
                 .content("{\"request\":\"\",\"difficulty\":\"HARD\",\"style\":\"COMMAND\",\"category\":\"bfs\",\"publish\":true,\"shared\":true}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.difficulty").value("HARD")).andExpect(jsonPath("$.style").value("COMMAND")).andExpect(jsonPath("$.publish").value(true));
-        assertThat(worker.runOnce()).isTrue();
-        var authorCall=calls.get(0);var input=JudgeJson.parse(authorCall.input());
+        assertThat(worker.runOnce()).isFalse();
+        var authorCall=onboarding.claimCodexAuthor();var input=authorCall.path("spec").path("input");
         assertThat(input.path("difficulty").asText()).isEqualTo("HARD");assertThat(input.path("style").asText()).isEqualTo("COMMAND");assertThat(input.path("category").asText()).isEqualTo("bfs");
         assertThat(input.has("publish")||input.has("shared")).isFalse();
-        assertThat(authorCall.instructions()).contains("Never name the technique","style COMMAND","mutants[0] must be a realistic");
-        assertThat(authorCall.model().maxOutputTokens()).isEqualTo(28000);
+        assertThat(authorCall.path("spec").path("instructions").asText()).contains("Never name the technique","style COMMAND","mutants[0] must be a realistic");
+        assertThat(authorCall.path("effort").asText()).isEqualTo("high");
+        onboarding.finishCodexAuthor(codexResult(authorCall,author(),null));
         worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
         assertThat(view(id).status()).isEqualTo("ACTIVE");
         followup.advance(); // rule-based admission is disabled in this environment: the refusal is recorded, not retried forever

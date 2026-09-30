@@ -350,17 +350,17 @@ class CodexCli(GenerationAdapter):
                        + json.dumps(assignment['repair']['previous'], ensure_ascii=False))
         if assignment.get('feedback'):
             prompt += '\nPrevious validation failed at: ' + assignment['feedback']
-        if assignment['spec'].get('phase') == 'HYBRID_V1':
+        if assignment['spec'].get('phase') in ('HYBRID_V1', 'RULE_AUTHOR_V1'):
             spec = assignment['spec']
-            if spec.get('role') not in ('CONTRACT', 'CORE') or oracle:
+            if spec.get('role') not in (('AUTHOR',) if spec['phase'] == 'RULE_AUTHOR_V1' else ('CONTRACT', 'CORE')) or oracle:
                 raise RuntimeError('INVALID_CODEX_ARTIFACT')
             # Final structured output only: no partial-event handoff, no workspace sharing.
             contract.write_text(json.dumps(assignment['outputSchema']))
             prompt = spec['instructions'] + '\nTask data:\n' + json.dumps(spec['input'], ensure_ascii=False)
         timeout = 480
-        if assignment['spec'].get('phase') == 'HYBRID_V1':
+        if assignment['spec'].get('phase') in ('HYBRID_V1', 'RULE_AUTHOR_V1'):
             deadline = datetime.fromisoformat(assignment['deadlineAt'].replace('Z', '+00:00'))
-            timeout = min(120, (deadline - datetime.now(timezone.utc)).total_seconds())
+            timeout = min(600 if assignment['spec']['phase'] == 'RULE_AUTHOR_V1' else 120, (deadline - datetime.now(timezone.utc)).total_seconds())
             if timeout <= 0:
                 raise RuntimeError('HYBRID_DEADLINE_EXCEEDED')
         command = [self.binary, 'exec', '--ignore-user-config', '--ignore-rules', '--ephemeral',
@@ -410,9 +410,9 @@ class CodexCli(GenerationAdapter):
         return value, usage
 
     def produce(self, assignment, directory):
-        if assignment['spec'].get('phase') == 'HYBRID_V1':
+        if assignment['spec'].get('phase') in ('HYBRID_V1', 'RULE_AUTHOR_V1'):
             role = assignment['spec'].get('role')
-            if role not in ('CONTRACT', 'CORE'):
+            if role not in (('AUTHOR',) if assignment['spec']['phase'] == 'RULE_AUTHOR_V1' else ('CONTRACT', 'CORE')):
                 raise RuntimeError('INVALID_CODEX_ARTIFACT')
             started = time.monotonic()
             payload, usage = self.context(assignment, directory / role.lower())
@@ -420,7 +420,7 @@ class CodexCli(GenerationAdapter):
             return {'payload': payload, 'error': None, 'usage': {
                 'executor': 'CODEX_CLI', 'billingMode': 'CHATGPT_MANAGED',
                 'cliVersion': self.cli_version, 'providerUsage': usage,
-                'promptProfile': 'hybrid-' + role.lower() + '-v1',
+                'promptProfile': 'rule-author-v1' if assignment['spec']['phase'] == 'RULE_AUTHOR_V1' else 'hybrid-' + role.lower() + '-v1',
                 'elapsedSeconds': round(time.monotonic() - started, 3)}}
         if assignment['spec'].get('phase')=='EXPERIMENTAL_FINAL_PLAN':
             started=time.monotonic()
@@ -516,6 +516,8 @@ class Api:
 
 
 def hybrid_completion(assignment, result):
+    if assignment['spec'].get('phase') == 'RULE_AUTHOR_V1':
+        return {**assignment['spec']['assignment'], **{key: result[key] for key in ('payload', 'usage', 'error')}}
     envelope = assignment['spec']['assignment']
     return {**{key: envelope[key] for key in ('branchId', 'revision', 'role', 'token',
             'inputHash', 'contractHash', 'publicHash')},
@@ -534,7 +536,14 @@ def hybrid_once(api, adapter, state):
         return _hybrid_once(api, adapter, state)
 
 
-def _hybrid_once(api, adapter, state):
+def rule_author_once(api, adapter, state):
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (state / 'worker.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return _hybrid_once(api, adapter, state, 'rule-author', 'RULE_AUTHOR_V1')
+
+
+def _hybrid_once(api, adapter, state, lane='hybrid', phase='HYBRID_V1'):
     for saved_assignment in sorted(state.glob('*/assignment.json')):
         directory = saved_assignment.parent
         pending = directory / 'completion.json'
@@ -548,21 +557,21 @@ def _hybrid_once(api, adapter, state):
                 'providerUsage': json.loads(usage_path.read_text()) if usage_path.exists() else None}}
             atomic(pending, {'body': hybrid_completion(assignment, result)})
         try:
-            api.post('/hybrid/result', json.loads(pending.read_text())['body'])
+            api.post('/' + lane + '/result', json.loads(pending.read_text())['body'])
         except urllib.error.HTTPError as error:
             if error.code not in (400, 404, 409):
                 raise
             pending.rename(directory / 'completion.rejected')
         else:
             pending.rename(directory / 'completion.delivered')
-    assignment = api.post('/hybrid/claim', {})
+    assignment = api.post('/' + lane + '/claim', {})
     if assignment is None:
         return False
     directory = state / str(uuid.UUID(assignment['token']))
     directory.mkdir(mode=0o700)
     atomic(directory / 'assignment.json', assignment)
     try:
-        if assignment.get('pipelineVersion') != 'HYBRID_V1' or assignment['spec'].get('phase') != 'HYBRID_V1':
+        if assignment.get('pipelineVersion') != phase or assignment['spec'].get('phase') != phase:
             raise RuntimeError('INVALID_CODEX_ARTIFACT')
         result = adapter.produce(assignment, directory)
     except Exception as error:
@@ -575,7 +584,7 @@ def _hybrid_once(api, adapter, state):
                             'providerUsage': json.loads(usage_path.read_text()) if usage_path.exists() else None}}
     body = hybrid_completion(assignment, result)
     atomic(directory / 'completion.json', {'body': body})
-    api.post('/hybrid/result', body)
+    api.post('/' + lane + '/result', body)
     (directory / 'completion.json').rename(directory / 'completion.delivered')
     return True
 
@@ -630,11 +639,11 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         while True:
             if args.hybrid:
-                worked = hybrid_once(api, adapter, args.state / 'hybrid')
+                worked = rule_author_once(api, adapter, args.state / 'rule-author') or hybrid_once(api, adapter, args.state / 'hybrid')
             elif os.environ.get('GENERATION_HYBRID_ENABLED', 'false').lower() == 'true':
                 # One process/lock and one invocation at a time, with separate durable result stores.
                 # Prioritize the short admitted deadline; preserve the legacy queue when hybrid is idle.
-                worked = hybrid_once(api, adapter, args.state / 'hybrid') or once(api, adapter, args.state)
+                worked = rule_author_once(api, adapter, args.state / 'rule-author') or hybrid_once(api, adapter, args.state / 'hybrid') or once(api, adapter, args.state)
             else:
                 worked = once(api, adapter, args.state)
             if args.once:
