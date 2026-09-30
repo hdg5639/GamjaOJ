@@ -64,6 +64,18 @@ final class CallablePrograms {
         }
         return b.append("}\n").toString();
     }
+    static String submissionGuide(JsonNode api) {
+        validate(api);
+        var b=new StringBuilder("\n\n구현할 API\npublic class UserSolution 안에 다음 public 인스턴스 메서드를 구현하세요.\n");
+        for(var method:api.path("methods")) {
+            var params=new ArrayList<String>();
+            method.path("parameters").forEach(p->params.add(p.path("type").asText()+" "+p.path("name").asText()));
+            b.append("public ").append(method.path("returns").asText()).append(' ').append(method.path("name").asText())
+                .append('(').append(String.join(", ",params)).append(")\n");
+        }
+        return b.append("\n제공된 편집기 템플릿을 완성해 제출하세요. Main과 JSON 파싱은 서버가 제공하므로 직접 구현하거나 표준 입출력을 작성하지 않습니다. 반환형이 void가 아닌 메서드는 답을 반환하고, 구동 코드가 그 반환값을 출력합니다. 아래 입력·출력과 예제는 구동 코드가 사용하는 테스트 데이터 형식입니다.\n")
+            .append(api.path("mode").asText().equals("MULTI_API")?"케이스마다 새 객체를 사용하며, 한 케이스의 여러 호출은 같은 객체의 상태를 공유합니다. 첫 호출은 init이며, 다시 호출된 init도 상태를 초기화해야 합니다.\n":"케이스마다 새 객체에서 solution을 정확히 한 번 호출합니다.\n").toString();
+    }
     static ObjectNode bundle(JsonNode api) {
         validate(api);var b=JudgeJson.JSON.createObjectNode().put("format","JAVA_CALLABLE_V1").put("sourceFile","UserSolution.java");
         b.set("api",api.deepCopy());b.put("driver",driver(api)).put("template",template(api));return b;
@@ -93,7 +105,7 @@ final class CallablePrograms {
       Canonical execution input is a JSON array of cases; each case is an array of calls; each call is [methodName,arg1,...]. Example: [[["init",10],["add",3],["query",2]],[["init",5],["query",1]]]. SINGLE_FUNCTION has one ["solution",...] call per case.
       Each case creates a fresh UserSolution; calls within a case share that object. MULTI_API starts each case with init; init may also repeat and must reset all problem state. Multiple cases run in the same process, so static state must also be reset. Up to 100 cases and 1000000 calls per case within the joint input/resource bounds (driver input ceiling 6 MiB UTF-8). Time/memory limit covers the whole input (all cases/calls), not each API call.
       The driver prints one canonical JSON value per non-void return (no output for void). Arrays preserve order; null is invalid. String output escapes every UTF-16 surrogate code unit and character <= U+0020 as \\uXXXX, backslash and quote as JSON escapes. JSON input integers fit signed long; int parameters must fit signed int. Only integral JSON numbers are supported.
-      In SINGLE_FUNCTION, two independent singleton cases are VALID; two solution calls inside ONE case are invalid. Never put a valid multi-case input into invalidInputs. Distinguish the outer cases array from each inner calls array.
+      In SINGLE_FUNCTION, two independent singleton cases are VALID; two solution calls inside ONE case are invalid. Never put a valid multi-case input into invalidInputs. Distinguish the outer cases array from each inner calls array. For multiple cases build each call array, wrap EACH call in its own case array, then collect those case arrays in the outer array; never omit a later case wrapper. All examples and adversarialInputs must be syntactically valid JSON and obey every public argument bound. Use boundary values inside the domain, never out-of-range values as valid examples.
       """;
     static final String INSTRUCTIONS="""
       CALLABLE JAVA CONTRACT: The following overrides standard-input Main requirements for callable reference/slow/mutant solutions only. For COMMAND_MULTI or COMMAND_SINGLE the contract must include callable matching the selected mode.
