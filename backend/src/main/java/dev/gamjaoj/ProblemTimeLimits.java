@@ -10,9 +10,16 @@ final class ProblemTimeLimits {
     static int calibratedJavaSeconds(long maximumMs) {
         HybridArtifacts.require(maximumMs>0,"TIME_LIMIT_EVIDENCE_MISSING");
         HybridArtifacts.require(maximumMs<=PROFILING_SECONDS*500L,"TIME_LIMIT_CAPACITY_EXCEEDED");
-        long seconds=Math.max(1,(maximumMs*2+999)/1000);
+        // Subsequent isolated JVM runs vary. Reserve 25% (at least 250 ms) before the 2x safety check,
+        // rather than putting the measured maximum immediately below a later rejection boundary.
+        long repeatAllowance=Math.max(250,(maximumMs+3)/4);
+        long seconds=Math.max(1,((maximumMs+repeatAllowance)*2+999)/1000);
         HybridArtifacts.require(seconds<=PROFILING_SECONDS,"TIME_LIMIT_CAPACITY_EXCEEDED");
         return (int)seconds;
+    }
+    static int legacyCalibratedJavaSeconds(long maximumMs) {
+        HybridArtifacts.require(maximumMs>0&&maximumMs<=PROFILING_SECONDS*500L,"RULE_TIMING_EVIDENCE");
+        return (int)Math.max(1,(maximumMs*2+999)/1000);
     }
     static String javaProfile(int seconds) {
         HybridArtifacts.require(seconds>=1&&seconds<=PROFILING_SECONDS,"INVALID_TIME_LIMITS");

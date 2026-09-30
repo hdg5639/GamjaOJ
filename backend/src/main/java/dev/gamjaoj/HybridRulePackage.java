@@ -54,11 +54,13 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
         }
         int qualifiedSeconds=0;long referenceMs=0;
         if(p.has("timing")) {
-            var timing=p.path("timing");HybridArtifacts.fields(timing,"javaSeconds","referenceMaxWallMs");
+            var timing=p.path("timing");
+            if(timing.has("calibrationPolicy")){HybridArtifacts.fields(timing,"javaSeconds","referenceMaxWallMs","calibrationPolicy");HybridArtifacts.require(timing.path("calibrationPolicy").asText().equals("REPLAY_HEADROOM_V1"),"RULE_TIMING_EVIDENCE");}
+            else HybridArtifacts.fields(timing,"javaSeconds","referenceMaxWallMs");
             HybridArtifacts.require(timing.path("javaSeconds").isInt()&&timing.path("referenceMaxWallMs").isIntegralNumber()
                     &&timing.path("referenceMaxWallMs").canConvertToLong(),"RULE_TIMING_EVIDENCE");
             qualifiedSeconds=timing.path("javaSeconds").asInt();referenceMs=timing.path("referenceMaxWallMs").asLong();
-            HybridArtifacts.require(referenceMs>0&&referenceMs<=10000&&qualifiedSeconds==ProblemTimeLimits.calibratedJavaSeconds(referenceMs),"RULE_TIMING_EVIDENCE");
+            HybridArtifacts.require(referenceMs>0&&referenceMs<=10000&&qualifiedSeconds==(timing.has("calibrationPolicy")?ProblemTimeLimits.calibratedJavaSeconds(referenceMs):ProblemTimeLimits.legacyCalibratedJavaSeconds(referenceMs)),"RULE_TIMING_EVIDENCE");
         }
         var contract=HybridArtifacts.contract(p.path("contract"));
         // Exactly one Korean normative explanation per contract action, as the public snapshot requires.
