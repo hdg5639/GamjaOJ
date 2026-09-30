@@ -19,6 +19,7 @@ export default function EditorShortcutHelp({diagnostic=false}) {
     <strong>Vim 모드</strong>
     <span>:w 초안 저장 · :run 테스트 실행 · :submit 정식 제출<br/>Esc 일반 모드 · i 입력 · v 선택 · Ctrl+v 블록 선택<br/>hjkl 이동 · ciw 단어 변경 · yy/p 복사/붙여넣기 · u/Ctrl+r 되돌리기/다시 실행<br/>/ 검색 · n 다음 · :%s/이전/새값/g 전체 치환<br/>qa 기록 시작 · q 기록 끝 · @a 매크로 실행</span>
     <span>{diagnostic?'정식 제출은 진단 제출 횟수를 사용합니다. 테스트 실행과 초안 저장은 횟수를 사용하지 않습니다.':'테스트 실행은 정식 제출 기록에 남지 않습니다.'} 초안 저장 상태는 파일명 옆에서 확인하세요.</span>
+    <strong>코드 축약어</strong><span>Java: sysout/sout, main/psvm, fori, iter, br, st, sb<br/>C++: main, cout, cin, fastio, fori, foreach, sortv, vec<br/>Python: main, ifmain, pr, fori, fore, defn, readint/readints, fastio<br/>줄 시작에 축약어 입력 → Tab/Enter로 펼치기 · Tab/Shift+Tab으로 입력 위치 이동 · Esc로 종료</span>
     <strong>자동완성</strong><span>Ctrl+Space 후보 · Enter/Tab 확정 · 후보가 없으면 Tab 들여쓰기 · Esc 다음 Tab으로 나가기</span>
   </>;
 }
