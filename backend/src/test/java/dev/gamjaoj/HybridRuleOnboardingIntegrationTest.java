@@ -63,6 +63,29 @@ class HybridRuleOnboardingIntegrationTest {
                 .andExpect(status().isNoContent());
         assertThat(view(id).status()).isEqualTo("AUTHORED");
     }
+    @Test void detailedConditionsReachBothAuthorsAndOracleWithoutTruncation() throws Exception {
+        String text="가".repeat(9999)+"끝";
+        for(String difficulty:List.of("MEDIUM","EXPERT")) {
+            UUID id=UUID.randomUUID();
+            var request=JudgeJson.JSON.createObjectNode().put("request",text).put("difficulty",difficulty);
+            mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",id)
+                    .contentType("application/json").content(request.toString())).andExpect(status().isOk()).andExpect(jsonPath("$.request").value(text));
+            if(difficulty.equals("EXPERT")) {
+                var work=onboarding.claimCodexAuthor();
+                assertThat(work.path("spec").path("input").path("request").asText()).isEqualTo(text);
+                onboarding.finishCodexAuthor(codexResult(work,author(),null));
+            } else {
+                var work=onboarding.claimCall();assertThat(JudgeJson.parse(work.input()).path("request").asText()).isEqualTo(text);
+                onboarding.finishCall(work.attemptId(),result(author()),null);
+            }
+            var oracle=onboarding.claimCall();
+            assertThat(JudgeJson.parse(oracle.input()).path("originalRequest").path("request").asText()).isEqualTo(text);
+            onboarding.finishCall(oracle.attemptId(),result(oracle()),null);onboarding.cancel("owner",id);
+        }
+        mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",UUID.randomUUID())
+                .contentType("application/json").content(JudgeJson.JSON.createObjectNode().put("request",text+"가").toString()))
+                .andExpect(status().isBadRequest());
+    }
     @Test void hardAndExpertUseCodexAndKeepIndependentApiOracle() {
         for(String difficulty:List.of("HARD","EXPERT")) {
             UUID id=hard(difficulty);assertThat(onboarding.claimCall()).isNull();

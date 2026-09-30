@@ -81,7 +81,8 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
         <label className="field">분야<select aria-label="문제 분야" value={category} disabled={busy||!!pending.current} onChange={e=>setCategory(e.target.value)}><option value="AUTO">자동으로 고르기</option>{Object.entries(categoryLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
       </div>
       <p className="draft-help">{styleHelp[style]}</p>
-      <label className="field">원하는 규칙과 조건 (선택)<textarea rows={3} maxLength={1000} value={text} disabled={busy||!enabled||!!pending.current} onChange={e=>setText(e.target.value)} placeholder="예: 격자는 매초 90도 회전하고, 특정 시간에만 이동 가능한 연결과 소모·충전되는 자원이 있으며, K개의 지점을 모두 방문"/></label>
+      <label className="field">원하는 규칙과 조건 (선택)<textarea rows={6} maxLength={10000} aria-describedby="rule-request-length" value={text} disabled={busy||!enabled||!!pending.current} onChange={e=>setText(e.target.value)} placeholder="예: 격자는 매초 90도 회전하고, 특정 시간에만 이동 가능한 연결과 소모·충전되는 자원이 있으며, K개의 지점을 모두 방문"/></label>
+      <p id="rule-request-length" className="draft-help">{text.length.toLocaleString('ko-KR')} / 10,000자 · 공백·줄바꿈 포함</p>
       <label className="check-row"><input type="checkbox" checked={publish} disabled={busy||!!pending.current} onChange={e=>setPublish(e.target.checked)}/>등록되면 바로 문제로 만들기</label>
       {publish&&<label className="check-row"><input type="checkbox" checked={shared} disabled={busy||!!pending.current} onChange={e=>setShared(e.target.checked)}/>만든 문제를 다른 회원에게도 공개</label>}
       <button className="secondary" disabled={busy||!enabled||busyWork||(!pending.current&&!target&&category==='AUTO'&&text.trim().length<10)}>{pending.current?'같은 요청 다시 확인':'이 조건으로 규칙 등록'}</button>
