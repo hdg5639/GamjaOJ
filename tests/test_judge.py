@@ -15,6 +15,16 @@ from runner.judge import InfrastructureError, ROOT, Runner, CompileCache, Genera
 
 
 class ContractTests(unittest.TestCase):
+    def test_generated_helpers_use_infrastructure_budget_without_mutating_submission_profile(self):
+        from runner.judge import LANGUAGES, checked_profile
+        runner = Runner(LANGUAGES['JAVA']['image'])
+        runner.profile = checked_profile(LANGUAGES['JAVA'] | {'testWallSeconds': 12}, 'JAVA', runner.image)
+        result = {'stdout': b'', 'limit': None, 'exit_code': 0}
+        with tempfile.TemporaryDirectory() as parent, patch.object(Runner, 'sandbox', return_value=result), patch('runner.judge.unpack_classes'):
+            helper, _ = runner._aux_classes('timing-budget', 'public class Main {}', parent)
+            self.assertEqual(20, helper.profile['testWallSeconds'])
+            self.assertEqual(12, runner.profile['testWallSeconds'])
+
     def test_run_contract_is_not_a_judge_verdict(self):
         result = {"stdout": b"anything", "limit": None, "exit_code": 0, "oom_killed": False}
         self.assertEqual("OK", classify(result, None))
