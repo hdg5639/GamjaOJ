@@ -106,6 +106,11 @@ class HybridRuleOnboardingIntegrationTest {
         assertThat(retry.schema().path("properties").has("requirementsReview")).isTrue();
         onboarding.finishCall(retry.attemptId(),result(a),null);
         assertThat(view(id).status()).isEqualTo("HELD");assertThat(view(id).error()).isEqualTo("REQUIREMENTS_NOT_MET");
+        assertThat(view(id).requirementIssues()).containsExactly("요청한 여러 장치 방문을 두 장치로 축소했습니다.");
+        mvc.perform(get("/api/rules/onboarding").with(user("owner"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].requirementIssues[0]").value("요청한 여러 장치 방문을 두 장치로 축소했습니다."));
+        mvc.perform(get("/api/rules/onboarding").with(user("other"))).andExpect(status().isOk())
+                .andExpect(content().json("[]"));
         assertThat(jdbc.sql("SELECT count(*) FROM hybrid_execution_check").query(Integer.class).single()).isZero();
         assertThat(ledger.budget().spentUsd()).isPositive();
         onboarding.finishCall(retry.attemptId(),result(a),null);

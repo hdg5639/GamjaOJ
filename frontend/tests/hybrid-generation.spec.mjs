@@ -213,3 +213,15 @@ test('generation history pages five results at a time',async({page})=>{
   await expect(results.getByRole('navigation')).toContainText('2 / 2');
   await expect(results.getByRole('button',{name:'다음',exact:true})).toBeDisabled();
 });
+test('held rule requests explain unmet requirements without exposing package code',async({page})=>{
+  await fixture(page,async(route,path)=>{
+    if(path==='/api/rules/onboarding/options'){await route.fulfill({json:{enabled:true}});return true;}
+    if(path==='/api/rules/onboarding'){await route.fulfill({json:[{id:'held-rule',status:'HELD',error:'REQUIREMENTS_NOT_MET',request:'방문 순서에 따라 경로가 달라지는 규칙',repairs:1,checks:{},requirementIssues:['중간 제어실 방문 효과를 보존하는 압축 전이를 완성하지 못했습니다.']}]});return true;}
+  });
+  await page.getByRole('tab',{name:/등록 기록/}).click();
+  await expect(page.getByText('요청한 조건을 충족하는 규칙·풀이를 완성하지 못했어요.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('list',{name:'충족하지 못한 조건'})).toContainText('중간 제어실 방문 효과');
+  await page.setViewportSize({width:390,height:850});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:'/tmp/gamjaoj-rule-unmet-reasons.png',fullPage:true});
+});
