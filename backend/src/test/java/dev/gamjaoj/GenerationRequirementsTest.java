@@ -22,6 +22,9 @@ class GenerationRequirementsTest {
         assertThat(input.path("authoringStage").path("kind").asText()).isEqualTo("REUSABLE_RULE_CANDIDATE");
         assertThat(input.path("authoringStage").path("candidateHasBeenExecuted").asBoolean(true)).isFalse();
         assertThat(input.path("authoringStage").path("presentationRequired").asBoolean(true)).isFalse();
+        assertThat(input.path("authoringStage").has("javaDesignTargetSeconds")).isFalse();
+        assertThat(input.path("authoringStage").path("profilingWallSeconds").asInt()).isEqualTo(20);
+        assertThat(GenerationRequirements.requiresAuthorReview("rule-author-requirements-v2")).isTrue();
         assertThat(HybridRuleOnboarding.AUTHOR_TARGETING).doesNotContain(HybridModels.ORIGINALITY)
                 .contains(GenerationRequirements.RULE_AUTHOR);
         assertThat(GenerationRequirements.requiresAuthorReview("rule-author-requirements-v1")).isTrue();

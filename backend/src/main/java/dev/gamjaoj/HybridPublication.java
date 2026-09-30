@@ -42,13 +42,18 @@ class HybridPublication {
         var runtimes=jdbc.sql("SELECT e.role,s.runtime_image,s.runner_policy,s.language,s.execution_profile_json,j.execution_mode,j.result_json FROM hybrid_execution_check e JOIN submission s ON s.id=e.submission_id JOIN judge_job j ON j.submission_id=s.id WHERE e.branch_id=? ORDER BY e.role")
                 .param(s.validation).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4),r.getString(5),r.getString(6),r.getString(7)}).list();
         String scheduling=jdbc.sql("SELECT scheduling FROM hybrid_validation_profile WHERE branch_id=?").param(s.validation).query(String.class).single();
+        String validationPolicy=jdbc.sql("SELECT policy FROM hybrid_validation_profile WHERE branch_id=?").param(s.validation).query(String.class).single();
+        var registered=HybridProfiles.all().stream().filter(pf->pf.pkg()!=null&&pf.policy().equals(validationPolicy)).findFirst();
+        int qualifiedSeconds=registered.map(pf->pf.pkg().qualifiedJavaSeconds()).orElse(0);
+        String expectedProfile=qualifiedSeconds>0?ProblemTimeLimits.javaProfile(qualifiedSeconds):null;
         long referenceMs=0;
         for(var row:runtimes) {
             var report=JudgeJson.parse(row[6]);
             if(row[0].contains("reference")||row[0].startsWith("package-final-"))referenceMs=Math.max(referenceMs,ProblemTimeLimits.maximum(report));
             String expectedMode=HybridRunnerChecks.executionMode(scheduling,row[0]);
             HybridArtifacts.require(Objects.equals(row[1],p[3])&&row[2].equals(row[0].equals("package-generator")?"java8-run-v1":p[4])
-                    &&"JAVA".equals(row[3])&&row[4]==null&&expectedMode.equals(row[5])
+                    &&"JAVA".equals(row[3])&&Objects.equals(expectedProfile,row[4])&&expectedMode.equals(row[5])
+                    &&(expectedProfile==null||JudgeJson.parse(expectedProfile).equals(report.path("execution_profile")))
                     &&row[1].equals(report.path("image").asText())&&row[2].equals(report.path("policy").asText())
                     &&expectedMode.equals(report.path("execution_mode").asText()),"PUBLICATION_RUNTIME_FENCE");
         }
@@ -72,9 +77,10 @@ class HybridPublication {
             }
             ((com.fasterxml.jackson.databind.node.ObjectNode)result.path("requirements")).putObject("timeEvidence")
                     .put("javaMaxWallMs",referenceMs).put("otherLanguagesMeasured",false)
-                    .put("javaMaxAllowedSeconds",HybridProfiles.all().stream().anyMatch(pf->pf.pkg()!=null&&pf.contract().equals(contract))?5:20)
-                    .put("scope","checked reference inputs on the pinned Runner; not a worst-case proof. Registered rules cannot exceed their five-second qualification budget without requalifying slow witnesses.");
+                    .put("javaMaxAllowedSeconds",registered.isPresent()?(qualifiedSeconds>0?qualifiedSeconds:5):20)
+                    .put("scope","checked reference inputs on the pinned Runner; not a worst-case proof. Registered rules retain the budget used to requalify their slow witnesses; legacy rules retain five seconds.");
         }
+        if(requirements&&qualifiedSeconds>0)((com.fasterxml.jackson.databind.node.ObjectNode)result.path("requirements").path("timeEvidence")).put("javaQualifiedSeconds",qualifiedSeconds);
         return HybridArtifacts.bounded(result);
     }
     @Transactional
@@ -112,6 +118,8 @@ class HybridPublication {
                 HybridArtifacts.require(OffsetDateTime.now(ZoneOffset.UTC).isBefore(jdbc.sql("SELECT deadline_at FROM hybrid_generation WHERE id=?").param(id).query(OffsetDateTime.class).single()),"PUBLICATION_DEADLINE");
                 requireReferenceQualified(id,s.revision);
                 String limits=input.has("requirements")?ProblemTimeLimits.reviewed(JudgeJson.parse(artifact[0]).path("requirementsReview"),input.path("requirements").path("timeEvidence").path("javaMaxWallMs").asLong(),input.path("requirements").path("timeEvidence").path("javaMaxAllowedSeconds").asInt(20)):null;
+                int qualified=input.path("requirements").path("timeEvidence").path("javaQualifiedSeconds").asInt();
+                if(qualified>0)HybridArtifacts.require(JudgeJson.parse(limits).path("JAVA").asInt()==qualified,"TIME_LIMIT_QUALIFICATION_FENCE");
                 jdbc.sql("UPDATE problem_version SET ready=true,shared=?,time_limits_json=? WHERE id=? AND ready=false").param(s.shared).param(limits).param(version).update();
                 var ruleVersion=jdbc.sql("SELECT rule_version_id FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).optional();
                 if(ruleVersion.isPresent()) {

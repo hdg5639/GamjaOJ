@@ -95,12 +95,23 @@ class HybridRunnerChecks {
         var tests=plan.putArray("tests");cases.forEach(tests::add);
         queuePlan(s,role,source,plan,run);
     }
+    private int qualifiedSeconds(State s) {
+        String policy=jdbc.sql("SELECT policy FROM hybrid_validation_profile WHERE branch_id=?").param(s.branch).query(String.class).single();
+        if(!HybridProfiles.supports(policy))return 0;
+        var profile=HybridProfiles.byPolicy(policy);
+        return profile.pkg()==null?0:profile.pkg().qualifiedJavaSeconds();
+    }
+    private static long marginMs(HybridProfiles.Definition profile) {
+        return profile.pkg()!=null&&profile.pkg().qualifiedJavaSeconds()>0?profile.pkg().qualifiedJavaSeconds()*500L:4000;
+    }
     private void queuePlan(State s,String role,String source,JsonNode plan,boolean run) {
         if(s.verifyOnly)throw new IllegalArgumentException("INCOMPLETE_PUBLICATION_EVIDENCE");
         String payload=JudgeJson.canonical(plan),hash=JudgeJson.hash(payload),sourceHash=JudgeJson.hash(source);UUID id=UUID.randomUUID();
         jdbc.sql("INSERT INTO submission(id,user_id,problem_version,source_code,source_sha256,idempotency_key,runtime_image,runner_policy,run_input,run_package,run_package_sha256,hybrid_branch_id) SELECT ?,g.owner_id,?,?,?,?,p.runtime_image,?,?,?,?,? FROM hybrid_generation g JOIN problem_version p ON p.id=? WHERE g.id=?")
                 .param(id).param(version(s)).param(source).param(sourceHash).param(id).param(run?"java8-run-v1":"java8-judge-v1")
                 .param("hybrid-check").param(payload).param(hash).param(s.branch).param(version(s)).param(s.generation).update();
+        int seconds=qualifiedSeconds(s);
+        if(seconds>0)jdbc.sql("UPDATE submission SET execution_profile_json=? WHERE id=?").param(ProblemTimeLimits.javaProfile(seconds)).param(id).update();
         jdbc.sql("INSERT INTO judge_job(submission_id,priority,execution_mode) VALUES (?,1,?)").param(id).param(mode(s,role)).update();
         jdbc.sql("INSERT INTO hybrid_execution_check(branch_id,role,submission_id,source_sha256,package_sha256) VALUES (?,?,?,?,?)")
                 .param(s.branch).param(role).param(id).param(sourceHash).param(hash).update();
@@ -359,7 +370,7 @@ class HybridRunnerChecks {
             var tests=JudgeJson.parse(evidence.get(role).report).path("tests");
             if(tests.size()!=profile.stress().size())throw new IllegalArgumentException("INCOMPLETE_STRESS_EVIDENCE");
             for(var test:tests)if(!test.path("wall_ms").isIntegralNumber()||!test.path("wall_ms").canConvertToLong()
-                    ||test.path("wall_ms").asLong()<0||test.path("wall_ms").asLong()>4000)throw new IllegalArgumentException("STRESS_RESOURCE_MARGIN");
+                    ||test.path("wall_ms").asLong()<0||test.path("wall_ms").asLong()>marginMs(profile))throw new IllegalArgumentException("STRESS_RESOURCE_MARGIN");
         }
         JsonNode packageEvidence=packagePolicy?advancePackage(s,data,evidence,profile):null;
         if(packagePolicy&&packageEvidence==null)return;
@@ -443,10 +454,10 @@ class HybridRunnerChecks {
             var tests=JudgeJson.parse(e.report).path("tests");long total=0;
             if(tests.size()!=candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count()+HybridPackagePlan.generatedCount(profile))throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
             for(var t:tests) {
-                var wall=t.path("wall_ms");if(!wall.isIntegralNumber()||!wall.canConvertToLong()||wall.asLong()<0||wall.asLong()>4000)throw new IllegalArgumentException("FINAL_PACKAGE_RESOURCE_MARGIN");
+                var wall=t.path("wall_ms");if(!wall.isIntegralNumber()||!wall.canConvertToLong()||wall.asLong()<0||wall.asLong()>marginMs(profile))throw new IllegalArgumentException("FINAL_PACKAGE_RESOURCE_MARGIN");
                 total+=wall.asLong();
             }
-            if(total>40000)throw new IllegalArgumentException("FINAL_PACKAGE_TIME_BUDGET");
+            if(total>(profile.pkg()!=null&&profile.pkg().qualifiedJavaSeconds()>0?marginMs(profile)*tests.size():40000))throw new IllegalArgumentException("FINAL_PACKAGE_TIME_BUDGET");
         }
         return JudgeJson.JSON.createObjectNode().put("packageHash",hash).put("candidatesHash",saved[3]).put("testCount",candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count())
                 .put("randomInputCount",4).put("generatorInputCount",4).put("boundedOracleInputCount",HybridPackagePlan.tests(candidates,"batch-oracle",profile).size())
@@ -487,7 +498,7 @@ class HybridRunnerChecks {
             var tests=JudgeJson.parse(evidence.get(role).report).path("tests");
             if(tests.size()!=profile.stress().size()+HybridPackagePlan.generatedCount(profile))throw new IllegalArgumentException("INCOMPLETE_STRESS_EVIDENCE");
             for(var test:tests)if(!test.path("wall_ms").isIntegralNumber()||!test.path("wall_ms").canConvertToLong()
-                    ||test.path("wall_ms").asLong()<0||test.path("wall_ms").asLong()>4000)throw new IllegalArgumentException("STRESS_RESOURCE_MARGIN");
+                    ||test.path("wall_ms").asLong()<0||test.path("wall_ms").asLong()>marginMs(profile))throw new IllegalArgumentException("STRESS_RESOURCE_MARGIN");
         }
         var core=data.get("CORE");
         if(!done.contains("package-generator")) {
@@ -545,10 +556,10 @@ class HybridRunnerChecks {
             var tests=JudgeJson.parse(e.report).path("tests");long total=0;
             if(tests.size()!=candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count()+HybridPackagePlan.generatedCount(profile))throw new IllegalArgumentException("FINAL_PACKAGE_EVIDENCE");
             for(var t:tests) {
-                var wall=t.path("wall_ms");if(!wall.isIntegralNumber()||!wall.canConvertToLong()||wall.asLong()<0||wall.asLong()>4000)throw new IllegalArgumentException("FINAL_PACKAGE_RESOURCE_MARGIN");
+                var wall=t.path("wall_ms");if(!wall.isIntegralNumber()||!wall.canConvertToLong()||wall.asLong()<0||wall.asLong()>marginMs(profile))throw new IllegalArgumentException("FINAL_PACKAGE_RESOURCE_MARGIN");
                 total+=wall.asLong();
             }
-            if(total>40000)throw new IllegalArgumentException("FINAL_PACKAGE_TIME_BUDGET");
+            if(total>(profile.pkg()!=null&&profile.pkg().qualifiedJavaSeconds()>0?marginMs(profile)*tests.size():40000))throw new IllegalArgumentException("FINAL_PACKAGE_TIME_BUDGET");
         }
         var packageEvidence=JudgeJson.JSON.createObjectNode().put("packageHash",hash).put("candidatesHash",saved[3]).put("testCount",candidates.stream().filter(c->!HybridPackagePlan.checkOnly(c)).count())
                 .put("randomInputCount",4).put("generatorInputCount",4).put("boundedOracleInputCount",HybridPackagePlan.tests(candidates,"batch-oracle",profile).size())

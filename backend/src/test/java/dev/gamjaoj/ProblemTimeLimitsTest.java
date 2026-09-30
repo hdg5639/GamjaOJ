@@ -7,6 +7,14 @@ class ProblemTimeLimitsTest {
     static String limits(int java,int cpp,int python) {
         return JudgeJson.canonical(JudgeJson.JSON.createObjectNode().put("JAVA",java).put("CPP",cpp).put("PYTHON",python).put("analysis","Test estimates"));
     }
+    @Test void calibrationRoundsUpWithHeadroomAndRejectsMissingOrUnboundedEvidence() {
+        assertThat(ProblemTimeLimits.calibratedJavaSeconds(10)).isEqualTo(1);
+        assertThat(ProblemTimeLimits.calibratedJavaSeconds(501)).isEqualTo(2);
+        assertThat(ProblemTimeLimits.calibratedJavaSeconds(6000)).isEqualTo(12);
+        assertThat(ProblemTimeLimits.calibratedJavaSeconds(10000)).isEqualTo(20);
+        assertThatThrownBy(()->ProblemTimeLimits.calibratedJavaSeconds(0)).hasMessage("TIME_LIMIT_EVIDENCE_MISSING");
+        for(long ms:new long[]{10001,Long.MAX_VALUE})assertThatThrownBy(()->ProblemTimeLimits.calibratedJavaSeconds(ms)).hasMessage("TIME_LIMIT_CAPACITY_EXCEEDED");
+    }
     @Test void limitsAffectOnlyWallBudgetAndRejectInvalidOrUnsafeProposals() {
         var base=LanguageProfiles.profile("PYTHON");var proposed=LanguageProfiles.profile("PYTHON",limits(2,1,4));
         assertThat(proposed.path("testWallSeconds").asInt()).isEqualTo(4);

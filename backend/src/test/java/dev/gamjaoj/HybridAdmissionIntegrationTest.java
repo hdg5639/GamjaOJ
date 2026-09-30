@@ -139,11 +139,22 @@ class HybridAdmissionIntegrationTest {
         for(int stage=0;stage<9;stage++) {
             checks.advance();Optional<JudgeQueue.Assignment> next;
             while((next=queue.claim(UUID.randomUUID())).isPresent()) {
-                var a=next.get();String role=runner.role(a);runner.complete(a,role.equals("package-generator")?"OK":role.startsWith("mutant-")?"WA":"AC",role.equals("package-generator")?(weighted?HybridDijkstraProfileTest.generated():bfs?HybridBfsProfileTest.generated():HybridRunnerIntegrationTest.GENERATED):"");
+                var a=next.get();String role=runner.role(a);
+                if(profile.pkg()!=null&&profile.pkg().qualifiedJavaSeconds()>0&&(role.contains("reference")||role.startsWith("package-final-"))) {
+                    var report=new GenerationIntegrationTest().report(a,"AC");
+                    for(var test:report.path("tests"))((com.fasterxml.jackson.databind.node.ObjectNode)test).put("wall_ms",6000);
+                    queue.complete(a.submissionId(),a.token(),report);
+                } else runner.complete(a,role.equals("package-generator")?"OK":role.startsWith("mutant-")?"WA":"AC",role.equals("package-generator")?(weighted?HybridDijkstraProfileTest.generated():bfs?HybridBfsProfileTest.generated():HybridRunnerIntegrationTest.GENERATED):"");
             }
         }
         checks.advance();publication.advance();var work=execution.claimApi();assertThat(work).isNotNull();
-        var accepted=new HybridPublicationIntegrationTest().accepted(work);execution.finish(work.attemptId(),result(accepted),null);
+        var accepted=new HybridPublicationIntegrationTest().accepted(work);
+        if(profile.pkg()!=null&&profile.pkg().qualifiedJavaSeconds()>0) {
+            int seconds=profile.pkg().qualifiedJavaSeconds();
+            assertThat(JudgeJson.parse(work.request().input()).path("requirements").path("timeEvidence").path("javaQualifiedSeconds").asInt()).isEqualTo(seconds);
+            ((com.fasterxml.jackson.databind.node.ObjectNode)accepted.path("requirementsReview").path("timeLimits")).put("JAVA",seconds);
+        }
+        execution.finish(work.attemptId(),result(accepted),null);
         assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");
         overrides.remove("HYBRID_VALIDATION_PROFILE");overrides.remove("HYBRID_PUBLIC_ADMISSION_ENABLED");
         return jobs.view("owner",id).publishedVersionId();
@@ -316,6 +327,22 @@ class HybridAdmissionIntegrationTest {
         UUID id=UUID.randomUUID();var now=java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
         jdbc.sql("INSERT INTO hybrid_rule_onboarding(id,owner_id,request_json,request_sha256,status,budget_usd,created_at,deadline_at,updated_at) VALUES (?,?,'{}',?,'ACTIVE',1,?,?,?)")
                 .param(id).param(owner).param("0".repeat(64)).param(now).param(now.plusMinutes(20)).param(now).update();return id;
+    }
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void measuredRuleBudgetSurvivesGenerationAndSubmission(boolean pipeline) throws Exception {
+        overrides.put("HYBRID_FUNCTIONAL_ENABLED",Boolean.toString(pipeline));overrides.put("HYBRID_PIPELINE_V2_ENABLED",Boolean.toString(pipeline));
+        UUID owner=submissions.owner("owner",false);var reference=f.core();reference.remove(List.of("generator","inputValidator"));
+        var pack=fixturePackage();pack.putObject("timing").put("javaSeconds",12).put("referenceMaxWallMs",6000);
+        var profile=registry.activate(owner,onboardingRow(owner),"rule-timed-v1",pack,reference);
+        UUID id=UUID.randomUUID();mvc.perform(postRequest(id,BODY.replace(HybridAdmission.PROFILE,profile.id()))).andExpect(status().isOk());
+        String version=finish(id,profile);
+        var profiles=jdbc.sql("SELECT execution_profile_json FROM submission WHERE problem_version=?").param(version).query(String.class).list();
+        assertThat(profiles).isNotEmpty();
+        for(String saved:profiles)assertThat(JudgeJson.parse(saved).path("testWallSeconds").asInt()).isEqualTo(12);
+        assertThat(JudgeJson.parse(jdbc.sql("SELECT time_limits_json FROM problem_version WHERE id=?").param(version).query(String.class).single()).path("JAVA").asInt()).isEqualTo(12);
+        var submitted=submissions.submit("owner",UUID.randomUUID(),new SubmissionController.Request(version,"class Main {}"));
+        assertThat(JudgeJson.parse(jdbc.sql("SELECT execution_profile_json FROM submission WHERE id=?").param(submitted.id()).query(String.class).single()).path("testWallSeconds").asInt()).isEqualTo(12);
+        HybridProfiles.unregister(profile.id());
     }
     @Test void registeredDataPackageRunsWithoutProfileCodeAndStaysPrivateUntilShared() throws Exception {
         overrides.put("HYBRID_FUNCTIONAL_ENABLED","true");overrides.put("HYBRID_PIPELINE_V2_ENABLED","true");overrides.put("HYBRID_ALLOWED_USERS","owner,other");
