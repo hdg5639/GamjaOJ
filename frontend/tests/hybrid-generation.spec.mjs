@@ -185,10 +185,12 @@ test('member rule registration submits once, shows qualification progress and to
   await expect(request).toBeDisabled();
   await page.getByLabel('문제 난이도',{exact:true}).selectOption('EXPERT');
   await page.getByLabel('문제 스타일',{exact:true}).selectOption('COMMAND');
-  await page.getByLabel('원하는 규칙과 조건 (선택)').fill('구간 합 질의를 누적 합으로 처리하는 규칙');
+  const conditions='조건을 보존하세요.\n'.repeat(1000).slice(0,10000);
+  await page.getByLabel('원하는 규칙과 조건 (선택)').fill(conditions);
+  await expect(page.getByText('10,000 / 10,000자 · 공백·줄바꿈 포함')).toBeVisible();
   await request.click();
   await expect(page.getByText('실행 검증 2건 완료')).toBeVisible();expect(writes).toHaveLength(1);
-  expect(writes[0].body).toEqual({request:'구간 합 질의를 누적 합으로 처리하는 규칙',difficulty:'EXPERT',style:'COMMAND',category:'AUTO',publish:true,shared:false});
+  expect(writes[0].body).toEqual({request:conditions.trim(),difficulty:'EXPERT',style:'COMMAND',category:'AUTO',publish:true,shared:false});
   await expect(page.getByRole('button',{name:'이 조건으로 규칙 등록'})).toBeDisabled();
   items=[{...items[0],status:'ACTIVE',label:'구간 합',difficulty:'EXPERT',style:'COMMAND',publish:true,followupStatus:'PUBLISHED',publishedVersion:'hybrid-check-x'}];mine=[{id:'rule-o1-v1',label:'구간 합',category:'누적 합',status:'ACTIVE',shared:false}];
   await expect(page.getByRole('button',{name:'등록 취소'})).toBeVisible();

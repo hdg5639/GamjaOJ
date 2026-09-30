@@ -62,7 +62,7 @@ class HybridRuleOnboarding {
         String text=spec.request()==null?"":spec.request().strip();
         boolean legacy=spec.difficulty()==null&&spec.style()==null&&spec.category()==null&&spec.target()==null&&!spec.publish();
         boolean anchored=spec.target()!=null||(spec.category()!=null&&!spec.category().isBlank());
-        if(text.length()>1000||(!anchored&&text.length()<10))throw new AccountException(400,"만들고 싶은 문제를 10~1,000자로 설명하거나 분야를 골라 주세요.");
+        if(text.length()>10000||(!anchored&&text.length()<10))throw new AccountException(400,"만들고 싶은 문제를 10~10,000자로 설명하거나 분야를 골라 주세요.");
         var node=JudgeJson.JSON.createObjectNode().put("request",text);
         if(!legacy) {
             String difficulty=spec.difficulty()==null?"MEDIUM":spec.difficulty(),style=spec.style()==null?"GENERAL":spec.style();
