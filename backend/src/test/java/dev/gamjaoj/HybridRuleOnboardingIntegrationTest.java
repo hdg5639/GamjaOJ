@@ -58,8 +58,12 @@ class HybridRuleOnboardingIntegrationTest {
     OpenAiResponses.Result result(JsonNode p){return new OpenAiResponses.Result(p,JudgeJson.JSON.createObjectNode().put("input_tokens",1000).put("output_tokens",2000),"r","q","fixture-author");}
     void provide(JsonNode author) {
         doAnswer(c->{var call=c.getArgument(0,HybridRuleOnboarding.Call.class);
-            if(call.role().equals("ORACLE")){assertThat(call.input()).doesNotContain("reference").doesNotContain("mutant");return result(JudgeJson.JSON.createObjectNode().put("oracleSource","public class Main{public static void main(String[] a){}}"));}
+            if(call.role().equals("ORACLE")){assertThat(call.input()).doesNotContain("reference").doesNotContain("mutant");return result(oracle());}
             return result(author);}).when(provider).generate(any());
+    }
+    ObjectNode oracle() {
+        var out=JudgeJson.JSON.createObjectNode().put("oracleSource","public class Main{public static void main(String[] a){}}");
+        out.putObject("requestReview").put("satisfied",true).putArray("issues");return out;
     }
     String batchOf(List<String> outs){var b=new StringBuilder();for(String o:outs)b.append(o.getBytes(java.nio.charset.StandardCharsets.UTF_8).length).append('\n').append(o);return b.toString();}
     String role(JudgeQueue.Assignment a){return jdbc.sql("SELECT role FROM hybrid_execution_check WHERE submission_id=?").param(a.submissionId()).query(String.class).single();}
@@ -117,6 +121,28 @@ class HybridRuleOnboardingIntegrationTest {
         assertThat(ledger.budget().spentUsd()).isPositive();
         onboarding.finishCall(retry.attemptId(),result(a),null);
         assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_onboarding_call").query(Integer.class).single()).isEqualTo(2);
+    }
+    @Test void independentDesignReviewRejectsSelfApprovedShrunkBoundsBeforeRunnerAndRepairsOriginalRequest() throws Exception {
+        overrides.put("HYBRID_RULE_ONBOARDING_REPAIRS","1");provide(author());UUID id=UUID.randomUUID();
+        mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",id).contentType("application/json")
+                .content("{\"request\":\"물건을 한 번씩 고르며 반드시 12 <= K <= 17 전체 범위를 지원해야 한다.\"}")).andExpect(status().isOk());
+        worker.runOnce();
+        var first=onboarding.claimCall();assertThat(first.role()).isEqualTo("ORACLE");
+        var input=JudgeJson.parse(first.input());
+        assertThat(input.path("originalRequest").path("request").asText()).contains("물건을 한 번씩");
+        assertThat(input.path("originalRequest").has("publish")).isFalse();
+        assertThat(input.has("reference")||input.has("requirementsReview")).isFalse();
+        var rejected=oracle();rejected.put("oracleSource","");
+        ((ObjectNode)rejected.path("requestReview")).put("satisfied",false).withArray("issues").add("명시적 필수 범위 K=12..17을 K=1..14로 축소했습니다.");
+        onboarding.finishCall(first.attemptId(),result(rejected),null);
+        assertThat(view(id).status()).isEqualTo("QUEUED");assertThat(view(id).repairs()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_execution_check").query(Integer.class).single()).isZero();
+        var repair=onboarding.claimCall();assertThat(repair.input()).contains("물건을 한 번씩", "K=12..17", "previousPackage");
+        onboarding.finishCall(repair.attemptId(),result(author()),null);
+        var second=onboarding.claimCall();onboarding.finishCall(second.attemptId(),result(rejected),null);
+        assertThat(view(id).status()).isEqualTo("HELD");assertThat(view(id).error()).isEqualTo("REQUIREMENTS_NOT_MET");
+        assertThat(view(id).requirementIssues()).containsExactly("명시적 필수 범위 K=12..17을 K=1..14로 축소했습니다.");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_execution_check").query(Integer.class).single()).isZero();
     }
     @Test void newAuthorCannotOmitAssessment() throws Exception {
         var a=author();a.remove("requirementsReview");provide(a);UUID id=request();
@@ -192,7 +218,7 @@ class HybridRuleOnboardingIntegrationTest {
     @Test void styledRequestReachesTheAuthorWithoutPublicationPreferencesAndFollowupRecordsRefusal() throws Exception {
         var calls=new ArrayList<HybridRuleOnboarding.Call>();
         doAnswer(c->{var call=c.getArgument(0,HybridRuleOnboarding.Call.class);calls.add(call);
-            if(call.role().equals("ORACLE"))return result(JudgeJson.JSON.createObjectNode().put("oracleSource","public class Main{public static void main(String[] a){}}"));
+            if(call.role().equals("ORACLE"))return result(oracle());
             return result(author());}).when(provider).generate(any());
         for(String bad:List.of("{\"request\":\"\",\"difficulty\":\"HARD\"}","{\"request\":\"아무 문제나\",\"difficulty\":\"LEGENDARY\",\"category\":\"bfs\"}","{\"category\":\"quantum\",\"difficulty\":\"EASY\"}"))
             mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",UUID.randomUUID()).contentType("application/json").content(bad)).andExpect(status().isBadRequest());
@@ -217,7 +243,7 @@ class HybridRuleOnboardingIntegrationTest {
     @Test void failedQualificationIsSentBackToTheAuthorOnceWithTheFailedCheck() throws Exception {
         var calls=new ArrayList<HybridRuleOnboarding.Call>();
         doAnswer(c->{var call=c.getArgument(0,HybridRuleOnboarding.Call.class);calls.add(call);
-            if(call.role().equals("ORACLE"))return result(JudgeJson.JSON.createObjectNode().put("oracleSource","public class Main{public static void main(String[] a){}}"));
+            if(call.role().equals("ORACLE"))return result(oracle());
             return result(author());}).when(provider).generate(any());
         overrides.put("HYBRID_RULE_ONBOARDING_REPAIRS","1");
         UUID id=request();worker.runOnce();worker.runOnce();
