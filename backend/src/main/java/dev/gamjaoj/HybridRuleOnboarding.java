@@ -570,7 +570,7 @@ class HybridRuleOnboarding {
                 .param("hybrid-check").param(payload).param(hash).param(branch).param(version(branch)).param(generation).update();
         if(seconds==0) {
             String saved=jdbc.sql("SELECT answers_json FROM hybrid_rule_onboarding WHERE carrier_generation_id=?").param(generation).query(String.class).single();
-            if("MEASURE_THEN_QUALIFY_V1".equals(JudgeJson.parse(saved).path("timingPolicy").asText()))seconds=ProblemTimeLimits.PROFILING_SECONDS;
+            if(Set.of("MEASURE_THEN_QUALIFY_V1","MEASURE_THEN_QUALIFY_V2").contains(JudgeJson.parse(saved).path("timingPolicy").asText()))seconds=ProblemTimeLimits.PROFILING_SECONDS;
         }
         if(seconds>0)jdbc.sql("UPDATE submission SET execution_profile_json=? WHERE id=?").param(ProblemTimeLimits.javaProfile(seconds)).param(id).update();
         jdbc.sql("INSERT INTO judge_job(submission_id,priority,execution_mode) VALUES (?,1,?)").param(id).param(exclusive?"EXCLUSIVE":"FUNCTIONAL").update();
@@ -588,7 +588,7 @@ class HybridRuleOnboarding {
         jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id) SELECT ?,?,?,p.runtime_image,p.runner_policy,false,? FROM problem_version p WHERE p.id='total-v1'")
                 .param(version(branch)).param(empty).param(JudgeJson.hash(empty)).param(o[0]).update();
         var random=new java.security.SecureRandom();
-        var seeds=JudgeJson.JSON.createObjectNode().put("timingPolicy","MEASURE_THEN_QUALIFY_V1");var list=seeds.putArray("largeSeeds");
+        var seeds=JudgeJson.JSON.createObjectNode().put("timingPolicy","MEASURE_THEN_QUALIFY_V2");var list=seeds.putArray("largeSeeds");
         while(list.size()<2){String seed=Long.toString(Math.floorMod(random.nextLong(),1_000_000_000_000_000L));if(!list.toString().contains("\""+seed+"\""))list.add(seed);}
         jdbc.sql("UPDATE hybrid_rule_onboarding SET carrier_generation_id=?,answers_json=?,updated_at=? WHERE id=?").param(generation).param(JudgeJson.canonical(seeds)).param(now()).param(id).update();
         advanceOne(id);
@@ -628,7 +628,7 @@ class HybridRuleOnboarding {
             var mutants=List.of(a.path("mutants").get(0).path("source").asText(),a.path("mutants").get(1).path("source").asText());
             String largeGenerator=a.path("largeGenerator").asText(),slow=a.path("slowSolution").asText();
             var savedTiming=JudgeJson.parse((String)o.get()[6]);
-            boolean measured="MEASURE_THEN_QUALIFY_V1".equals(savedTiming.path("timingPolicy").asText());
+            boolean measured=Set.of("MEASURE_THEN_QUALIFY_V1","MEASURE_THEN_QUALIFY_V2").contains(savedTiming.path("timingPolicy").asText());
             var seeds=new ArrayList<String>();savedTiming.path("largeSeeds").forEach(x->seeds.add(x.asText()));
             if(seeds.size()!=2)throw new IllegalArgumentException("ONBOARDING_SEED_FENCE");
             // Stage 1: syntax/domain checks and batched outputs of oracle, reference and both mutants.
@@ -715,8 +715,10 @@ class HybridRuleOnboarding {
                 long maximum=0;
                 for(String r:List.of("q-reference-tiny","q-stress-0","q-stress-1","q-large-reference-0","q-large-reference-1"))
                     maximum=Math.max(maximum,ProblemTimeLimits.maximum(done.get(r).report()));
-                int seconds=ProblemTimeLimits.calibratedJavaSeconds(maximum);
+                boolean headroom="MEASURE_THEN_QUALIFY_V2".equals(savedTiming.path("timingPolicy").asText());
+                int seconds=headroom?ProblemTimeLimits.calibratedJavaSeconds(maximum):ProblemTimeLimits.legacyCalibratedJavaSeconds(maximum);
                 timing=JudgeJson.JSON.createObjectNode().put("javaSeconds",seconds).put("referenceMaxWallMs",maximum);
+                if(headroom)timing.put("calibrationPolicy","REPLAY_HEADROOM_V1");
                 // Immutable calibration is stored before queueing; restart reuses the same evidence and budget.
                 if(savedTiming.has("calibration")&&!JudgeJson.canonical(savedTiming.path("calibration")).equals(JudgeJson.canonical(timing)))throw new IllegalArgumentException("TIMING_EVIDENCE_FENCE");
                 if(!done.keySet().containsAll(List.of("q-final-reference","q-final-slow"))) {

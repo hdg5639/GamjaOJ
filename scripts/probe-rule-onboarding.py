@@ -142,11 +142,29 @@ def main():
             if onboarding['status'] != 'ACTIVE':
                 author = sql(f"SELECT coalesce(left(author_json,6000),'') FROM hybrid_rule_onboarding WHERE id='{uuid.UUID(onboarding['id'])}'")
                 record['authorExcerpt'] = author
+                record['authorPackage']=json.loads(sql(f"SELECT author_json FROM hybrid_rule_onboarding WHERE id='{uuid.UUID(onboarding['id'])}'") or 'null')
                 record['qualificationFailures']=sql(f"SELECT coalesce(json_agg(json_build_object('role',e.role,'verdict',j.verdict,'result',j.result_json::json))::text,'[]') FROM hybrid_execution_check e JOIN hybrid_branch b ON b.id=e.branch_id JOIN judge_job j ON j.submission_id=e.submission_id JOIN hybrid_rule_onboarding o ON o.carrier_generation_id=b.generation_id WHERE o.id='{uuid.UUID(onboarding['id'])}' AND j.verdict NOT IN ('AC','OK')")
     finally:
+        # A Runner rejection can precede the concurrent reader's result. Keep its reservation context
+        # until the dispatched call settles; deleting it early loses the usage receipt.
+        owner = f"(SELECT id FROM app_user WHERE username='{username}')"
+        pending_query=("SELECT (SELECT count(*) FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id "
+                       f"JOIN hybrid_generation g ON g.id=r.generation_id WHERE g.owner_id IN {owner} AND a.status='HYBRID_RUNNING') + "
+                       "(SELECT count(*) FROM hybrid_rule_onboarding_call c JOIN ai_attempt a ON a.id=c.attempt_id "
+                       f"JOIN hybrid_rule_onboarding o ON o.id=c.onboarding_id WHERE o.owner_id IN {owner} AND a.status='ONBOARD_RUNNING') + "
+                       f"(SELECT count(*) FROM hybrid_rule_codex_call c JOIN hybrid_rule_onboarding o ON o.id=c.onboarding_id WHERE o.owner_id IN {owner} AND c.status='RUNNING')")
+        settle_deadline=time.monotonic()+310
+        pending=int(sql(pending_query))
+        while pending and time.monotonic()<settle_deadline:
+            time.sleep(5);pending=int(sql(pending_query))
+        for record in results:
+            generation=record.get('generation')
+            if generation:
+                generation['apiEvidence']=json.loads(sql(f"SELECT coalesce(json_agg(json_build_object('attemptId',a.id,'role',r.role,'status',a.status,'error',a.error_code,'usage',a.usage_json::json,'receipt',r.receipt_json::json))::text,'[]') FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id WHERE r.generation_id='{uuid.UUID(generation['id'])}'"))
+                generation['runnerEvidence']=json.loads(sql(f"SELECT coalesce(json_agg(json_build_object('role',e.role,'result',j.result_json::json))::text,'[]') FROM hybrid_execution_check e JOIN hybrid_branch b ON b.id=e.branch_id JOIN judge_job j ON j.submission_id=e.submission_id WHERE b.generation_id='{uuid.UUID(generation['id'])}'"))
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(results, ensure_ascii=False, indent=2))
-        owner = f"(SELECT id FROM app_user WHERE username='{username}')"
+        if pending: raise RuntimeError(f'Pending provider work: retained synthetic account {username} for receipt recovery')
         sql('BEGIN; '
             f'DELETE FROM hybrid_generation WHERE owner_id IN {owner}; '
             f'DELETE FROM submission WHERE user_id IN {owner}; '

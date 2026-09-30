@@ -372,12 +372,12 @@ class HybridRuleOnboardingIntegrationTest {
         var pending=jdbc.sql("SELECT e.role,s.execution_profile_json FROM hybrid_execution_check e JOIN submission s ON s.id=e.submission_id WHERE e.role LIKE 'q-final-%'")
                 .query((r,n)->new String[]{r.getString(1),r.getString(2)}).list();
         assertThat(pending).hasSize(2);
-        for(var row:pending)assertThat(JudgeJson.parse(row[1]).path("testWallSeconds").asInt()).isEqualTo(12);
+        for(var row:pending)assertThat(JudgeJson.parse(row[1]).path("testWallSeconds").asInt()).isEqualTo(15);
         onboarding.advance(); // replaying the coordinator must not duplicate queued work
         assertThat(jdbc.sql("SELECT count(*) FROM hybrid_execution_check WHERE role LIKE 'q-final-%'").query(Integer.class).single()).isEqualTo(2);
         drain(false,false);onboarding.advance();
         assertThat(view(id).status()).isEqualTo("ACTIVE");
-        assertThat(HybridProfiles.byId(view(id).versionId()).pkg().qualifiedJavaSeconds()).isEqualTo(12);
+        assertThat(HybridProfiles.byId(view(id).versionId()).pkg().qualifiedJavaSeconds()).isEqualTo(15);
         assertThat(HybridProfiles.byId(view(id).versionId()).pkg().referenceMaxWallMs()).isEqualTo(6000);
     }
     @Test void measuredReferenceCannotIncreaseBudgetPastInfrastructureCapacity() throws Exception {
