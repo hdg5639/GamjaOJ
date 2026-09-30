@@ -288,7 +288,7 @@ class HybridRuleOnboarding {
         if(next.isEmpty())return null;
         var row=next.get();UUID id=(UUID)row[0],attempt=UUID.randomUUID(),token=UUID.randomUUID();
         String input=authorInput((String)row[1],(String)row[2]),hash=JudgeJson.hash(input);
-        String model=config.value("CODEX_GENERATION_MODEL","gpt-5.6-sol"),effort=config.value("CODEX_RULE_AUTHOR_REASONING","high");
+        String model=config.value("CODEX_RULE_AUTHOR_MODEL","gpt-6-sol"),effort=config.value("CODEX_RULE_AUTHOR_REASONING","high");
         jdbc.sql("INSERT INTO hybrid_rule_codex_call(id,onboarding_id,repair_round,token,input_json,input_sha256,model,effort,prompt_version,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,'RUNNING',CURRENT_TIMESTAMP)")
                 .param(attempt).param(id).param(row[3]).param(token).param(input).param(hash).param(model).param(effort).param(GenerationRequirements.AUTHOR_VERSION).update();
         jdbc.sql("UPDATE hybrid_rule_onboarding SET status='AUTHORING',updated_at=? WHERE id=?").param(now()).param(id).update();
