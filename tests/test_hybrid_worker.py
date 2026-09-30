@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
-from generation.worker import CodexCli, hybrid_once, atomic, main, quota_exhausted
+from generation.worker import CodexCli, hybrid_once, rule_author_once, atomic, main, quota_exhausted
 
 
 def assignment(role='CONTRACT'):
@@ -19,6 +19,14 @@ def assignment(role='CONTRACT'):
                 spec=dict(phase='HYBRID_V1', role=role, input={'request': 'fixed task'},
                           assignment=envelope, instructions='ROLE_SPECIFIC_INSTRUCTIONS'),
                 outputSchema={'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': False})
+
+
+def rule_assignment():
+    work = assignment('AUTHOR')
+    work['pipelineVersion'] = work['spec']['phase'] = 'RULE_AUTHOR_V1'
+    work['spec']['assignment'] = dict(attemptId=str(uuid.uuid4()), token=work['token'], inputHash='rule-input')
+    work['effort'] = 'high'
+    return work
 
 
 class Api:
@@ -36,6 +44,46 @@ class Api:
 
 
 class HybridWorkerTests(unittest.TestCase):
+    def test_rule_author_redelivery_and_restart_preserve_envelope_without_reinvocation(self):
+        class RuleApi(Api):
+            def post(self, path, body):
+                assert path.startswith('/rule-author/')
+                return super().post(path.replace('/rule-author/', '/hybrid/'), body)
+        class Adapter(CodexCli):
+            def context(self, work, directory, oracle=False):
+                self.calls = getattr(self, 'calls', 0) + 1
+                assert work['spec']['role'] == 'AUTHOR' and not oracle
+                return {'rules': []}, None
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp); api = RuleApi(rule_assignment()); adapter = Adapter(tmp)
+            api.fail = True
+            with self.assertRaises(OSError):
+                rule_author_once(api, adapter, state)
+            api.fail = False
+            self.assertFalse(rule_author_once(api, adapter, state))
+            self.assertEqual(1, adapter.calls)
+            self.assertEqual(api.results[0], api.results[1])
+            self.assertIn('attemptId', api.results[0])
+            self.assertNotIn('branchId', api.results[0])
+            work = rule_assignment()
+            atomic(state / work['token'] / 'assignment.json', work)
+            self.assertFalse(rule_author_once(api, adapter, state))
+            self.assertEqual('INTERRUPTED_USAGE_UNKNOWN', api.results[-1]['error'])
+            self.assertIsNone(api.results[-1]['usage']['providerUsage'])
+            self.assertEqual(1, adapter.calls)
+
+    def test_rule_author_has_priority_without_parallel_legacy_or_hybrid_calls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch('sys.argv', ['worker', '--state', tmp, '--once', '--hybrid']), patch.dict('os.environ', {
+                    'GAMJAOJ_API_URL': 'http://unused.test', 'GENERATION_WORKER_TOKEN': 'x' * 32,
+                    'GENERATION_CODEX_HOME': tmp}), patch('generation.worker.Api'), patch('generation.worker.CodexCli'), \
+                    patch('generation.worker.rule_author_once', return_value=True) as rule, \
+                    patch('generation.worker.hybrid_once') as hybrid, patch('generation.worker.once') as legacy:
+                main()
+                rule.assert_called_once()
+                self.assertEqual(Path(tmp) / 'rule-author', rule.call_args.args[2])
+                hybrid.assert_not_called(); legacy.assert_not_called()
+
     def test_mixed_mode_preserves_legacy_and_never_runs_two_calls_at_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             for has_hybrid in (False, True):
@@ -43,6 +91,7 @@ class HybridWorkerTests(unittest.TestCase):
                         'GAMJAOJ_API_URL': 'http://unused.test', 'GENERATION_WORKER_TOKEN': 'x' * 32,
                         'GENERATION_CODEX_HOME': tmp, 'GENERATION_HYBRID_ENABLED': 'true'}), \
                         patch('generation.worker.Api'), patch('generation.worker.CodexCli'), \
+                        patch('generation.worker.rule_author_once', return_value=False), \
                         patch('generation.worker.hybrid_once', return_value=has_hybrid) as hybrid, \
                         patch('generation.worker.once', return_value=True) as legacy:
                     main()
@@ -58,6 +107,7 @@ class HybridWorkerTests(unittest.TestCase):
                         'GAMJAOJ_API_URL': 'http://unused.test', 'GENERATION_WORKER_TOKEN': 'x' * 32,
                         'GENERATION_CODEX_HOME': tmp}), \
                         patch('generation.worker.once', return_value=False) as legacy, \
+                        patch('generation.worker.rule_author_once', return_value=False), \
                         patch('generation.worker.hybrid_once', return_value=False) as hybrid:
                     main()
                     self.assertEqual(0 if enabled else 1, legacy.call_count)
@@ -142,6 +192,38 @@ print(json.dumps({'type':'turn.completed','usage':{'input_tokens':1}}))
             self.assertNotIn('OPENAI_API_KEY', captured['env'])
             self.assertNotIn('GENERATION_WORKER_TOKEN', captured['env'])
             self.assertEqual(work['outputSchema'], json.loads((root / 'core' / 'schema.json').read_text()))
+            self.assertEqual({'input_tokens': 1}, result['usage']['providerUsage'])
+
+    def test_rule_cli_uses_server_schema_and_instructions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'auth.json').write_text(json.dumps({'auth_mode': 'chatgpt'}))
+            cli = root / 'fake-codex'
+            cli.write_text('#!' + sys.executable + '\n' + '''import json, pathlib, sys, os
+if '--version' in sys.argv:
+    print('codex-cli 0.155.1'); sys.exit(0)
+a=sys.argv[1:]
+p=pathlib.Path(a[a.index('--output-last-message')+1])
+p.write_text('{}')
+p.with_name('captured.json').write_text(json.dumps({'args':a,'prompt':sys.stdin.read(),'env':dict(os.environ)}))
+print(json.dumps({'type':'turn.completed','usage':{'input_tokens':1}}))
+''')
+            cli.chmod(0o700)
+            work = rule_assignment()
+            work['spec']['assignment']['privateMarker'] = 'PRIVATE_ENVELOPE'
+            with patch.dict('os.environ', {'OPENAI_API_KEY': 'PRIVATE_API', 'GENERATION_WORKER_TOKEN': 'PRIVATE_WORKER'}):
+                result = CodexCli(root, str(cli)).produce(work, root)
+            captured = json.loads((root / 'author' / 'captured.json').read_text())
+            args = captured['args']
+            self.assertEqual('read-only', args[args.index('--sandbox') + 1])
+            self.assertIn('features.shell_tool=false', args)
+            self.assertIn('--ignore-rules', args)
+            self.assertIn('ROLE_SPECIFIC_INSTRUCTIONS', captured['prompt'])
+            self.assertNotIn('PRIVATE_ENVELOPE', captured['prompt'])
+            self.assertNotIn('prefix-sum', captured['prompt'])
+            self.assertNotIn('OPENAI_API_KEY', captured['env'])
+            self.assertNotIn('GENERATION_WORKER_TOKEN', captured['env'])
+            self.assertEqual(work['outputSchema'], json.loads((root / 'author' / 'schema.json').read_text()))
             self.assertEqual({'input_tokens': 1}, result['usage']['providerUsage'])
 
     def test_expired_assignment_does_not_launch_codex_execution(self):
