@@ -145,7 +145,7 @@ export function SubmitTests({ submission }) {
   </ol>;
 }
 
-/** Compact examples: each input sits beside its output (stacked when the problem pane is narrow). */
+/** Compact examples: each input and output keeps one half of the available width. */
 export function Examples({ examples }) {
   const numbered = examples.length > 1;
   return <div className="examples">{examples.map((e, i) => <div className="example" key={i}>
