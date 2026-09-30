@@ -405,6 +405,9 @@ class Runner:
     def _aux_classes(self, version, source, parent):
         """Compiles a trusted Java 8 helper (generator or reference) in its own sandboxed build."""
         helper = Runner(LANGUAGES["JAVA"]["image"], self.state_dir, self.attempt)
+        # Trusted test construction is infrastructure work, independent of the learner's
+        # language/budget. The actual reference/learner replay still uses its frozen profile.
+        helper.profile = checked_profile(LANGUAGES["JAVA"] | {"testWallSeconds": 20}, "JAVA", helper.image)
         helper.timings, helper.compile_cache, helper.execution_mode = self.timings, self.compile_cache, self.execution_mode
         work = Path(tempfile.mkdtemp(dir=parent))
         work.chmod(0o755)
