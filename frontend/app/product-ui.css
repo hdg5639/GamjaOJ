@@ -556,11 +556,12 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
 .site-notice a { color:inherit; text-underline-offset:2px; }
 .problem-catalog > .site-notice { margin-top:28px; padding-top:14px; border-top:1px solid var(--line); }
 /* Editor and run console share one column; a single bar between them trades space (IDE-style split). */
-.split-stack { display:grid; flex:1 1 auto; min-height:0; }
-.split-top, .split-bottom { min-height:0; display:flex; flex-direction:column; }
+.split-stack { display:grid; flex:1 1 0; min-height:0; min-width:0; overflow:hidden; }
+.split-top, .split-bottom { min-height:0; min-width:0; overflow:hidden; display:flex; flex-direction:column; }
 .split-top > .editor-views, .split-top > .diagnostic-editor { flex:1; min-height:0; height:auto; }
 .split-bottom > .run-console { flex:1; min-height:0; margin-top:0; display:flex; flex-direction:column; }
-.split-bottom > .run-console > .console-body { flex:1; min-height:0; overflow:auto; }
+.split-bottom > .run-console > .console-body { flex:1 1 0; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+.split-bottom .console-head, .split-bottom .submit-toast { flex-shrink:0; }
 .split-handle.editor-resize-handle.horizontal { height:12px; background:transparent; }
 .split-handle.editor-resize-handle.horizontal:hover, .split-handle.editor-resize-handle.horizontal:focus-visible { background:var(--subtle); }
 .editor-column > form.editor-card { overflow:hidden; }

@@ -500,7 +500,7 @@ for(const width of [390,1440])test(`local Java completion confirms explicitly an
   await editor.press('Space');await expectCode(editor,prefix+'tot ');
   await expect(popup).toBeHidden();
   await type('tot');await editor.press('Tab');
-  await expectCode(editor,prefix+'    tot');await expect(popup).toBeHidden();
+  await expectCode(editor,prefix+'totalCount');await expect(popup).toBeHidden();
   await type('tot');await expect(popup.locator('[aria-selected="true"]')).toContainText('totalCount');
   await editor.press('ArrowDown');await expect(popup.locator('[aria-selected="true"]')).toContainText('totalSum');
   await editor.press('Enter');await expectCode(editor,prefix+'totalSum');
@@ -542,7 +542,7 @@ for(const width of [390,1440])test(`Java standard classes complete without commi
   await editor.press('Enter');await expectCode(editor,'class CustomNode {}\n'+prefix+'CustomNode');
   await type('BufferedR');await editor.press('Space');await expectCode(editor,prefix+'BufferedR ');
   await expect(popup).toBeHidden();
-  await type('BufferedR');await editor.press('Tab');await expectCode(editor,prefix+'    BufferedR');
+  await type('BufferedR');await editor.press('Tab');await expectCode(editor,prefix+'BufferedReader');
   await expect(popup).toBeHidden();
   for(const suffix of ['// BufferedR','/* BufferedR','String s = "BufferedR']){
     await editor.fill(prefix+suffix);await editor.press('ControlOrMeta+End');await editor.press('Control+Space');

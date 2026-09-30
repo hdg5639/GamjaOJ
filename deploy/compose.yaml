@@ -15,6 +15,7 @@ services:
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-8080}:8080"
     environment:
+      COMPLETION_URL: http://completion:8090
       DB_URL: jdbc:postgresql://postgres:5432/gamjaoj
       DB_USER: gamjaoj
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
@@ -93,7 +94,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    networks: [backend, ingress]
+    networks: [backend, ingress, completion]
     healthcheck:
       test: [CMD, curl, -fsS, http://localhost:8080/healthz]
       interval: 10s
@@ -103,6 +104,28 @@ services:
     logging:
       driver: json-file
       options: {max-size: 10m, max-file: "2"}
+  completion:
+    image: ${GAMJAOJ_COMPLETION_IMAGE:-gamjaoj-completion:20260930}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "65534:65534"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 1.5
+    mem_limit: 1536m
+    pids_limit: 128
+    tmpfs:
+      - /tmp:size=384m,mode=1777,noexec,nosuid,nodev
+    networks: [completion]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8090/healthz',timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: "2"}
   postgres:
     image: postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
     restart: unless-stopped
@@ -124,6 +147,8 @@ services:
       driver: json-file
       options: {max-size: 10m, max-file: "2"}
 networks:
+  completion:
+    internal: true
   backend:
     external: true
     name: gamjaoj_backend

@@ -8,7 +8,7 @@ release="$(date -u +%Y%m%dT%H%M%SZ)"
 archive="$(mktemp)"
 trap 'rm -f "$archive"' EXIT
 COPYFILE_DISABLE=1 tar --format=ustar --exclude='__pycache__' --exclude='*.pyc' -czf "$archive" \
-  backend/target/gamjaoj.jar deploy runner problems examples tests scripts/smoke-auth.py scripts/smoke-submissions.py
+  backend/target/gamjaoj.jar deploy completion runner problems examples tests scripts/smoke-auth.py scripts/smoke-submissions.py
 ssh -o BatchMode=yes "$app_target" 'mkdir -p "$HOME/gamjaoj/web/releases"'
 scp -q "$archive" "$app_target:gamjaoj/web/releases/$release.tar.gz"
 ssh -o BatchMode=yes "$app_target" bash -s -- "$release" <<'REMOTE'
@@ -48,6 +48,8 @@ docker ps --format '{{.ID}} {{.Label "com.docker.compose.project"}}' \
   | awk '$2 != "gamjaoj" {print $1}' | sort > "releases/$release/existing-containers.txt"
 export GAMJAOJ_IMAGE="gamjaoj-web:$release"
 docker build --network none -f "releases/$release/deploy/Dockerfile" -t "$GAMJAOJ_IMAGE" "releases/$release"
+export GAMJAOJ_COMPLETION_IMAGE="gamjaoj-completion:$release"
+docker build -f "releases/$release/completion/Dockerfile" -t "$GAMJAOJ_COMPLETION_IMAGE" "releases/$release"
 docker compose --env-file .env -f "releases/$release/deploy/compose.yaml" up -d --wait --wait-timeout 180
 python3 "releases/$release/scripts/smoke-auth.py" --ipv4 --env-file .env --compose "releases/$release/deploy/compose.yaml" </dev/null
 if python3 - <<'PY'
@@ -64,6 +66,7 @@ while IFS= read -r container; do
   [ "$(docker inspect --format '{{.State.Running}}' "$container")" = true ]
 done < "releases/$release/existing-containers.txt"
 printf '%s\n' "$GAMJAOJ_IMAGE" > "releases/$release/image.txt"
+printf '%s\n' "$GAMJAOJ_COMPLETION_IMAGE" > "releases/$release/completion-image.txt"
 ln -s "releases/$release" "current-$release"
 mv -Tf "current-$release" current
 echo "GamjaOJ web verification passed (release $release)."

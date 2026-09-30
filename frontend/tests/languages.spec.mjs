@@ -69,7 +69,7 @@ for(const language of ['CPP','PYTHON'])for(const width of [390,1440])test(`${lan
  const short=language==='CPP'?'priority_q':'defaul';const full=language==='CPP'?'priority_queue':'defaultdict';
  await editor.fill('');await editor.pressSequentially(short);await expect(page.getByRole('option',{name:full,exact:false})).toBeVisible();await editor.press('Escape');
  await suggest(short,full);await editor.press('Space');await expectCode(editor,short+' ');
- await suggest(short,full);await editor.press('Tab');expect(await editor.innerText()).not.toContain(full);
+ await suggest(short,full);await editor.press('Tab');await expectCode(editor,full);
  await suggest(short,full);await editor.press('Escape');await expect(page.getByRole('listbox')).toBeHidden();
  await suggest(short,full);await editor.press('Enter');await expectCode(editor,full);
  await suggest(language==='CPP'?'values.push_b':'values.appe',language==='CPP'?'push_back':'append');

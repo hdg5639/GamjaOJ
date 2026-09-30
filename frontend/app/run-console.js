@@ -88,6 +88,7 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
       <button type="button" aria-pressed={showing === 'runs'} onClick={() => setMode('runs')}>실행 결과</button>
       <button type="button" aria-pressed={showing === 'submission'} onClick={() => setMode('submission')}>제출 결과</button></span> : '실행 결과'}</h3>
       <small>{finished && judged.length > 0 ? `${judged.filter(r => r[1]).length} / ${judged.length}개 통과` : first ? `${recordLanguageLabel(first)} · ${limitText(first.execution)}` : ''}</small></div>
+    <div className="console-body" aria-live="polite">
     {editing && <div className="case-editor" role="group" aria-label="테스트 케이스 추가">
       <p className="case-editor-help">예제와 함께 실행할 테스트 케이스를 추가하세요. 기댓값을 비우면 출력만 보여 줘요. 추가한 케이스는 이 문제에 한해 이 브라우저에 저장돼요.</p>
       {cases.map((c, index) => <div className="case-row" key={index}>
@@ -104,7 +105,6 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
       </div>
     </div>}
     {error && <p role="alert" className="notice error">{error}</p>}
-    <div className="console-body" aria-live="polite">
       {children}
       {showing === 'submission' && <article className="submission-view" data-verdict={submission.verdict || 'PENDING'}>
         <p className="submission-summary">정식 제출 〉 <strong>{submission.status === 'FINISHED' ? verdictText(submission.verdict) : '채점 중이에요…'}</strong>
