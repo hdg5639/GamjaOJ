@@ -72,6 +72,21 @@ class CallableProgramsTest {
         assertThat(CallablePrograms.INSTRUCTIONS).contains("WITHOUT Main","two independent singleton cases are VALID");
         assertThat(CallablePrograms.publicInstructions(false)).doesNotContain("server-assembled INTERNAL executable");
     }
+    @Test void typedReaderCasesSerializeWithoutDroppingIndependentCaseWrappers() {
+        var api=JudgeJson.parse("{\"mode\":\"SINGLE_FUNCTION\",\"methods\":[{\"name\":\"solution\",\"returns\":\"int[]\",\"parameters\":[{\"name\":\"start\",\"type\":\"int\"},{\"name\":\"deltas\",\"type\":\"int[]\"}],\"description\":\"결과\"}]}");
+        var cases=JudgeJson.parse("[[{\"method\":\"solution\",\"arguments\":{\"start\":500,\"deltas\":[]}}],[{\"method\":\"solution\",\"arguments\":{\"deltas\":[2,-1000,1],\"start\":999}}]]");
+        assertThat(CallablePrograms.serializeReaderInput(api,cases)).isEqualTo("[[[\"solution\",500,[]]],[[\"solution\",999,[2,-1000,1]]]]");
+        var semantics=JudgeJson.JSON.createObjectNode();semantics.set("callable",api);
+        var reader=new HybridGenerationIntegrationTest().reader();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)reader.path("adversarialInputs").get(0)).set("input",cases);
+        var normalized=HybridArtifacts.reader(reader,semantics);
+        assertThat(normalized.path("adversarialInputs").get(0).path("input").asText()).isEqualTo(CallablePrograms.serializeReaderInput(api,cases));
+        assertThat(reader.path("adversarialInputs").get(0).path("input").isArray()).isTrue();
+        var bad=JudgeJson.parse("[[{\"method\":\"solution\",\"arguments\":{\"start\":0,\"deltas\":[]}}, {\"method\":\"solution\",\"arguments\":{\"start\":1,\"deltas\":[]}}]]");
+        assertThatThrownBy(()->CallablePrograms.serializeReaderInput(api,bad)).hasMessage("INVALID_CALLABLE_READER_INPUT");
+        assertThatThrownBy(()->CallablePrograms.serializeReaderInput(api,JudgeJson.parse("[[{\"method\":\"init\",\"arguments\":{}}]]"))).hasMessage("INVALID_CALLABLE_READER_METHOD");
+        assertThat(CallablePrograms.readerInputSchema(api).path("items").path("maxItems").asInt()).isEqualTo(1);
+    }
     @Test void emptyOutputIsAllowedOnlyWhenEveryInvokedMethodIsVoid() {
         var pack=HybridAdmissionIntegrationTest.fixturePackage();
         var contract=(com.fasterxml.jackson.databind.node.ObjectNode)pack.path("contract");contract.set("callable",multi());

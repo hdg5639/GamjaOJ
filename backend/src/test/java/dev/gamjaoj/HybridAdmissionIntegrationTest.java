@@ -355,6 +355,13 @@ class HybridAdmissionIntegrationTest {
         execution.finish(writer.attemptId(),result(prose),null);
         var reader=execution.claimApi();assertThat(reader.request().instructions()).contains("CALLABLE JAVA CONTRACT","canonical JSON");
         assertThat(reader.request().assignment().input().path("semantics").path("callable")).isEqualTo(CallableProgramsTest.multi());
+        assertThat(reader.request().schema().path("properties").path("adversarialInputs").path("items").path("properties").path("input").path("type").asText()).isEqualTo("array");
+        var typed=f.reader();((com.fasterxml.jackson.databind.node.ObjectNode)typed.path("adversarialInputs").get(0)).set("input",JudgeJson.parse("[[{\"method\":\"init\",\"arguments\":{\"n\":3}},{\"method\":\"query\",\"arguments\":{}}]]"));
+        execution.finish(reader.attemptId(),result(typed),null);
+        var saved=JudgeJson.parse(jdbc.sql("SELECT payload_json FROM hybrid_artifact WHERE branch_id=?").param(reader.request().assignment().branchId()).query(String.class).single());
+        assertThat(saved.path("adversarialInputs").get(0).path("input").asText()).isEqualTo("[[[\"init\",3],[\"query\"]]]");
+        execution.finish(reader.attemptId(),result(typed),null); // raw receipt replay remains idempotent
+
         var now=java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
         assertThat(ResponsesHybridProvider.timeout(new HybridExecution.Work(reader.attemptId(),reader.request(),now.plusSeconds(600)),now)).isEqualTo(java.time.Duration.ofSeconds(280));
         assertThat(ResponsesHybridProvider.timeout(new HybridExecution.Work(reader.attemptId(),reader.request(),now.plusSeconds(7)),now)).isEqualTo(java.time.Duration.ofSeconds(7));
