@@ -9,7 +9,7 @@ RUN curl -fsSL https://download.eclipse.org/jdtls/milestones/1.46.1/jdt-language
  && echo 'f435fdf6db3aa0d1598ef0f11f80bb20e09e67009001382719c313eff07de02c  /tmp/jdtls.tar.gz' | sha256sum -c - \
  && mkdir /opt/jdtls && tar -xzf /tmp/jdtls.tar.gz -C /opt/jdtls && rm /tmp/jdtls.tar.gz
 WORKDIR /service
-COPY completion/server.py completion/python_worker.py ./
+COPY --chmod=644 completion/server.py completion/python_worker.py ./
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp
 USER 65534:65534
 EXPOSE 8090
