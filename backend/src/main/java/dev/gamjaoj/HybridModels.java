@@ -24,7 +24,7 @@ final class HybridModels {
         return input.path("semantics").has("callable")||input.path("publicSnapshot").path("semantics").has("callable")||input.path("contract").has("callable");
     }
     static String apiInstructions(HybridGeneration.Assignment assignment,JsonNode input) {
-        return instructions(assignment)+(callableInput(input)?CallablePrograms.INSTRUCTIONS:"");
+        return instructions(assignment)+(callableInput(input)?CallablePrograms.publicInstructions(assignment.role()==CONTENT_REVIEW):"");
     }
     /** Provider-neutral author task: Codex and the API fallback receive identical instructions, data and schema. */
     record AuthorTask(String instructions,JsonNode input,JsonNode schema) {}

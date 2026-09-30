@@ -61,6 +61,14 @@ class CallableProgramsTest {
         assertThat(HybridRuleAuthorStages.instructions("CODE","COMMAND_MULTI")).contains("CALLABLE JAVA CONTRACT");
         assertThat(CallablePrograms.schema().path("properties").path("methods").isObject()).isTrue();
     }
+    @Test void reviewerUnderstandsInternalAssemblyWithoutAuthorOnlyRequirements() {
+        var input=JudgeJson.JSON.createObjectNode();input.putObject("publicSnapshot").putObject("semantics").set("callable",multi());
+        var a=new HybridGeneration.Assignment(java.util.UUID.randomUUID(),java.util.UUID.randomUUID(),0,HybridGeneration.Role.CONTENT_REVIEW,java.util.UUID.randomUUID(),"input","contract","public",input);
+        assertThat(HybridModels.apiInstructions(a,input)).contains("server-assembled INTERNAL executable","canonical JSON","not the hidden qualification corpus")
+            .doesNotContain("Reference, slowSolution and mutants must be UserSolution implementations WITHOUT Main");
+        assertThat(CallablePrograms.INSTRUCTIONS).contains("WITHOUT Main","two independent singleton cases are VALID");
+        assertThat(CallablePrograms.publicInstructions(false)).doesNotContain("server-assembled INTERNAL executable");
+    }
     @Test void emptyOutputIsAllowedOnlyWhenEveryInvokedMethodIsVoid() {
         var pack=HybridAdmissionIntegrationTest.fixturePackage();
         var contract=(com.fasterxml.jackson.databind.node.ObjectNode)pack.path("contract");contract.set("callable",multi());
