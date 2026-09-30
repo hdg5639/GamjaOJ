@@ -233,6 +233,7 @@ class HybridRuleOnboarding {
             +" The source story is not binding, but quantitative/algorithmic requirements are. Never trust an author's self-assessment (not supplied). Preserve mandatory numeric domains. Distinguish them from approximate scale guidance: about 12 to 17 targets may be met by a maximum of 14 with smaller valid examples, provided the worst cases retain the requested algorithmic difficulty. Do not invent exact endpoints from approximate wording."
             +" Distinguish the contract's legal input domain from oracleDomain: small verification does not authorize weakening the original request. Also check whether promised mechanics have become vacuous (for example a requested state-dependent effect irrelevant throughout the legal domain)."
             +" Do not require execution measurements, a finished story or proof that the unseen reference is correct. This review checks the requested design, while Runner and final implementation review remain separate."
+            +" Private test construction requirements (actual stress sizes, operation mixtures, coverage counts, measured margins) are not additional legal-input rules. Generators and their outputs are deliberately hidden from this independent oracle. Do not reject the public contract merely because you cannot observe those private artifacts, and do not demand that they be inserted into public semantics. Preserve and check the requested input maxima and mechanics; actual generated coverage is an implementation/Runner obligation, not evidence available to this review."
             +" requestReview has satisfied and issues; satisfied=true iff issues is empty. On mismatch return satisfied=false with specific discrepancies and oracleSource as an empty string; the author receives the issues for bounded repair.";
     private static ObjectNode str(){return JudgeJson.JSON.createObjectNode().put("type","string");}
     private static ObjectNode obj(Object... pairs) {
@@ -654,7 +655,7 @@ class HybridRuleOnboarding {
             for(String r:List.of("q-generator","q-oracle-batch","q-reference-batch","q-mutant-a-batch","q-mutant-b-batch"))expect(done,r,"OK","RUNNER_"+done.get(r).verdict());
             var answers=unbatch(done.get("q-oracle-batch").stdout(),tiny.size());var refs=unbatch(done.get("q-reference-batch").stdout(),tiny.size());
             for(int i=0;i<tiny.size();i++) {
-                if(answers.get(i).isBlank())throw new IllegalArgumentException("ORACLE_EMPTY_OUTPUT");
+                if(answers.get(i).isBlank()&&!CallablePrograms.emptyOutputAllowed(a.path("contract"),tiny.get(i)))throw new IllegalArgumentException("ORACLE_EMPTY_OUTPUT");
                 if(!same(answers.get(i),refs.get(i)))throw new IllegalArgumentException("REFERENCE_ORACLE_DISAGREEMENT");
             }
             var witnesses=new ArrayList<Integer>();
@@ -693,7 +694,7 @@ class HybridRuleOnboarding {
             var stressAnswers=new ArrayList<String>();
             for(int i=0;i<stress.size();i++) {
                 expect(done,"q-stress-run-"+i,"OK","RUNNER_"+done.get("q-stress-run-"+i).verdict());
-                String out=done.get("q-stress-run-"+i).stdout();if(out.isBlank())throw new IllegalArgumentException("STRESS_EMPTY_OUTPUT");stressAnswers.add(out);
+                String out=done.get("q-stress-run-"+i).stdout();if(out.isBlank()&&!CallablePrograms.emptyOutputAllowed(a.path("contract"),stress.get(i)))throw new IllegalArgumentException("STRESS_EMPTY_OUTPUT");stressAnswers.add(out);
             }
             // Stage 3: two exclusive timed replays of the maximum inputs with the recorded answers.
             if(!done.keySet().containsAll(List.of("q-stress-0","q-stress-1","q-large-reference-0","q-large-reference-1"))) {

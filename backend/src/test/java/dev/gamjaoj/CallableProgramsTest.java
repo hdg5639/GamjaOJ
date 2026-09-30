@@ -61,6 +61,19 @@ class CallableProgramsTest {
         assertThat(HybridRuleAuthorStages.instructions("CODE","COMMAND_MULTI")).contains("CALLABLE JAVA CONTRACT");
         assertThat(CallablePrograms.schema().path("properties").path("methods").isObject()).isTrue();
     }
+    @Test void emptyOutputIsAllowedOnlyWhenEveryInvokedMethodIsVoid() {
+        var pack=HybridAdmissionIntegrationTest.fixturePackage();
+        var contract=(com.fasterxml.jackson.databind.node.ObjectNode)pack.path("contract");contract.set("callable",multi());
+        String input="[[[\"init\",3],[\"add\",4]],[[\"init\",0]]]";
+        assertThat(CallablePrograms.emptyOutputAllowed(contract,input)).isTrue();
+        for(String bad:java.util.List.of("[[[\"init\",0],[\"query\"]]]","[[[\"missing\"]]]","[]","invalid"))
+            assertThat(CallablePrograms.emptyOutputAllowed(contract,bad)).isFalse();
+        var first=(com.fasterxml.jackson.databind.node.ObjectNode)pack.path("tiny").get(0);String previous=first.path("input").asText();first.put("input",input).put("output","");
+        for(var mutant:pack.path("mutants"))if(mutant.path("witness").asText().equals(previous))((com.fasterxml.jackson.databind.node.ObjectNode)mutant).put("witness",input);
+        assertThat(HybridRulePackage.parse("void-only",pack).tiny().get(0).output()).isEmpty();
+        first.put("input","[[[\"init\",0],[\"query\"]]]");
+        assertThatThrownBy(()->HybridRulePackage.parse("missing-answer",pack)).hasMessage("RULE_PACKAGE_FIELD");
+    }
     @Test void generatedDriverRejectsUnknownMethodsAndWrongTypes() throws Exception {
         // Parser/type enforcement is exercised with valid compilation and a failing process.
         String source=CallablePrograms.executable(multi(),CallablePrograms.template(multi()));
