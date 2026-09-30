@@ -32,6 +32,18 @@ final class CallablePrograms {
         else HybridArtifacts.require(methods.get(0).path("name").asText().equals("init")&&methods.get(0).path("returns").asText().equals("void"),"MISSING_API_INIT");
         return api;
     }
+    static boolean emptyOutputAllowed(JsonNode contract,String input) {
+        var api=contract.path("callable");
+        if(!api.path("mode").asText().equals("MULTI_API"))return false;
+        Set<String> voidMethods=new HashSet<>();
+        for(var m:api.path("methods"))if(m.path("returns").asText().equals("void"))voidMethods.add(m.path("name").asText());
+        try {
+            var cases=JudgeJson.parse(input);if(!cases.isArray()||cases.isEmpty())return false;
+            for(var calls:cases){if(!calls.isArray()||calls.isEmpty())return false;
+                for(var call:calls)if(!call.isArray()||call.isEmpty()||!voidMethods.contains(call.path(0).asText()))return false;}
+            return true;
+        } catch(RuntimeException invalid){return false;}
+    }
     static ObjectNode schema() {
         var s=JudgeJson.parse("""
           {"type":"object","additionalProperties":false,"required":["mode","methods"],"properties":{

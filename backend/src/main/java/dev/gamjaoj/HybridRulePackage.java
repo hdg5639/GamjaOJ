@@ -31,13 +31,13 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
         if(n==null||!n.isTextual()||n.asText().getBytes(StandardCharsets.UTF_8).length>max)throw new HybridArtifacts.Invalid("RULE_PACKAGE_FIELD");
         return n.asText();
     }
-    private static List<HybridFiniteProfile.Case> cases(JsonNode n,String prefix,int min,int max,int bytes,boolean answers) {
+    private static List<HybridFiniteProfile.Case> cases(JsonNode n,String prefix,int min,int max,int bytes,boolean answers,JsonNode contract) {
         if(n==null||!n.isArray()||n.size()<min||n.size()>max)throw new HybridArtifacts.Invalid("RULE_PACKAGE_CASES");
         var out=new ArrayList<HybridFiniteProfile.Case>();var seen=new HashSet<String>();
         for(var c:n) {
             // Invalid inputs may legitimately be empty or whitespace (for example an empty string).
             String input=answers?text(c.path("input"),bytes):raw(c.path("input"),bytes);if(!seen.add(input))throw new HybridArtifacts.Invalid("RULE_PACKAGE_DUPLICATE_INPUT");
-            out.add(new HybridFiniteProfile.Case(prefix+out.size(),input,answers?text(c.path("output"),4096):"INVALID\n"));
+            out.add(new HybridFiniteProfile.Case(prefix+out.size(),input,answers?(CallablePrograms.emptyOutputAllowed(contract,input)?raw(c.path("output"),4096):text(c.path("output"),4096)):"INVALID\n"));
         }
         return List.copyOf(out);
     }
@@ -67,9 +67,9 @@ record HybridRulePackage(String versionId,JsonNode contract,JsonNode rules,JsonN
         var rules=p.path("rules");var actions=new HashSet<String>();contract.path("actions").forEach(a->actions.add(a.path("id").asText()));
         if(!rules.isArray()||rules.size()!=actions.size())throw new HybridArtifacts.Invalid("RULE_PACKAGE_RULES");
         for(var r:rules){HybridArtifacts.fields(r,"id","text");text(r.path("text"),4000);if(!actions.remove(r.path("id").asText()))throw new HybridArtifacts.Invalid("RULE_PACKAGE_RULES");}
-        var tiny=cases(p.path("tiny"),"tiny-",MIN_TINY,MAX_TINY,1024,true);
-        var stress=cases(p.path("stress"),"stress-",1,MAX_STRESS,16384,true);
-        var invalid=cases(p.path("invalid"),"invalid-",2,MAX_INVALID,1024,false);
+        var tiny=cases(p.path("tiny"),"tiny-",MIN_TINY,MAX_TINY,1024,true,contract);
+        var stress=cases(p.path("stress"),"stress-",1,MAX_STRESS,16384,true,contract);
+        var invalid=cases(p.path("invalid"),"invalid-",2,MAX_INVALID,1024,false,contract);
         var tinyAnswers=new HashMap<String,String>();tiny.forEach(c->tinyAnswers.put(c.input(),c.output()));
         var sources=new TreeMap<String,String>();var witnesses=new TreeMap<String,HybridFiniteProfile.Case>();
         // Exactly two, like every built-in profile, so both scheduling paths keep their fixed check count.
