@@ -41,3 +41,22 @@ npx playwright test tests/editor-console.spec.mjs tests/languages.spec.mjs --wor
 Backend `CompletionIntegrationTest` checks session/CSRF protection, server-owned
 account identity, request limits, UTF-16 cursor offsets, and proxy forwarding.
 The browser only applies inert text edits to the exact document version analyzed.
+
+## Code abbreviations
+
+The shared editor also offers local snippets at the beginning of a line (after
+indentation). Type the abbreviation and accept its **코드 템플릿** entry with Tab
+or Enter. Tab/Shift+Tab move between editable fields, repeated variable names are
+linked, and Escape ends field editing. No analysis-service round trip is required.
+Comments, strings, and member access do not offer these templates.
+
+- Java: `sysout`/`sout`, `souf`/`soutf`, `serr`/`syserr`, `main`/`psvm`,
+  `fori`, `iter`/`foreach`, `ifn`, `inn`, `br`, `st`, `sb`.
+- C++: `main`, `cout`, `cin`, `fastio`, `fori`, `foreach`, `sortv`, `vec`.
+- Python: `main`, `ifmain`, `pr`, `fori`, `fore`, `defn`, `readint`,
+  `readints`, `fastio`.
+
+The template catalog is in `frontend/app/code-snippets.js`; help is available in
+the editor's tools menu. C++ templates assume the appropriate standard headers
+are already included, as in the starter program. Validate expansion, linked
+fields, indentation and Vim interaction with `tests/snippets.spec.mjs`.
