@@ -15,6 +15,19 @@ class GenerationRequirementsTest {
         r.putObject("timeLimits").put("JAVA",5).put("CPP",3).put("PYTHON",8).put("analysis","Fixture resource estimates, not real measurements.");
         r.putArray("issues");return r;
     }
+    @Test void ruleAuthorScopeSeparatesDesignFromPendingExecutionAndPresentation() {
+        var input=JudgeJson.parse(HybridRuleOnboarding.authorInput("{\"request\":\"K개 장치 방문\",\"publish\":true,\"shared\":true}"));
+        assertThat(input.path("request").asText()).isEqualTo("K개 장치 방문");
+        assertThat(input.has("publish")||input.has("shared")).isFalse();
+        assertThat(input.path("authoringStage").path("kind").asText()).isEqualTo("REUSABLE_RULE_CANDIDATE");
+        assertThat(input.path("authoringStage").path("candidateHasBeenExecuted").asBoolean(true)).isFalse();
+        assertThat(input.path("authoringStage").path("presentationRequired").asBoolean(true)).isFalse();
+        assertThat(HybridRuleOnboarding.AUTHOR_TARGETING).doesNotContain(HybridModels.ORIGINALITY)
+                .contains(GenerationRequirements.RULE_AUTHOR);
+        assertThat(GenerationRequirements.requiresAuthorReview("rule-author-requirements-v1")).isTrue();
+        assertThat(GenerationRequirements.requiresAuthorReview(GenerationRequirements.AUTHOR_VERSION)).isTrue();
+        GenerationRequirements.validate(accepted(),true); // Honest estimates are allowed before Runner evidence exists.
+    }
     @Test void missingContradictoryAndRejectedAssessmentsCannotPass() {
         assertThatThrownBy(()->GenerationRequirements.validate(JudgeJson.parse("{}"),true)).isInstanceOf(HybridArtifacts.Invalid.class);
         var r=accepted();r.put("satisfied",false);r.withArray("issues").add("방문 장치를 2개로 축소했습니다.");
