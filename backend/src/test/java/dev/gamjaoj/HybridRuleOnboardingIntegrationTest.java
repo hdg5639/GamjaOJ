@@ -46,8 +46,18 @@ class HybridRuleOnboardingIntegrationTest {
     @AfterEach void reset(){env.getPropertySources().remove("onboarding-test");}
     HybridRuleOnboarding.CodexCompletion codexResult(JsonNode work,JsonNode payload,String error) {
         var a=work.path("spec").path("assignment");
+        if(payload!=null&&payload.has("contract")&&payload.has("reference")) {
+            var part=JudgeJson.JSON.createObjectNode();
+            for(String field:HybridRuleAuthorStages.FIELDS.get(work.path("spec").path("stage").asText()))
+                part.set(field,field.equals("solutionPlan")?JudgeJson.JSON.getNodeFactory().textNode("Fixture algorithm, bounds and shortcut analysis"):payload.path(field));
+            payload=part;
+        }
         return new HybridRuleOnboarding.CodexCompletion(UUID.fromString(a.path("attemptId").asText()),UUID.fromString(a.path("token").asText()),a.path("inputHash").asText(),payload,
                 JudgeJson.JSON.createObjectNode().put("executor","CODEX_CLI").put("billingMode","CHATGPT_MANAGED"),error);
+    }
+    void remainingCodexStages() {
+        JsonNode work;
+        while((work=onboarding.claimCodexAuthor())!=null)onboarding.finishCodexAuthor(codexResult(work,author(),null));
     }
     UUID hard(String difficulty) {
         UUID id=UUID.randomUUID();onboarding.create("owner",id,new HybridRuleOnboarding.Spec("",difficulty,"GENERAL","bfs",null,false,false));return id;
@@ -61,7 +71,9 @@ class HybridRuleOnboardingIntegrationTest {
         mvc.perform(post("/internal/generation/rule-author/result").header("Authorization","Bearer fixture-generation-worker-token-12345678")
                 .contentType("application/json").content(JudgeJson.canonical(JudgeJson.JSON.valueToTree(codexResult(work,author(),null)))))
                 .andExpect(status().isNoContent());
-        assertThat(view(id).status()).isEqualTo("AUTHORED");
+        assertThat(view(id).status()).isEqualTo("QUEUED");
+        assertThat(view(id).completedAuthorStages()).containsExactly("DESIGN");
+        remainingCodexStages();assertThat(view(id).status()).isEqualTo("AUTHORED");
     }
     @Test void detailedConditionsReachBothAuthorsAndOracleWithoutTruncation() throws Exception {
         String text="가".repeat(9999)+"끝";
@@ -73,7 +85,7 @@ class HybridRuleOnboardingIntegrationTest {
             if(difficulty.equals("EXPERT")) {
                 var work=onboarding.claimCodexAuthor();
                 assertThat(work.path("spec").path("input").path("request").asText()).isEqualTo(text);
-                onboarding.finishCodexAuthor(codexResult(work,author(),null));
+                onboarding.finishCodexAuthor(codexResult(work,author(),null));remainingCodexStages();
             } else {
                 var work=onboarding.claimCall();assertThat(JudgeJson.parse(work.input()).path("request").asText()).isEqualTo(text);
                 onboarding.finishCall(work.attemptId(),result(author()),null);
@@ -97,6 +109,9 @@ class HybridRuleOnboardingIntegrationTest {
             assertThat(view(id).status()).isEqualTo("AUTHORING");
             var completion=codexResult(work,author(),null);
             onboarding.finishCodexAuthor(completion);onboarding.finishCodexAuthor(completion);
+            assertThat(view(id).completedAuthorStages()).containsExactly("DESIGN");
+            remainingCodexStages();
+            assertThat(view(id).completedAuthorStages()).containsExactly("DESIGN","CODE","TESTS");
             assertThat(view(id).status()).isEqualTo("AUTHORED");
             var oracle=onboarding.claimCall();assertThat(oracle.role()).isEqualTo("ORACLE");
             assertThat(oracle.input()).doesNotContain("reference").doesNotContain("mutant");
@@ -116,19 +131,77 @@ class HybridRuleOnboardingIntegrationTest {
     }
     @Test void codexRepairStaysOnCodexAndFencesOldResults() {
         overrides.put("HYBRID_RULE_ONBOARDING_REPAIRS","1");
-        UUID id=hard("EXPERT");var first=onboarding.claimCodexAuthor();
+        UUID id=hard("EXPERT");var design=onboarding.claimCodexAuthor();
+        onboarding.finishCodexAuthor(codexResult(design,author(),null));
+        var first=onboarding.claimCodexAuthor();assertThat(first.path("spec").path("stage").asText()).isEqualTo("CODE");
         var invalid=author();invalid.put("reference","not Java");
         var failed=codexResult(first,invalid,null);onboarding.finishCodexAuthor(failed);
         assertThat(view(id).status()).isEqualTo("QUEUED");assertThat(onboarding.claimCall()).isNull();
         var second=onboarding.claimCodexAuthor();
-        assertThat(second.path("spec").path("input").has("repair")).isTrue();
+        assertThat(second.path("spec").path("input").has("stageFailure")).isTrue();
         assertThat(second.path("token")).isNotEqualTo(first.path("token"));
         onboarding.finishCodexAuthor(failed);assertThat(view(id).status()).isEqualTo("AUTHORING");
         var valid=codexResult(second,author(),null);
         var stale=new HybridRuleOnboarding.CodexCompletion(valid.attemptId(),UUID.randomUUID(),valid.inputHash(),valid.payload(),valid.usage(),null);
         assertThatThrownBy(()->onboarding.finishCodexAuthor(stale)).isInstanceOf(AccountException.class);
-        onboarding.finishCodexAuthor(valid);assertThat(view(id).status()).isEqualTo("AUTHORED");
+        onboarding.finishCodexAuthor(valid);remainingCodexStages();assertThat(view(id).status()).isEqualTo("AUTHORED");
         assertThatThrownBy(()->onboarding.finishCodexAuthor(codexResult(second,null,"CODEX_TIMEOUT"))).isInstanceOf(AccountException.class);
+    }
+    @Test void timeoutRetriesOnlyUnfinishedStageWithOwnerAndReplayFences() throws Exception {
+        UUID id=hard("EXPERT");var design=onboarding.claimCodexAuthor();
+        assertThat(design.path("timeoutSeconds").asInt()).isEqualTo(1200);
+        assertThat(view(id).deadlineAt()).isAfter(view(id).createdAt().plusMinutes(39));
+        onboarding.finishCodexAuthor(codexResult(design,author(),null));
+        var code=onboarding.claimCodexAuthor();var failure=codexResult(code,null,"CODEX_TIMEOUT");
+        onboarding.finishCodexAuthor(failure);assertThat(onboarding.claimCodexAuthor()).isNull();
+        assertThat(view(id).completedAuthorStages()).containsExactly("DESIGN");
+        assertThat(view(id).failedAuthorAttempt()).isEqualTo(failure.attemptId());
+        assertThatThrownBy(()->onboarding.retryAuthor("other",id,failure.attemptId())).isInstanceOf(AccountException.class);
+        for(int replay=0;replay<2;replay++)mvc.perform(post("/api/rules/onboarding/"+id+"/retry").with(user("owner")).with(csrf())
+                .contentType("application/json").content("{\"attemptId\":\""+failure.attemptId()+"\"}")).andExpect(status().isOk());
+        var retry=onboarding.claimCodexAuthor();
+        assertThat(retry.path("spec").path("stage").asText()).isEqualTo("CODE");
+        assertThat(retry.path("spec").path("input").path("completedDesign")).isEqualTo(code.path("spec").path("input").path("completedDesign"));
+        onboarding.finishCodexAuthor(failure); // Late delivery of first attempt must not affect the retry.
+        assertThat(view(id).status()).isEqualTo("AUTHORING");
+        onboarding.releaseInterruptedCalls();assertThat(view(id).status()).isEqualTo("AUTHORING");
+        onboarding.finishCodexAuthor(codexResult(retry,author(),null));remainingCodexStages();
+        assertThat(view(id).status()).isEqualTo("AUTHORED");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_codex_call WHERE onboarding_id=? AND stage='DESIGN'").param(id).query(Integer.class).single()).isOne();
+        assertThat(jdbc.sql("SELECT receipt_json FROM hybrid_rule_codex_call WHERE id=?").param(failure.attemptId()).query(String.class).single()).contains("CODEX_TIMEOUT");
+    }
+    @Test void runnerGeneratorRepairPreservesDesignAndSolutionsButRebuildsTests() {
+        overrides.put("HYBRID_RULE_ONBOARDING_REPAIRS","1");
+        UUID id=hard("HARD");remainingCodexStages();provide(author());worker.runOnce();
+        validVerdict="WA";drain(false,false);onboarding.advance();validVerdict="AC";
+        assertThat(view(id).repairs()).isOne();assertThat(view(id).completedAuthorStages()).containsExactly("DESIGN","CODE");
+        var repair=onboarding.claimCodexAuthor();assertThat(repair.path("spec").path("stage").asText()).isEqualTo("TESTS");
+        assertThat(repair.path("spec").path("input").has("repair")).isTrue();
+        onboarding.finishCodexAuthor(codexResult(repair,author(),null));worker.runOnce();finishQualification();
+        assertThat(view(id).status()).isEqualTo("ACTIVE");
+    }
+    @Test void inFlightLegacyPackageCompletesAfterStagedMigration() {
+        UUID id=hard("HARD");var work=onboarding.claimCodexAuthor();var envelope=codexResult(work,null,null);
+        jdbc.sql("UPDATE hybrid_rule_codex_call SET stage='PACKAGE' WHERE id=?").param(envelope.attemptId()).update();
+        onboarding.finishCodexAuthor(new HybridRuleOnboarding.CodexCompletion(envelope.attemptId(),envelope.token(),envelope.inputHash(),author(),envelope.usage(),null));
+        assertThat(view(id).status()).isEqualTo("AUTHORED");
+        assertThat(onboarding.claimCall().role()).isEqualTo("ORACLE");
+    }
+    @Test void rejectedDesignExplainsUnmetRequirementsBeforeAnyCodeIsWritten() {
+        UUID id=hard("EXPERT");var rejected=author();
+        var review=(ObjectNode)rejected.path("requirementsReview");review.put("satisfied",false).withArray("issues").add("The requested objective admits a forbidden shortest-path shortcut");
+        for(int n=0;n<2;n++)onboarding.finishCodexAuthor(codexResult(onboarding.claimCodexAuthor(),rejected,null));
+        assertThat(view(id).status()).isEqualTo("HELD");assertThat(view(id).completedAuthorStages()).isEmpty();
+        assertThat(view(id).requirementIssues()).containsExactly("The requested objective admits a forbidden shortest-path shortcut");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_codex_call WHERE onboarding_id=? AND stage<>'DESIGN'").param(id).query(Integer.class).single()).isZero();
+    }
+    @Test void frozenStageTamperingCannotAdvance() {
+        UUID id=hard("HARD");var design=onboarding.claimCodexAuthor();
+        onboarding.finishCodexAuthor(codexResult(design,author(),null));var code=onboarding.claimCodexAuthor();
+        jdbc.sql("UPDATE hybrid_rule_author_stage SET payload_sha256=? WHERE onboarding_id=?").param("0".repeat(64)).param(id).update();
+        onboarding.finishCodexAuthor(codexResult(code,author(),null));
+        assertThat(jdbc.sql("SELECT error_code FROM hybrid_rule_onboarding WHERE id=?").param(id).query(String.class).single()).isEqualTo("ONBOARDING_ARTIFACT_FENCE");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_author_stage WHERE onboarding_id=?").param(id).query(Integer.class).single()).isOne();
     }
     @Test void hardQueueDoesNotBlockEasyApiAndExpiredCodexCannotAdvance() {
         overrides.put("HYBRID_RULE_ONBOARDING_MAX_ACTIVE","3");
@@ -330,7 +403,7 @@ class HybridRuleOnboardingIntegrationTest {
         assertThat(input.has("publish")||input.has("shared")).isFalse();
         assertThat(authorCall.path("spec").path("instructions").asText()).contains("Never name the technique","style COMMAND","mutants[0] must be a realistic");
         assertThat(authorCall.path("effort").asText()).isEqualTo("high");
-        onboarding.finishCodexAuthor(codexResult(authorCall,author(),null));
+        onboarding.finishCodexAuthor(codexResult(authorCall,author(),null));remainingCodexStages();
         worker.runOnce();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();drain(false,false);onboarding.advance();
         assertThat(view(id).status()).isEqualTo("ACTIVE");
         followup.advance(); // rule-based admission is disabled in this environment: the refusal is recorded, not retried forever

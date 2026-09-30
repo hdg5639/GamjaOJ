@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
-from generation.worker import CodexCli, hybrid_once, rule_author_once, atomic, main, quota_exhausted
+from generation.worker import CodexCli, hybrid_once, rule_author_once, atomic, main, quota_exhausted, invocation_timeout
 
 
 def assignment(role='CONTRACT'):
@@ -44,6 +44,20 @@ class Api:
 
 
 class HybridWorkerTests(unittest.TestCase):
+    def test_stage_call_limit_is_bounded_by_the_remaining_request_deadline(self):
+        now = datetime.now(timezone.utc); work = rule_assignment()
+        work['deadlineAt'] = (now + timedelta(minutes=40)).isoformat()
+        work['timeoutSeconds'] = 1200
+        self.assertEqual(1200, invocation_timeout(work, now))
+        work['deadlineAt'] = (now + timedelta(seconds=45)).isoformat()
+        self.assertEqual(45, invocation_timeout(work, now))
+        work['deadlineAt'] = (now - timedelta(seconds=1)).isoformat()
+        with self.assertRaisesRegex(RuntimeError, 'HYBRID_DEADLINE_EXCEEDED'):
+            invocation_timeout(work, now)
+        legacy = assignment()
+        legacy['deadlineAt'] = (now + timedelta(minutes=40)).isoformat()
+        self.assertEqual(120, invocation_timeout(legacy, now))
+
     def test_rule_author_redelivery_and_restart_preserve_envelope_without_reinvocation(self):
         class RuleApi(Api):
             def post(self, path, body):

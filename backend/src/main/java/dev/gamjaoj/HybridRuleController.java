@@ -13,6 +13,7 @@ class HybridRuleController {
      *  evaluationId/observationIndex target a habit from the member's own diagnosis; the server reads it, never the client. */
     record Request(String request,String difficulty,String style,String category,Boolean publish,Boolean shared,UUID evaluationId,Integer observationIndex) {}
     record Sharing(Boolean shared) {}
+    record Retry(java.util.UUID attemptId) {}
     record Owned(String id,String label,String category,String status,boolean shared) {}
     private final HybridRuleOnboarding onboarding;private final HybridRuleRegistry registry;private final Submissions submissions;
     private final DiagnosticEvaluations evaluations;private final DiagnosticProfiles profiles;
@@ -43,6 +44,11 @@ class HybridRuleController {
     List<HybridRuleOnboarding.View> list(Principal user){return onboarding.list(user.getName());}
     @PostMapping("/onboarding/{id}/cancel")
     HybridRuleOnboarding.View cancel(Principal user,@PathVariable UUID id){return onboarding.cancel(user.getName(),id);}
+    @PostMapping("/onboarding/{id}/retry")
+    HybridRuleOnboarding.View retry(Principal user,@PathVariable UUID id,@RequestBody Retry body) {
+        if(body==null||body.attemptId()==null)throw new AccountException(400,"재시도할 작성 기록이 필요해요.");
+        return onboarding.retryAuthor(user.getName(),id,body.attemptId());
+    }
     @GetMapping("/mine")
     List<Owned> mine(Principal user) {
         return registry.owned(submissions.owner(user.getName(),false)).stream()
