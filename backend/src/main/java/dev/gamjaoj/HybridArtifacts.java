@@ -81,7 +81,7 @@ final class HybridArtifacts {
         if(p.has("sections")) {
             section(p.path("sections"),"input","output","limits");
             HybridStatementQuality.korean("title",p.path("title").asText());HybridStatementQuality.korean("context",p.path("context").asText());
-            for(String key:List.of("input","output","limits"))HybridStatementQuality.korean(key,p.path("sections").path(key).asText());
+            for(String key:List.of("input","output","limits"))HybridStatementQuality.korean(key,p.path("sections").path(key).asText(),p.path("semantics"));
             HybridStatementQuality.bounds(p.path("semantics"),p.path("sections").path("input").asText()+"\n"+p.path("sections").path("limits").asText());
         }
         // Models cannot override canonical IO, limits or rule semantics in the public snapshot.

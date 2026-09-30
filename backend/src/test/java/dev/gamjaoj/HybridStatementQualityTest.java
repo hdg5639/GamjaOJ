@@ -12,6 +12,15 @@ class HybridStatementQualityTest {
         assertThatThrownBy(()->HybridStatementQuality.korean("context","at vertex S with distance 0")).isInstanceOf(HybridArtifacts.Invalid.class);
         HybridStatementQuality.korean("output","가능하면 `POSSIBLE`, 아니면 \"Impossible\"을 출력합니다. N, M, S, T와 BFS, DP, MOD는 그대로 씁니다.");
     }
+    @Test void callableSectionsAcceptOnlyDeclaredIdentifiersAlongsideKoreanProse() {
+        var semantics=JudgeJson.JSON.createObjectNode();semantics.set("callable",CallableProgramsTest.multi());
+        HybridStatementQuality.korean("input","각 add의 value는 정수이며 UserSolution에서 처리합니다.",semantics);
+        assertThatThrownBy(()->HybridStatementQuality.korean("input","각 unknownParameter는 정수입니다.",semantics)).hasMessage("STATEMENT_NOT_KOREAN_INPUT");
+        assertThatThrownBy(()->HybridStatementQuality.korean("input","각 valueExtra는 정수입니다.",semantics)).hasMessage("STATEMENT_NOT_KOREAN_INPUT");
+        assertThatThrownBy(()->HybridStatementQuality.korean("input","value follows after each operation",semantics)).hasMessage("STATEMENT_NOT_KOREAN_INPUT");
+        assertThatThrownBy(()->HybridStatementQuality.korean("input","UserSolution value",semantics)).hasMessage("STATEMENT_NOT_KOREAN_INPUT");
+        assertThatThrownBy(()->HybridStatementQuality.korean("input","각 value는 정수입니다.",JudgeJson.JSON.createObjectNode())).hasMessage("STATEMENT_NOT_KOREAN_INPUT");
+    }
     @Test void everyContractBoundMustAppearInAnyEquivalentNotation() {
         var semantics=fixtures.presentation().path("semantics");
         assertThat(HybridStatementQuality.contractBounds(semantics)).extracting(Number::longValue).containsExactly(100L,1000L,10000L);

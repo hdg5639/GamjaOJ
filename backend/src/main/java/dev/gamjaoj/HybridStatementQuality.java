@@ -30,6 +30,21 @@ final class HybridStatementQuality {
         HybridArtifacts.require(text.codePoints().anyMatch(c->c>=0xAC00&&c<=0xD7A3),"STATEMENT_NOT_KOREAN_"+field.toUpperCase());
     }
 
+    /** Declared API identifiers are learner-visible names, not leaked English prose. */
+    static void korean(String field,String text,JsonNode semantics) {
+        var api=semantics.path("callable");
+        if(api.isMissingNode()){korean(field,text);return;}
+        var identifiers=new TreeSet<String>(Set.of("UserSolution","Main","String","boolean","void","int","long"));
+        for(var method:api.path("methods")) {
+            identifiers.add(method.path("name").asText());
+            for(var parameter:method.path("parameters"))identifiers.add(parameter.path("name").asText());
+        }
+        String prose=text;
+        for(String name:identifiers)if(!name.isEmpty())
+            prose=prose.replaceAll("(?<![A-Za-z0-9_$])"+Pattern.quote(name)+"(?![A-Za-z0-9_$])"," ");
+        korean(field,prose);
+    }
+
     private static final Pattern POWER=Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*[×x*·]\\s*10\\s*\\^\\s*(\\d+)|10\\s*\\^\\s*(\\d+)|10([⁰¹²³⁴⁵⁶⁷⁸⁹]+)|(\\d+)e(\\d+)");
     private static final Pattern NUMBER=Pattern.compile("\\d{1,3}(?:,\\d{3})+|\\d+");
     private static final String SUPERSCRIPT="⁰¹²³⁴⁵⁶⁷⁸⁹";
