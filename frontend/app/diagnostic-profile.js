@@ -17,11 +17,11 @@ export default function DiagnosticProfile({api,sessionId,row,onObservation,onRul
   const count=tone=>all.filter(o=>o.tone===tone).length;
   const ruleName=id=>profile.rules.find(r=>r.id===id)?.label||id;
   return <section className="diagnostic-profile" aria-label="분야별 진단 요약">
-    <h3>분야별 한눈에 보기</h3>
+    <h3>분야별 결과</h3>
     {all.some(o=>o.tone)?<p>코드 근거가 있는 관찰: 강점 {count('STRENGTH')} · 주의 {count('WATCH')} · 위험 {count('RISK')}{all.some(o=>o.repeated)?` · 다른 분야에서도 보인 습관 ${all.filter(o=>o.repeated).length}`:''}</p>:
       <p className="muted">{row.interpretation?'이 평가는 습관·위험 구분이 추가되기 전에 만들어졌어요. 새로 평가를 요청하면 분야별 습관이 표시됩니다.':'AI 해석이 준비되면 분야별 코드 습관과 위험이 표시됩니다. 아래는 판정 기록입니다.'}</p>}
     <p className="muted">습관은 이번 진단 제출 코드에서 보인 패턴이며 성향이나 실력 등급이 아닙니다. 선택하지 않았거나 건너뛴 분야는 약점이 아니라 미평가입니다.</p>
-    <div className="diagnostic-profile-grid">{profile.categories.map(category=><article key={category.id} className="diagnostic-profile-card" data-selected={category.selected}>
+    <div className="diagnostic-profile-list">{profile.categories.filter(category=>category.selected).map(category=><article key={category.id} className="diagnostic-profile-card" data-selected={category.selected}>
       <h4>{categoryLabels[category.id]||category.id}</h4>
       {!category.selected?<p className="muted">선택하지 않음 · 미평가</p>:<ul className="diagnostic-profile-items">{category.items.map(item=><li key={item.itemId}>
         {difficulty[item.difficulty]||item.difficulty} · {item.externallySeen?'본 적 있음 · 근거 제외':outcomes[item.status]||item.status} · 제출 {item.attempts}회</li>)}</ul>}
@@ -37,6 +37,7 @@ export default function DiagnosticProfile({api,sessionId,row,onObservation,onRul
       {category.selected&&category.observations.length===0&&row.interpretation&&<p className="muted">이 분야에서 코드 근거로 짚은 습관은 없어요.</p>}
       {category.ruleIds.length>0&&<p className="muted">분야 이름이 맞는 등록 규칙: {category.ruleIds.map(ruleName).join(', ')}. 관찰에서 학습 목표를 저장하면 이 규칙으로 문제를 만들 수 있어요.</p>}
     </article>)}</div>
+    {profile.categories.some(c=>!c.selected)&&<p className="muted diagnostic-unassessed">미평가 분야 · {profile.categories.filter(c=>!c.selected).map(c=>categoryLabels[c.id]||c.id).join(', ')}</p>}
     {profile.ruleOnboardingEnabled&&<p className="muted">'이 습관을 겨냥한 문제 만들기'는 새 문제 만들기 화면에 겨냥 대상만 채워요. 난이도와 스타일을 고른 뒤 직접 요청해야 하며, 요청하면 AI 예산을 사용합니다.</p>}
   </section>;
 }

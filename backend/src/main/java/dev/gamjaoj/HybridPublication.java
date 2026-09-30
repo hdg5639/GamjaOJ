@@ -92,16 +92,20 @@ class HybridPublication {
                     .param(id).query((r,n)->new State(id,r.getObject(1,UUID.class),r.getInt(2),r.getBoolean(3),r.getString(4),r.getString(5),r.getObject(6,UUID.class))).optional();
             if(state.isEmpty())continue;
             var s=state.get();
-            var review=jdbc.sql("SELECT id,status,input_json,input_sha256,output_sha256 FROM hybrid_branch WHERE generation_id=? AND revision=? AND role='CONTENT_REVIEW' ORDER BY attempt DESC LIMIT 1")
-                    .param(id).param(s.revision).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4),r.getString(5)}).optional();
-            if(review.isPresent()&&!review.get()[1].equals("SUCCEEDED"))continue;
+            var review=jdbc.sql("SELECT id,status,input_json,input_sha256,output_sha256,attempt FROM hybrid_branch WHERE generation_id=? AND revision=? AND role='CONTENT_REVIEW' ORDER BY attempt DESC LIMIT 1")
+                    .param(id).param(s.revision).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4),r.getString(5),r.getString(6)}).optional();
+            int nextAttempt=review.isEmpty()?0:Integer.parseInt(review.get()[5])+1;
+            // Only an explicitly reserved retry may create a fresh review over repaired validation evidence.
+            boolean fresh=review.isEmpty()||(review.get()[1].equals("FAILED")&&jdbc.sql("SELECT count(*) FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id WHERE r.generation_id=? AND r.revision=? AND r.role='CONTENT_REVIEW' AND r.retry=? AND r.branch_id IS NULL AND a.status='HYBRID_RESERVED'")
+                    .param(id).param(s.revision).param(nextAttempt).query(Integer.class).single()==1);
+            if(review.isPresent()&&!review.get()[1].equals("SUCCEEDED")&&!fresh)continue;
             if(review.isEmpty()&&jdbc.sql("SELECT count(*) FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id WHERE r.generation_id=? AND r.revision=? AND r.role='CONTENT_REVIEW' AND a.status='HYBRID_RESERVED'")
                     .param(id).param(s.revision).query(Integer.class).single()!=1)continue;
             try {
-                var input=input(s,review.isEmpty()||JudgeJson.parse(review.get()[2]).has("requirements"));String raw=JudgeJson.canonical(input),hash=JudgeJson.hash(raw);
-                if(review.isEmpty()) {
-                    jdbc.sql("INSERT INTO hybrid_branch(id,generation_id,revision,role,attempt,status,input_json,input_sha256,contract_sha256,public_sha256,created_at) VALUES (?,?,?,'CONTENT_REVIEW',0,'QUEUED',?,?,?,?,CURRENT_TIMESTAMP)")
-                            .param(UUID.randomUUID()).param(id).param(s.revision).param(raw).param(hash).param(s.contract).param(s.publicHash).update();
+                var input=input(s,fresh||JudgeJson.parse(review.get()[2]).has("requirements"));String raw=JudgeJson.canonical(input),hash=JudgeJson.hash(raw);
+                if(fresh) {
+                    jdbc.sql("INSERT INTO hybrid_branch(id,generation_id,revision,role,attempt,status,input_json,input_sha256,contract_sha256,public_sha256,created_at) VALUES (?,?,?,'CONTENT_REVIEW',?,'QUEUED',?,?,?,?,CURRENT_TIMESTAMP)")
+                            .param(UUID.randomUUID()).param(id).param(s.revision).param(nextAttempt).param(raw).param(hash).param(s.contract).param(s.publicHash).update();
                     jdbc.sql("UPDATE hybrid_generation SET status='REVIEWING',error_code=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?").param(id).update();
                     events.publishEvent(new HybridExecution.Wakeup());continue;
                 }
