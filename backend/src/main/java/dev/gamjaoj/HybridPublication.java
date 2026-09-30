@@ -92,7 +92,7 @@ class HybridPublication {
                     .param(id).query((r,n)->new State(id,r.getObject(1,UUID.class),r.getInt(2),r.getBoolean(3),r.getString(4),r.getString(5),r.getObject(6,UUID.class))).optional();
             if(state.isEmpty())continue;
             var s=state.get();
-            var review=jdbc.sql("SELECT id,status,input_json,input_sha256,output_sha256 FROM hybrid_branch WHERE generation_id=? AND revision=? AND role='CONTENT_REVIEW'")
+            var review=jdbc.sql("SELECT id,status,input_json,input_sha256,output_sha256 FROM hybrid_branch WHERE generation_id=? AND revision=? AND role='CONTENT_REVIEW' ORDER BY attempt DESC LIMIT 1")
                     .param(id).param(s.revision).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4),r.getString(5)}).optional();
             if(review.isPresent()&&!review.get()[1].equals("SUCCEEDED"))continue;
             if(review.isEmpty()&&jdbc.sql("SELECT count(*) FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id WHERE r.generation_id=? AND r.revision=? AND r.role='CONTENT_REVIEW' AND a.status='HYBRID_RESERVED'")

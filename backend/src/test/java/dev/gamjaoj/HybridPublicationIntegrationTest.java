@@ -126,6 +126,26 @@ class HybridPublicationIntegrationTest {
         assertThat(jobs.view("owner",id).status()).isEqualTo("HELD");assertThat(jobs.view("owner",id).error()).isEqualTo("REQUIREMENTS_NOT_MET");
         assertThat(published()).isZero();assertThat(execution.claimApi()).isNull();
     }
+    @Test void explicitReviewRetryPreservesPriorReceiptAndPublishesWithoutRepeatingRunnerChecks() {
+        UUID id=checked(false);var first=review();var rejected=accepted(first);
+        var assessment=(com.fasterxml.jackson.databind.node.ObjectNode)rejected.path("requirementsReview");
+        assessment.put("satisfied",false);assessment.withArray("issues").add("Fixture rejected interpretation");
+        execution.finish(first.attemptId(),result(rejected),null);
+        String oldReceipt=jdbc.sql("SELECT receipt_json FROM hybrid_api_reservation WHERE attempt_id=?").param(first.attemptId()).query(String.class).single();
+        int checksBefore=runner.jobs();UUID branch=UUID.randomUUID(),attempt=UUID.randomUUID();
+        jdbc.sql("INSERT INTO hybrid_branch(id,generation_id,revision,role,attempt,status,input_json,input_sha256,contract_sha256,public_sha256,created_at) SELECT ?,generation_id,revision,role,attempt+1,'QUEUED',input_json,input_sha256,contract_sha256,public_sha256,CURRENT_TIMESTAMP FROM hybrid_branch WHERE id=?")
+                .param(branch).param(first.request().assignment().branchId()).update();
+        jdbc.sql("INSERT INTO ai_attempt(id,month_key,status,reserved_usd,settings_json) SELECT ?,month_key,'HYBRID_RESERVED',reserved_usd,settings_json FROM ai_attempt WHERE id=?").param(attempt).param(first.attemptId()).update();
+        jdbc.sql("INSERT INTO hybrid_api_reservation(attempt_id,generation_id,revision,role,retry) VALUES (?,?,0,'CONTENT_REVIEW',1)").param(attempt).param(id).update();
+        jdbc.sql("UPDATE hybrid_generation SET status='REVIEWING',error_code=NULL WHERE id=?").param(id).update();
+        publication.advance();var second=execution.claimApi();assertThat(second).isNotNull();
+        assertThat(second.request().assignment().branchId()).isEqualTo(branch);
+        assertThat(second.request().assignment().inputHash()).isEqualTo(first.request().assignment().inputHash());
+        execution.finish(second.attemptId(),result(accepted(second)),null);publication.advance();
+        assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");assertThat(runner.jobs()).isEqualTo(checksBefore);
+        assertThat(jdbc.sql("SELECT receipt_json FROM hybrid_api_reservation WHERE attempt_id=?").param(first.attemptId()).query(String.class).single()).isEqualTo(oldReceipt);
+        assertThat(jdbc.sql("SELECT status FROM hybrid_branch WHERE id=?").param(first.request().assignment().branchId()).query(String.class).single()).isEqualTo("FAILED");
+    }
     @Test void missingFidelityResultCannotPassNewReview() {
         UUID id=checked(false);var work=review();var payload=accepted(work);payload.remove("requirementsReview");
         execution.finish(work.attemptId(),result(payload),null);publication.advance();
