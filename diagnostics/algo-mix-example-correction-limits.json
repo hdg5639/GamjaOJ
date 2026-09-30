@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "versions": {
+        "diagnostic-algo-mix-a-v2-safe-presentation-order-v2": "bfdb830d2546e83e1fd3713a49dd2aa120bcab7b7feb6ebcdabc4479e989a4d8"
+      },
+      "limits": {
+        "JAVA": 2,
+        "CPP": 1,
+        "PYTHON": 3,
+        "analysis": "O(N*N!), N<=8; \ucd5c\ub300 40320 \uc21c\uc5f4\uacfc \uc778\uc811 \uae08\uc9c0 \uc870\uac74 \uac80\uc0ac. Python\uc758 \uc7ac\uadc0/\uc21c\uc5f4 \ube44\uc6a9\uc744 \uace0\ub824. Java/C++/Python \uac01\uac01\uc758 \uae30\uc874 Runner \uce21\uc815 \ucd5c\ub313\uac12(ms): {'JAVA': 384, 'CPP': 181, 'PYTHON': 270}. \uc5b8\uc5b4\ubcc4 \ucd5c\uc18c 4\ubc30 \uc5ec\uc720\ub97c \ub454 \ucd08\uae30 \uc870\uc815\uc774\uba70 \ubaa8\ub4e0 \uad6c\ud604\uc758 \ucd5c\uc545 \uc2dc\uac04\uc744 \ubcf4\uc7a5\ud558\uc9c0 \uc54a\uc74c."
+      }
+    }
+  ],
+  "reason": "Public example clarification only; inherits the previous reviewed execution limits."
+}

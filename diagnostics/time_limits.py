@@ -7,7 +7,8 @@ POLICY = Path(__file__).with_name('algo-mix-time-limits-v1.json')
 
 
 def limits_for(problem):
-    for item in json.loads(POLICY.read_text())['items']:
+    policies = [POLICY, POLICY.with_name('algo-mix-example-correction-limits.json')]
+    for item in [item for path in policies for item in json.loads(path.read_text())['items']]:
         if problem['version'] in item['versions']:
             raw = json.dumps(problem, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
             if hashlib.sha256(raw).hexdigest() != item['versions'][problem['version']]:

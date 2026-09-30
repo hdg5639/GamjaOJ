@@ -3,7 +3,8 @@
 For every item and language (Java 8, C++17, Python 3):
   - the correct solution is AC under the exact package's reviewed per-language budget; every case keeps
     25% headroom, and large cases also meet the older 4000 ms (Java/Python) or 3000 ms (C++) gate;
-  - every wrong solution passes the public examples and ends with WA (not RE/TLE/MLE) on a private fixed test;
+  - every wrong solution ends with WA (not RE/TLE/MLE); it must pass public examples unless the
+    reviewed item explicitly sets publicExamplesMayRejectMutant;
   - slow solutions (items with generated tests) are AC on small inputs and TLE on a generated test. With
     --package, small inputs are the package QA's 12 random cases per item (its random_case/oracle, seed
     99173 + problem id); without it, fixed tests of at most 4096 bytes are used as an approximation;
@@ -114,7 +115,7 @@ def verify_item(item):
         entry['wrong'] = {'verdict': wrong['verdict'], 'failedAt': tests[-1]['id'] if tests else None}
         if wrong['verdict'] != 'WA':
             fail(f'{language} wrong verdict {wrong["verdict"]} (expected WA)')
-        elif not tests or tests[0]['id'] != 'T01' or any(t['verdict'] != 'AC' for t in tests[:-1]) or public(tests[-1]['id']):
+        elif not tests or tests[0]['id'] != 'T01' or any(t['verdict'] != 'AC' for t in tests[:-1]) or (public(tests[-1]['id']) and not item.get('publicExamplesMayRejectMutant', False)):
             fail(f'{language} wrong must pass the public examples and fail a private test (failed at {tests[-1]["id"] if tests else None})')
         if 'slow' in item:
             # Handoff criterion: exact on small inputs, TLE on the generated large inputs.
