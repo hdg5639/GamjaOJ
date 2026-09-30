@@ -31,7 +31,9 @@ final class HybridArtifacts {
     static void schema(JsonNode node){require(node.path("schemaVersion").asText().equals("1"),"UNSUPPORTED_SCHEMA");}
     static JsonNode contract(JsonNode candidate) {
         JsonNode c=bounded(candidate);
-        fields(c,"schemaVersion","domain","input","state","actions","goal","termination","output","limits","obligations");schema(c);
+        var shape=(ObjectNode)c.deepCopy();shape.remove("callable");
+        if(c.has("callable"))CallablePrograms.validate(c.path("callable"));
+        fields(shape,"schemaVersion","domain","input","state","actions","goal","termination","output","limits","obligations");schema(c);
         section(c.path("domain"),"entities","types","relationships");
         section(c.path("input"),"format","indexing","caseCount");
         section(c.path("state"),"initial","mutable");
@@ -89,8 +91,13 @@ final class HybridArtifacts {
         for(var rule:rules){section(rule,"id","text");require(expected.remove(rule.path("id").asText()),"INVALID_RULE_COVERAGE");}
         return p;
     }
+    static void publicSemanticsShape(JsonNode semantics) {
+        var shape=(ObjectNode)bounded(semantics);shape.remove("callable");
+        fields(shape,PUBLIC_FIELDS.toArray(String[]::new));
+        if(semantics.has("callable"))CallablePrograms.validate(semantics.path("callable"));
+    }
     static ObjectNode publicSemantics(JsonNode contract) {
-        var out=JudgeJson.JSON.createObjectNode();PUBLIC_FIELDS.forEach(k->out.set(k,contract.path(k).deepCopy()));return out;
+        var out=JudgeJson.JSON.createObjectNode();PUBLIC_FIELDS.forEach(k->out.set(k,contract.path(k).deepCopy()));if(contract.has("callable"))out.set("callable",contract.path("callable").deepCopy());return out;
     }
     static ObjectNode publicSnapshot(JsonNode presentation) {
         // Construct from an allowlist. Teaching, author notes, personal context and answers cannot enter.

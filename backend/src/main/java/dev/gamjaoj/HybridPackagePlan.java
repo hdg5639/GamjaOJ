@@ -110,6 +110,7 @@ final class HybridPackagePlan {
             statement.append("\n\n제약\n").append(sem.path("limits").path("maxInputSize").asText()).append('\n').append(sem.path("limits").path("executionConstraints").asText());
         }
         p.put("statement",statement.toString());p.set("semantics",sem.deepCopy());
+        if(sem.has("callable"))p.set("api",CallablePrograms.bundle(sem.path("callable")));
         var tests=p.putArray("tests");candidates.stream().filter(c->!checkOnly(c)).forEach(tests::add);
         if(generatedCount(profile)>0) {
             if(reference==null||reference.isBlank())throw new IllegalArgumentException("MISSING_GENERATED_REFERENCE");

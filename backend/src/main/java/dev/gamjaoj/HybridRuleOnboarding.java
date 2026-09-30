@@ -29,7 +29,7 @@ class HybridRuleOnboarding {
                 String versionId,String label,BigDecimal spentUsd,Map<String,String> checks,String failedCheck,
                 String difficulty,String style,String category,boolean targeted,boolean publish,
                 UUID followupGenerationId,String followupStatus,String followupError,String publishedVersion,int repairs,List<String> requirementIssues,String authorStage,List<String> completedAuthorStages,UUID failedAuthorAttempt) {}
-    static final List<String> DIFFICULTIES=List.of("EASY","MEDIUM","HARD","EXPERT"),STYLES=List.of("GENERAL","SIMULATION","COMMAND");
+    static final List<String> DIFFICULTIES=List.of("EASY","MEDIUM","HARD","EXPERT"),STYLES=List.of("GENERAL","SIMULATION","COMMAND","COMMAND_MULTI","COMMAND_SINGLE");
     /** target: server-resolved habit to break ({pattern,risk,category,quote}); never raw client text. */
     record Spec(String request,String difficulty,String style,String category,JsonNode target,boolean publish,boolean shared) {}
     record Call(UUID attemptId,UUID onboarding,String role,AiSettings.Model model,String instructions,String input,
@@ -244,7 +244,8 @@ class HybridRuleOnboarding {
         var a=JudgeJson.JSON.createObjectNode().put("type","array").put("minItems",min).put("maxItems",max);a.set("items",items);return a;
     }
     private static ObjectNode ruleId(){return str().put("pattern","^[a-z][a-z0-9-]{0,39}$");}
-    static JsonNode authorSchema() {
+    static JsonNode authorSchema() {return authorSchema("GENERAL");}
+    static JsonNode authorSchema(String style) {
         var contract=(ObjectNode)HybridModels.schema(HybridGeneration.Role.CONTRACT).deepCopy();
         ((ObjectNode)contract.path("properties").path("actions").path("items").path("properties")).set("id",ruleId());
         var schema=obj("contract",contract,"rules",arr(obj("id",ruleId(),"text",str()),1,16),
@@ -253,6 +254,7 @@ class HybridRuleOnboarding {
                 "mutants",arr(obj("idea",str(),"source",str()),2,2),"tinyInputs",arr(str(),8,AUTHOR_MAX_TINY),"invalidInputs",arr(str(),3,10),
                 "stressInputs",arr(str(),1,3),"oracleDomain",obj("inputDomain",str(),"enumeration",str()),
                 "guidance",obj("author",str(),"teaching",str(),"reader",str()));
+        if(CallablePrograms.style(style)){((ObjectNode)contract.path("properties")).set("callable",CallablePrograms.schema());((ArrayNode)contract.path("required")).add("callable");}
         GenerationRequirements.addSchema(schema);return schema;
     }
     static JsonNode oracleSchema(){return obj("oracleSource",str(),"requestReview",obj("satisfied",JudgeJson.JSON.createObjectNode().put("type","boolean"),"issues",arr(str(),0,16)));}
@@ -294,9 +296,10 @@ class HybridRuleOnboarding {
                 .filter(row->!row[1].equals("QUEUED")||!codexAuthor((String)row[2])).findFirst();
         if(next.isEmpty())return null;
         UUID id=(UUID)next.get()[0];boolean author=next.get()[1].equals("QUEUED");String role=author?"AUTHOR":"ORACLE";
-        var m=model(role,JudgeJson.parse((String)next.get()[2]).path("difficulty").asText("MEDIUM"));String instructions=author?AUTHOR_INSTRUCTIONS+AUTHOR_TARGETING:ORACLE_INSTRUCTIONS;
+        var request=JudgeJson.parse((String)next.get()[2]);
+        var m=model(role,request.path("difficulty").asText("MEDIUM"));String instructions=(author?AUTHOR_INSTRUCTIONS+AUTHOR_TARGETING:ORACLE_INSTRUCTIONS)+(CallablePrograms.style(request.path("style").asText())?CallablePrograms.INSTRUCTIONS:"");
         String repairContext=author?jdbc.sql("SELECT repair_json FROM hybrid_rule_onboarding WHERE id=?").param(next.get()[0]).query(String.class).optional().orElse(null):null;
-        String input=author?authorInput((String)next.get()[2],repairContext):oracleInput(JudgeJson.parse((String)next.get()[3]),(String)next.get()[2]);JsonNode schema=author?authorSchema():oracleSchema();
+        String input=author?authorInput((String)next.get()[2],repairContext):oracleInput(JudgeJson.parse((String)next.get()[3]),(String)next.get()[2]);JsonNode schema=author?authorSchema(JudgeJson.parse((String)next.get()[2]).path("style").asText()):oracleSchema();
         var amount=reserve(m,instructions,input,schema);var b=ledger.budget();
         BigDecimal cap=jdbc.sql("SELECT budget_usd FROM hybrid_rule_onboarding WHERE id=?").param(id).query(BigDecimal.class).single();
         if(spent(id).add(amount).compareTo(cap)>0){stop(id,"HELD","ONBOARDING_BUDGET_CAP");return null;}
@@ -348,8 +351,8 @@ class HybridRuleOnboarding {
         var work=JudgeJson.JSON.createObjectNode().put("pipelineVersion","RULE_AUTHOR_V1").put("token",token.toString())
                 .put("model",model).put("effort",effort).put("deadlineAt",row[4].toString())
                 .put("timeoutSeconds",setting("CODEX_RULE_AUTHOR_SECONDS",1200,60,1200));
-        work.set("outputSchema",HybridRuleAuthorStages.schema(stage));
-        var spec=work.putObject("spec").put("phase","RULE_AUTHOR_V1").put("role","AUTHOR").put("stage",stage).put("instructions",HybridRuleAuthorStages.instructions(stage));
+        work.set("outputSchema",HybridRuleAuthorStages.schema(stage,JudgeJson.parse((String)row[1]).path("style").asText()));
+        var spec=work.putObject("spec").put("phase","RULE_AUTHOR_V1").put("role","AUTHOR").put("stage",stage).put("instructions",HybridRuleAuthorStages.instructions(stage,JudgeJson.parse((String)row[1]).path("style").asText()));
         spec.set("input",input);
         spec.putObject("assignment").put("attemptId",attempt.toString()).put("token",token.toString()).put("inputHash",hash);
         return work;
@@ -380,6 +383,13 @@ class HybridRuleOnboarding {
         try {
             var before=stages.snapshot(id,round);HybridArtifacts.require(stage.equals(before.next()),"ONBOARDING_ARTIFACT_FENCE");
             var payload=HybridRuleAuthorStages.validate(stage,result.payload());
+            if(stage.equals("DESIGN")) {
+                String style=JudgeJson.parse(jdbc.sql("SELECT request_json FROM hybrid_rule_onboarding WHERE id=?").param(id).query(String.class).single()).path("style").asText();
+                if(CallablePrograms.style(style)) {
+                    var api=CallablePrograms.validate(payload.path("contract").path("callable"));
+                    HybridArtifacts.require(api.path("mode").asText().equals(style.equals("COMMAND_MULTI")?"MULTI_API":"SINGLE_FUNCTION"),"INVALID_API_MODE");
+                } else HybridArtifacts.require(!payload.path("contract").has("callable"),"INVALID_API_MODE");
+            }
             if(stage.equals("TESTS")) {
                 var assembled=before.partial().deepCopy();assembled.setAll((ObjectNode)payload);assembled.remove("solutionPlan");
                 validateAuthor(assembled); // Do not persist a terminal checkpoint that cannot be assembled.
@@ -433,7 +443,16 @@ class HybridRuleOnboarding {
                 String candidate=JudgeJson.canonical(HybridArtifacts.bounded(value));
                 jdbc.sql("UPDATE hybrid_rule_onboarding SET author_json=?,author_sha256=? WHERE id=?").param(candidate).param(JudgeJson.hash(candidate)).param(id).update();
                 if(GenerationRequirements.requiresAuthorReview(promptVersion))GenerationRequirements.validate(value.path("requirementsReview"),true);
-                var author=validateAuthor(value);String raw=JudgeJson.canonical(author);
+                var author=validateAuthor(value);
+                String style=JudgeJson.parse(jdbc.sql("SELECT request_json FROM hybrid_rule_onboarding WHERE id=?").param(id).query(String.class).single()).path("style").asText();
+                if(CallablePrograms.style(style)){
+                    var api=CallablePrograms.validate(author.path("contract").path("callable"));
+                    HybridArtifacts.require(api.path("mode").asText().equals(style.equals("COMMAND_MULTI")?"MULTI_API":"SINGLE_FUNCTION"),"INVALID_API_MODE");
+                    var object=(ObjectNode)author;
+                    for(String field:List.of("reference","slowSolution"))object.put(field,CallablePrograms.executable(api,author.path(field).asText()));
+                    for(var mutant:author.path("mutants"))((ObjectNode)mutant).put("source",CallablePrograms.executable(api,mutant.path("source").asText()));
+                } else HybridArtifacts.require(!author.path("contract").has("callable"),"INVALID_API_MODE");
+                String raw=JudgeJson.canonical(author);
                 jdbc.sql("UPDATE hybrid_rule_onboarding SET author_json=?,author_sha256=?,status='AUTHORED',updated_at=? WHERE id=?")
                         .param(raw).param(JudgeJson.hash(raw)).param(now()).param(id).update();
             } else {
@@ -461,6 +480,11 @@ class HybridRuleOnboarding {
         }
         events.publishEvent(new HybridExecution.Wakeup());
     }
+    static void solutionSource(JsonNode n,boolean callable) {
+        if(!callable){source(n);return;}
+        HybridArtifacts.text(n,65536);
+        HybridArtifacts.require(n.asText().getBytes(StandardCharsets.UTF_8).length<=65536&&n.asText().matches("(?s).*\\bclass\\s+UserSolution\\b.*"),"INVALID_API_SOURCE");
+    }
     static String source(JsonNode n) {
         if(!n.isTextual()||n.asText().isBlank()||n.asText().getBytes(StandardCharsets.UTF_8).length>65536||!n.asText().matches("(?s).*\\bclass\\s+Main\\b.*"))
             throw new HybridArtifacts.Invalid("INVALID_RULE_SOURCE");
@@ -483,9 +507,10 @@ class HybridRuleOnboarding {
         if(a.has("requirementsReview"))GenerationRequirements.validate(a.path("requirementsReview"),true);
         HybridArtifacts.fields(shape,"contract","rules","catalog","generator","validator","reference","largeGenerator","slowSolution","authorNotes","mutants","tinyInputs","invalidInputs","stressInputs","oracleDomain","guidance");
         HybridArtifacts.contract(a.path("contract"));
-        for(String f:List.of("generator","validator","reference","largeGenerator","slowSolution"))source(a.path(f));
+        for(String f:List.of("generator","validator","largeGenerator"))source(a.path(f));
+        for(String f:List.of("reference","slowSolution"))solutionSource(a.path(f),a.path("contract").has("callable"));
         if(a.path("mutants").size()!=2)throw new HybridArtifacts.Invalid("RULE_PACKAGE_MUTANTS");
-        for(var m:a.path("mutants"))source(m.path("source"));
+        for(var m:a.path("mutants"))solutionSource(m.path("source"),a.path("contract").has("callable"));
         inputs(a.path("tinyInputs"),HybridRulePackage.MIN_TINY,AUTHOR_MAX_TINY,1024,"RULE_TINY_INPUTS");
         inputs(a.path("invalidInputs"),2,HybridRulePackage.MAX_INVALID,1024,"RULE_INVALID_INPUTS",true);
         inputs(a.path("stressInputs"),1,HybridRulePackage.MAX_STRESS,4096,"RULE_STRESS_INPUTS");

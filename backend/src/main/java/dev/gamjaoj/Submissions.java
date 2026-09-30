@@ -23,7 +23,7 @@ public class Submissions {
         this.jdbc = jdbc; this.enabled = enabled; this.diagnostics=diagnostics;
     }
     public record Problem(String version, String title, String statement, String sampleInput,
-                          String sampleOutput, List<Example> examples, int sourceLimitBytes, boolean submissionsEnabled, boolean problemHeld, String reviewReason, boolean mine, boolean shared, boolean generated, String category, List<String> tags, String difficulty, String difficultySource, String solveStatus, long pendingSubmissions, List<LanguageProfiles.Option> languages) {}
+                          String sampleOutput, List<Example> examples, int sourceLimitBytes, boolean submissionsEnabled, boolean problemHeld, String reviewReason, boolean mine, boolean shared, boolean generated, String category, List<String> tags, String difficulty, String difficultySource, String solveStatus, long pendingSubmissions, List<LanguageProfiles.Option> languages, JsonNode api) {}
     public record View(UUID id, String problemVersion, String sourceSha256, String source,
                        String status, String verdict, String compileMessage, OffsetDateTime createdAt,
                        OffsetDateTime finishedAt, String input, String stdout, String stderr, boolean outputTruncated, UUID sessionId, String runnerPolicy, boolean problemHeld, UUID diagnosticItemId, String language, LanguageProfiles.Option execution,
@@ -74,7 +74,7 @@ public class Submissions {
                     // Explicit public fields only: never serialize a private problem package.
                     return new Problem(row.getString("id"), data.path("title").asText(), data.path("statement").asText(),
                             data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText(),
-                            examples(data, row.getString("examples_json")), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options(row.getString("time_limits_json")));
+                            examples(data, row.getString("examples_json")), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options(row.getString("time_limits_json")).stream().filter(l->!data.has("api")||l.id().equals("JAVA")).toList(),data.has("api")?data.path("api"):null);
                 }).list();
     }
 
@@ -115,6 +115,8 @@ public class Submissions {
         if (jdbc.sql("SELECT count(*) FROM submission s JOIN judge_job j ON s.id=j.submission_id WHERE s.user_id=? AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL AND s.example_check=false AND j.status <> 'FINISHED'")
                 .param(user).query(Integer.class).single() >= 3)
             throw new AccountException(429, "진행 중인 채점이 끝나면 다시 제출해 주세요.");
+        var problemData=JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id=?").param(request.problemVersion()).query(String.class).single());
+        if(problemData.has("api")&&!language.equals("JAVA"))throw new AccountException(400,"이 API 문제는 Java로 제출해 주세요.");
         boolean diagnosticProblem=jdbc.sql("SELECT diagnostic_only FROM problem_version WHERE id=?").param(request.problemVersion()).query(Boolean.class).single();
         if(diagnosticProblem != (request.diagnosticItemId()!=null) || (request.diagnosticItemId()!=null && request.sessionId()!=null))
             throw new AccountException(409,"진단 문항은 현재 진단에서 제출해 주세요.");
@@ -139,11 +141,13 @@ public class Submissions {
             jdbc.sql("UPDATE submission SET diagnostic_item_id=? WHERE id=?")
                     .param(request.diagnosticItemId()).param(id).update();
         }
-        if (input != null) {
-            var plan = JudgeJson.JSON.createObjectNode().put("version", request.problemVersion()).put("output_policy", "RUN_ONLY");
-            plan.putArray("tests").addObject().put("id", "custom-input").put("input", input).put("output", "");
+        if (input != null || problemData.has("api")) {
+            var plan = input==null?(com.fasterxml.jackson.databind.node.ObjectNode)problemData.deepCopy():JudgeJson.JSON.createObjectNode().put("version", request.problemVersion()).put("output_policy", "RUN_ONLY");
+            if(input!=null)plan.putArray("tests").addObject().put("id", "custom-input").put("input", input).put("output", "");
+            if(problemData.has("api"))plan.set("callable",problemData.path("api"));
             String json = JudgeJson.canonical(plan);
-            jdbc.sql("UPDATE submission SET run_input=?,run_package=?,run_package_sha256=? WHERE id=?")
+            if(input==null)jdbc.sql("UPDATE submission SET callable_package=?,callable_package_sha256=? WHERE id=?").param(json).param(JudgeJson.hash(json)).param(id).update();
+            else jdbc.sql("UPDATE submission SET run_input=?,run_package=?,run_package_sha256=? WHERE id=?")
                     .param(input).param(json).param(JudgeJson.hash(json)).param(id).update();
         }
         jdbc.sql("INSERT INTO judge_job (submission_id,execution_mode) VALUES (?,?)").param(id).param(executionMode).update();
@@ -168,7 +172,7 @@ public class Submissions {
         return view;
     }
     private View find(UUID user, UUID id, boolean includeSource) {
-        return jdbc.sql("SELECT s.*,p.review_hold,j.status,j.verdict,j.result_json,j.finished_at,"+(includeSource?"CASE WHEN s.run_input IS NULL AND j.status='FINISHED' THEN COALESCE(d.package_json,p.package_json) END":"NULL")+" AS plan_json FROM submission s JOIN problem_version p ON p.id=s.problem_version JOIN judge_job j ON s.id=j.submission_id LEFT JOIN diagnostic_item d ON d.id=s.diagnostic_item_id WHERE s.id=? AND s.user_id=? AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL")
+        return jdbc.sql("SELECT s.*,p.review_hold,j.status,j.verdict,j.result_json,j.finished_at,"+(includeSource?"CASE WHEN s.run_input IS NULL AND j.status='FINISHED' THEN COALESCE(s.callable_package,d.package_json,p.package_json) END":"NULL")+" AS plan_json FROM submission s JOIN problem_version p ON p.id=s.problem_version JOIN judge_job j ON s.id=j.submission_id LEFT JOIN diagnostic_item d ON d.id=s.diagnostic_item_id WHERE s.id=? AND s.user_id=? AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL")
                 .param(id).param(user).query((row, index) -> {
                     String verdict = row.getString("verdict"), result = row.getString("result_json");
                     String compile = "CE".equals(verdict) && result != null

@@ -62,6 +62,25 @@ class HybridRuleOnboardingIntegrationTest {
     UUID hard(String difficulty) {
         UUID id=UUID.randomUUID();onboarding.create("owner",id,new HybridRuleOnboarding.Spec("",difficulty,"GENERAL","bfs",null,false,false));return id;
     }
+    @Test void callableStagesFreezeSignaturesAndAssembleTheServerDriver() {
+        UUID id=UUID.randomUUID();onboarding.create("owner",id,new HybridRuleOnboarding.Spec("", "HARD","COMMAND_MULTI","AUTO",null,false,false));
+        var candidate=(ObjectNode)author().deepCopy();((ObjectNode)candidate.path("contract")).set("callable",CallableProgramsTest.multi());
+        String implementation=CallablePrograms.template(CallableProgramsTest.multi());
+        candidate.put("reference",implementation).put("slowSolution",implementation);candidate.path("mutants").forEach(m->((ObjectNode)m).put("source",implementation));
+        for(String stage:HybridRuleAuthorStages.ORDER) {
+            var work=onboarding.claimCodexAuthor();assertThat(work.path("spec").path("stage").asText()).isEqualTo(stage);
+            if(stage.equals("DESIGN"))assertThat(work.path("outputSchema").path("properties").path("contract").path("properties").has("callable")).isTrue();
+            else assertThat(work.path("spec").path("input").path("completedDesign").path("contract").path("callable")).isEqualTo(CallableProgramsTest.multi());
+            onboarding.finishCodexAuthor(codexResult(work,candidate,null));
+        }
+        assertThat(view(id).status()).isEqualTo("AUTHORED");
+        var saved=JudgeJson.parse(jdbc.sql("SELECT author_json FROM hybrid_rule_onboarding WHERE id=?").param(id).query(String.class).single());
+        assertThat(saved.path("reference").asText()).contains("class UserSolution",CallablePrograms.driver(CallableProgramsTest.multi()));
+        var oracle=onboarding.claimCall();assertThat(oracle.role()).isEqualTo("ORACLE");
+        assertThat(JudgeJson.parse(oracle.input()).path("semantics").path("callable")).isEqualTo(CallableProgramsTest.multi());
+        assertThat(oracle.input()).doesNotContain("public class Main");
+    }
+
     @Test void codexAuthorEndpointsRequireWorkerTokenAndAcceptTheExactEnvelope() throws Exception {
         UUID id=hard("HARD");
         mvc.perform(post("/internal/generation/rule-author/claim").with(user("owner")).with(csrf())).andExpect(status().isForbidden());
