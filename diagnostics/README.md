@@ -132,3 +132,34 @@ template generation uses a recorded Java timing policy. This is not universal pe
 
 The existing `verify_bank_runner.py` command automatically uses the hash-bound diagnostic limits,
 checks correct/incorrect/slow solutions and writes the selected budgets in its private evidence report.
+
+## 2026-09-30 public-example correction
+
+All 20 Algo Mix questions were checked against their statements: the original 20 samples and
+v2's 60 examples have valid input and matching answers. Question 10's three examples all had
+M=0, which made the forbidden-pair input format unclear. The corrected problem version
+`diagnostic-algo-mix-a-v2-safe-presentation-order-v2` retains the first sample, explicitly explains
+that M=0 has no pair lines, and replaces EX2/EX3 with one/two forbidden-pair examples (answers 2/8).
+Question 1's `bananabandit` is 12 characters; its input is valid and was not changed.
+
+`audit_algo_examples.py` checks the small public examples' input contracts and computes answers
+independently of the reference programs. The corrected 60 examples also passed the Python,
+C++17 and Java 8 references (180 executions). These checks cover public examples, not a new
+full hidden/generated-test or pedagogy review. Hidden tests, rubrics and time budgets are unchanged.
+
+Reproduce using the private deployed v2 artifact:
+
+```sh
+python3 -m unittest tests.test_algo_example_audit
+python3 diagnostics/audit_algo_examples.py --bank <private>/algo-mix-a-v2.json
+python3 diagnostics/fix_algo_mix_examples.py --source <private>/algo-mix-a-v2.json --output <private>/corrected-bank.json --sql <private>/correction.sql
+```
+
+The correction SQL guards the previous package hash and bank assignment, inserts a new problem
+version, updates the existing bank's assignment, and migrates only ACTIVE-or-PAUSED/OPEN items without any
+submission. It locks the owners against concurrent submission admission and preserves frozen
+session time budgets. Previously attempted/skipped/completed items keep their original snapshots.
+This is a one-time correction, not a fresh bank staging/release; do not stage the corrected artifact
+under the already existing bank ID. Keep generated artifacts and SQL private because they include
+hidden test data. Public input-format clarity may expose the targeted mutant in question 10, so its
+artifact explicitly opts into `publicExamplesMayRejectMutant`; other items retain the existing rule.
