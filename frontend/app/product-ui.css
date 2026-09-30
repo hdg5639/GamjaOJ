@@ -566,3 +566,75 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
 .split-handle.editor-resize-handle.horizontal:hover, .split-handle.editor-resize-handle.horizontal:focus-visible { background:var(--subtle); }
 .editor-column > form.editor-card { overflow:hidden; }
 .diagnostic-split { height:clamp(420px, calc(100dvh - 250px), 1600px); }
+
+/* Diagnostic reports: one readable result, with history and follow-up actions secondary. */
+.diagnostic-report { margin:24px 0; color:var(--ink); min-width:0; }
+.diagnostic-report-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.diagnostic-report-heading h2 { margin:0 0 6px; font-size:23px; letter-spacing:-.7px; }
+.diagnostic-report-heading p { margin:0; max-width:64ch; }
+.diagnostic-report button { margin:0; }
+.diagnostic-report-caption { color:var(--muted); font-size:12px; line-height:1.65; margin:12px 0; }
+.diagnostic-history-choice { display:flex; align-items:center; gap:12px; font-size:13px; margin:22px 0 12px; }
+.diagnostic-history-choice select { width:auto; max-width:100%; min-width:0; flex:1; max-width:560px; }
+.diagnostic-result-counts { display:flex; margin:22px 0; padding:18px 0; border-block:1px solid var(--line); gap:0; }
+.diagnostic-result-counts > div { flex:1; padding:0 20px; border-left:1px solid var(--line); }
+.diagnostic-result-counts > div:first-child { padding-left:0; border-left:0; }
+.diagnostic-result-counts dt { color:var(--muted); font-size:12px; }
+.diagnostic-result-counts dd { margin:4px 0 0; font-size:25px; line-height:1.2; font-weight:650; font-variant-numeric:tabular-nums; }
+.diagnostic-result-counts dd span { font-size:12px; font-weight:400; color:var(--muted); margin-left:6px; }
+.diagnostic-result-counts [data-outcome="PASSED"] dd { color:var(--green); }
+.diagnostic-result-meta { display:flex; align-items:center; gap:12px; font-size:12px; color:var(--muted); }
+.diagnostic-result-meta strong { color:var(--ink); }
+.diagnostic-summary { margin:20px 0 24px; max-width:85ch; }
+.diagnostic-summary h3,.diagnostic-observations > h3,.diagnostic-profile > h3 { font-size:17px; margin:0 0 12px; }
+.diagnostic-summary-text { font-size:17px; line-height:1.85; margin:0 0 8px; white-space:pre-line; }
+.diagnostic-report-empty { padding:12px 0; max-width:72ch; }
+.diagnostic-report-empty h3 { font-size:16px; margin-bottom:6px; }
+.diagnostic-report-empty p { color:var(--muted); line-height:1.7; }
+.diagnostic-profile-list { border-top:1px solid var(--line); }
+.diagnostic-profile-list .diagnostic-profile-card { border:0; border-bottom:1px solid var(--line); border-radius:0; padding:18px 0; background:transparent; }
+.diagnostic-profile-list .diagnostic-profile-card h4 { font-size:15px; }
+.diagnostic-profile-list .diagnostic-profile-items { display:flex; flex-wrap:wrap; gap:8px 24px; padding:0; list-style:none; font-size:12px; color:var(--muted); }
+.diagnostic-profile-list .diagnostic-habit { padding:8px 0 0; }
+.diagnostic-profile-list .diagnostic-habit > p { margin:6px 0; }
+.diagnostic-profile-list .diagnostic-habit button { margin:4px 8px 0 0; font-size:12px; }
+.diagnostic-unassessed { font-size:12px; padding-top:8px; }
+.diagnostic-fact-table { overflow-x:auto; margin:20px 0; }
+.diagnostic-fact-table table { width:100%; border-collapse:collapse; font-size:13px; text-align:left; }
+.diagnostic-fact-table caption { text-align:left; font-weight:600; margin-bottom:12px; }
+.diagnostic-fact-table th,.diagnostic-fact-table td { padding:10px 12px; border-bottom:1px solid var(--line); }
+.diagnostic-fact-table thead { color:var(--muted); background:var(--subtle); }
+.diagnostic-observations { margin-top:32px; }
+.diagnostic-observation { padding:22px 0; border-top:1px solid var(--line); scroll-margin-top:20px; }
+.diagnostic-observation > header { display:flex; align-items:start; gap:14px; }
+.diagnostic-observation-number { color:var(--muted); font-size:21px; font-variant-numeric:tabular-nums; line-height:1.6; }
+.diagnostic-observation h4 { margin:3px 0 12px; font-size:17px; }
+.diagnostic-observation-meta { margin:0; font-size:12px; color:var(--muted); }
+.diagnostic-observation > p { max-width:85ch; line-height:1.8; }
+.diagnostic-observation pre { background:var(--canvas); color:var(--ink); border:1px solid var(--line); padding:16px; border-radius:6px; line-height:1.7; }
+.diagnostic-next-action { padding-left:12px; border-left:3px solid var(--green); }
+.diagnostic-evidence-id { display:block; font-size:11px; color:var(--muted); overflow-wrap:anywhere; margin-bottom:12px; }
+.diagnostic-observation .diagnostic-plan { margin-top:16px; }
+.diagnostic-result-tools { padding-top:16px; border-top:1px solid var(--line); }
+@media(max-width:600px) {
+ .diagnostic-report { margin-top:20px; }
+ .diagnostic-report-heading { align-items:start; }
+ .diagnostic-report-heading h2 { font-size:20px; }
+ .diagnostic-history-choice { align-items:stretch; flex-direction:column; gap:6px; }
+ .diagnostic-history-choice select { width:100%; }
+ .diagnostic-result-counts > div { padding:0 10px; }
+ .diagnostic-result-counts dd { font-size:22px; }
+ .diagnostic-result-counts dd span { display:block; margin:4px 0 0; }
+ .diagnostic-summary-text { font-size:15px; }
+ .diagnostic-fact-table th,.diagnostic-fact-table td { padding:9px 6px; font-size:12px; }
+ .diagnostic-observation pre { padding:12px; }
+}
+.diagnostic-report-content[hidden] { display:none; }
+.diagnostic-report .diagnostic-correction > summary { display:list-item; font-size:13px; color:var(--green); padding:10px 0; }
+.diagnostic-report .diagnostic-plan { padding-top:16px; }
+.diagnostic-report .diagnostic-plan h4 { margin:8px 0; }
+.diagnostic-report .diagnostic-plan button { margin:4px 8px 4px 0; }
+.diagnostic-report section[aria-label="학습 순서"] { border-top:1px solid var(--line); margin-top:24px; padding-top:20px; }
+.diagnostic-report section[aria-label="학습 순서"] > p { max-width:80ch; color:var(--muted); }
+.diagnostic-report section[aria-label="학습 순서"] li { padding:12px 0; border-bottom:1px solid var(--line); }
+.diagnostic-report section[aria-label="학습 순서"] button { margin:4px 8px 4px 0; }

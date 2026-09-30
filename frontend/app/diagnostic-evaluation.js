@@ -4,40 +4,60 @@ import DiagnosticCorrection from './diagnostic-correction';
 import DiagnosticPlan from './diagnostic-plan';
 import DiagnosticCurriculum from './diagnostic-curriculum';
 import DiagnosticProfile from './diagnostic-profile';
+import {categoryLabels} from './diagnostic-categories';
 const tones={STRENGTH:'강점',WATCH:'주의',RISK:'위험'};
-const names={STALE_EXPOSURE:'노출 정정 전 기록 · 해석 사용 중지',FACTS_ONLY:'판정 기록 저장됨',HELD_DISABLED:'AI 평가 사용 설정 대기',HELD_BUDGET:'평가 예산 대기',QUEUED:'평가 대기',RUNNING:'평가 중',COMPLETED:'평가 완료',UNKNOWN:'사용량 확인 필요',FAILED:'평가 실패',HELD_REVIEW:'문항 재검토 중',HIDDEN_DURING_ASSESSMENT:'진단 진행 중에는 해석을 숨깁니다'};
-const outcomes={OPEN:'미완료 · 약점 판정 아님',PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀 · 약점 판정 아님'};
+const names={STALE_EXPOSURE:'정정 전 기록',FACTS_ONLY:'판정 기록 저장됨',HELD_DISABLED:'AI 평가 설정 대기',HELD_BUDGET:'평가 예산 대기',QUEUED:'평가 대기',RUNNING:'평가 중',COMPLETED:'평가 완료',UNKNOWN:'처리 결과 확인 필요',FAILED:'평가 실패',HELD_REVIEW:'문항 재검토 중',HIDDEN_DURING_ASSESSMENT:'진단 종료 후 확인 가능'};
+const outcomes={PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀',OPEN:'미완료'};
 export default function DiagnosticEvaluation({api,session,onOpen,onGeneration,onRuleDraft}) {
-  const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[loaded,setLoaded]=useState(false),[selected,setSelected]=useState(''),[visited,setVisited]=useState([]);
   const lock=useRef(false),version=useRef(0);
   const path=`/api/diagnostics/${session.id}/evaluations`;
   useEffect(()=>{let stopped=false;
-    const refresh=async()=>{const revision=version.current;try{const data=await api(path);if(!stopped&&revision===version.current)setRows(data);}catch(e){if(!stopped)setError(e.message);}};
+    const refresh=async()=>{const revision=version.current;try{const data=await api(path);if(!stopped&&revision===version.current){setRows(data);setLoaded(true);}}catch(e){if(!stopped){setError(e.message);setLoaded(true);}}};
     refresh();const timer=setInterval(refresh,5000);return()=>{stopped=true;clearInterval(timer);};
   },[path,session.status]);
   async function request(){
     if(lock.current)return;lock.current=true;setBusy(true);setError('');version.current++;
-    try{const saved=await api(path,{method:'POST'});setRows(old=>[saved,...old.filter(r=>r.id!==saved.id)]);}
+    try{const saved=await api(path,{method:'POST'});setRows(old=>[saved,...old.filter(r=>r.id!==saved.id)]);choose(saved.id);setLoaded(true);}
     catch(e){setError(e.message);}finally{lock.current=false;setBusy(false);}
   }
-  function showObservation(row,index){const node=document.getElementById(`diagnostic-observation-${row.id}-${index}`);node?.scrollIntoView({block:'start'});node?.focus();}
+  const row=rows.find(r=>r.id===selected)||rows[0];
+  function choose(id){if(row)setVisited(old=>Array.from(new Set([...old,row.id])));setSelected(id);}
+  const activeId=row?.id;
+  const complete=session.status==='COMPLETED';
   const ready=session.items.some(i=>i.status!=='OPEN')&&!session.items.some(i=>i.pending>0);
-  return <section aria-label="진단 평가"><h2>진단 평가</h2>
-    <p>{session.status==='COMPLETED'?'요청하면 저장된 제출 근거로 AI 해석을 생성합니다. API 비용은 서비스 평가 예산에서 처리하며, 같은 근거의 결과는 재사용합니다.':'부분 결과는 완료 문항의 판정 기록만 저장합니다. 남은 문항에 힌트가 되지 않도록 AI 해석은 진단 종료 후 제공합니다.'}</p>
-    <button className="primary" disabled={busy||!ready} onClick={request}>{busy?'요청 확인 중…':session.status==='COMPLETED'?'종합 평가 요청':'부분 판정 기록 저장'}</button>
+  const facts=row?.facts.items||session.items;
+  const pending=rows.some(r=>r.status==='QUEUED'||r.status==='RUNNING');
+  function showObservation(index){const node=document.getElementById(`diagnostic-observation-${row.id}-${index}`);node?.scrollIntoView({block:'start'});node?.focus();}
+  return <section className="diagnostic-report" aria-label="진단 평가">
+    <header className="diagnostic-report-heading"><div><h2>{complete?'진단 결과':'진행 기록 저장'}</h2><p className="muted">{complete?'어떤 문제를 풀었고, 코드에서 어떤 습관이 보였는지 확인하세요.':'완료한 문항의 판정만 저장합니다. AI 해석은 진단 종료 후 볼 수 있어요.'}</p></div>
+      <button className={row?'secondary':'primary'} disabled={busy||!ready||pending} onClick={request}>{busy?'요청 확인 중…':pending?'평가 진행 중…':complete?'종합 평가 요청':'부분 판정 기록 저장'}</button>
+    </header>
+    {complete&&<p className="diagnostic-report-caption">진단을 마쳤어요. 평가 요청 시 서비스 AI 예산을 사용하며, 같은 제출 근거의 결과는 재사용합니다.</p>}
     {!ready&&<p className="muted">완료한 문항이 있고 진행 중인 정식 채점이 없을 때 요청할 수 있어요.</p>}
     {error&&<p role="alert" className="notice error">{error}</p>}
-    {rows.map((row,index)=><details key={row.id} open={index===0}><summary>{row.facts.complete?'종합':'부분'} 결과 · {names[row.status]||'상태 확인 중'}</summary>
-      {row.status==='STALE_EXPOSURE'&&<p className="notice">이 기록은 노출 정정 이전의 자료입니다. 현재 기록으로 평가를 다시 요청해 주세요. 새 요청에 평가 가능한 제출이 있으면 AI를 사용합니다.</p>}
-      <ul>{row.facts.items.map((item,n)=><li key={item.itemId}>{n+1}번 문항 · {item.externallySeen?'본 적 있음 · 평가 근거에서 제외':outcomes[item.status]} · 제출 {item.attempts}회</li>)}</ul>
-      <p className="muted">선택하지 않은 분야는 미평가입니다. 하·중 문항 통과가 해당 분야 전체의 숙련을 뜻하지는 않습니다.</p>
-      {index===0&&row.status!=='STALE_EXPOSURE'&&<DiagnosticProfile api={api} sessionId={session.id} row={row} onObservation={n=>showObservation(row,n)} onRuleDraft={onRuleDraft}/>}
-      {row.interpretation&&<><DiagnosticCurriculum api={api} evaluationId={row.id}/><h3>AI 해석</h3><p>{row.interpretation.summary}</p><p>불확실성: {row.interpretation.uncertainty}</p>
-        {row.interpretation.observations.map((o,n)=><article key={n} id={`diagnostic-observation-${row.id}-${n}`} tabIndex={-1}><h4>관찰 {n+1} · {o.confidence==='SUPPORTED'?'코드 근거 있음':'추가 확인 필요'}{o.tone?` · ${tones[o.tone]}`:''}</h4>
-          {o.pattern&&<p><strong>코드 습관:</strong> {o.pattern}</p>}{o.risk&&<p><strong>{o.tone==='STRENGTH'?'유지할 이유':'위험해지는 경우'}:</strong> {o.risk}</p>}
-          <pre aria-label="관찰의 코드 근거">{o.quote}</pre><p>{o.interpretation}</p><p>{o.nextAction==='ASSESS'?'추가 진단 제안':'연습 제안'}: {o.recommendation}</p>
-          <small>근거 제출: {o.submissionId}</small><DiagnosticCorrection api={api} path={path} row={row} index={n} onSaved={saved=>{version.current++;setRows(old=>old.map(r=>r.id===saved.id?saved:r));}} /><DiagnosticPlan api={api} row={row} index={n} onOpen={onOpen} onGeneration={onGeneration} /></article>)}</>}
-      {row.status==='UNKNOWN'&&<p>요청 처리 중 사용량이 확인되지 않았습니다. 자동으로 다시 호출하지 않습니다.</p>}
-    </details>)}
+    {!loaded&&<p role="status">평가 기록을 불러오고 있어요…</p>}
+    {rows.length>1&&<label className="diagnostic-history-choice">평가 기록<select aria-label="평가 기록" value={row.id} onChange={e=>choose(e.target.value)}>{rows.map((r,i)=><option key={r.id} value={r.id}>{i===0?'최근 · ':''}{r.facts.complete?'종합 결과':'중간 기록'} · {names[r.status]||'상태 확인 중'} · {r.facts.items.filter(item=>item.status!=='OPEN').length}문항{r.createdAt?` · ${new Date(r.createdAt).toLocaleString('ko-KR')}`:` · 기록 ${rows.length-i}`}</option>)}</select></label>}
+    <dl className="diagnostic-result-counts" aria-label="문항 결과 요약">{Object.entries(outcomes).map(([status,label])=><div key={status} data-outcome={status}><dt>{label}</dt><dd>{facts.filter(i=>i.status===status).length}<span>문항</span></dd></div>)}</dl>
+    {loaded&&!row&&<div className="diagnostic-report-empty"><h3>{complete?'판정 기록은 준비됐어요':'현재 진행 상황을 남겨 두세요'}</h3><p>{complete?'종합 평가를 요청하면 제출 코드를 바탕으로 분야별 관찰과 다음 연습 방향을 정리합니다.':'중간 기록은 저장 시점의 결과입니다. 저장 후에도 진단을 계속 풀 수 있어요.'}</p></div>}
+    {rows.filter(r=>r.id===row?.id||visited.includes(r.id)).map(row=>{return <div className="diagnostic-report-content" key={row.id} hidden={row.id!==activeId}>
+      <div className="diagnostic-result-meta"><strong>{row.facts.complete?'종합 평가':'중간 기록'}</strong><span role="status">{names[row.status]||'상태 확인 중'}</span></div>
+      {row.status==='STALE_EXPOSURE'&&<p className="notice">노출 정정 전 기록입니다. 현재 제출 근거로 평가를 다시 요청해 주세요.</p>}
+      {row.interpretation&&<section className="diagnostic-summary" aria-label="AI 해석"><h3>이번 진단에서 보인 점</h3><p className="diagnostic-summary-text">{row.interpretation.summary}</p><p className="muted">해석 범위 · {row.interpretation.uncertainty}</p></section>}
+      {row.status==='QUEUED'||row.status==='RUNNING'?<p className="notice" role="status">제출 코드를 검토하고 있어요. 이 화면에서 결과가 자동으로 갱신됩니다.</p>:null}
+      <p className="diagnostic-report-caption">선택하지 않았거나 건너뛴 분야는 미평가입니다. 일부 문항의 통과가 분야 전체의 숙련을 뜻하지는 않습니다.</p>
+      {row.status!=='STALE_EXPOSURE'&&<DiagnosticProfile api={api} sessionId={session.id} row={row} onObservation={showObservation} onRuleDraft={onRuleDraft}/>}
+      {!row.interpretation&&<div className="diagnostic-fact-table"><table><caption>저장된 문항별 판정</caption><thead><tr><th>문항</th><th>분야</th><th>결과</th><th>제출</th></tr></thead><tbody>{row.facts.items.map((item,n)=><tr key={item.itemId}><th scope="row">{n+1}번</th><td>{categoryLabels[item.category]||'진단 문항'}</td><td>{item.externallySeen?'본 적 있음 · 근거 제외':outcomes[item.status]||item.status}</td><td>{item.attempts}회</td></tr>)}</tbody></table></div>}
+      {row.interpretation&&<section className="diagnostic-observations" aria-label="코드 관찰"><h3>코드에서 확인한 근거</h3>{row.interpretation.observations.map((o,n)=><article className="diagnostic-observation" data-tone={o.tone||'NONE'} key={n} id={`diagnostic-observation-${row.id}-${n}`} tabIndex={-1}>
+        <header><span className="diagnostic-observation-number">{String(n+1).padStart(2,'0')}</span><div><p className="diagnostic-observation-meta">{o.tone?`${tones[o.tone]} · `:''}{o.confidence==='SUPPORTED'?'코드 근거 있음':'추가 확인 필요'}</p><h4>{o.pattern||`관찰 ${n+1}`}</h4></div></header>
+        <p>{o.interpretation}</p>{o.risk&&<p><strong>{o.tone==='STRENGTH'?'유지할 이유':'주의할 상황'}</strong> · {o.risk}</p>}
+        <pre aria-label="관찰의 코드 근거">{o.quote}</pre><p className="diagnostic-next-action">{o.nextAction==='ASSESS'?'추가 진단 제안':'연습 제안'}: {o.recommendation}</p>
+        <small className="diagnostic-evidence-id">근거 제출: {o.submissionId}</small>
+        <DiagnosticCorrection api={api} path={path} row={row} index={n} onSaved={saved=>{version.current++;setRows(old=>old.map(r=>r.id===saved.id?saved:r));}} />
+        <DiagnosticPlan api={api} row={row} index={n} onOpen={onOpen} onGeneration={onGeneration} />
+      </article>)}</section>}
+      {row.interpretation&&<DiagnosticCurriculum api={api} evaluationId={row.id}/>}
+      {row.status==='UNKNOWN'&&<p className="notice">처리 결과와 사용량을 확인하지 못했습니다. 중복 호출을 막기 위해 자동으로 다시 요청하지 않습니다.</p>}
+    </div>;})}
   </section>;
 }
