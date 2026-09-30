@@ -134,7 +134,8 @@ export default function CodeEditor({ id = 'source', label = 'Main.java', languag
             // Let Vim process Escape itself so undo groups, status and visual selections stay intact.
             return false;
           }},
-          {key:'Tab', run:view=>nextSnippetField(view)||acceptCompletion(view), shift:prevSnippetField},
+          // Visible candidates take priority over the next field of an active template.
+          {key:'Tab', run:view=>acceptCompletion(view)||nextSnippetField(view), shift:prevSnippetField},
           {key:'F5', run:()=>act('run'), preventDefault:true},
           {key:'Mod-Shift-Enter', run:()=>act('run'), preventDefault:true},
           {key:'Mod-Enter', run:()=>act('submit'), preventDefault:true},
@@ -147,7 +148,7 @@ export default function CodeEditor({ id = 'source', label = 'Main.java', languag
         indentOnInput(), bracketMatching(), closeBrackets(), foldGutter(), highlightSelectionMatches(),
         syntaxHighlighting(colors), theme,
         tooltips({tooltipSpace:()=>({left:8,top:8,right:document.documentElement.clientWidth-8,bottom:window.innerHeight-8})}),
-        autocompletion({override:[snippetCompletionSource(language),semanticCompletionSource(language),memberCompletionSource(language),language==='JAVA'?javaNameCompletion:language==='CPP'?cppNameCompletion:pythonNameCompletion], defaultKeymap:false, activateOnTyping:true, selectOnOpen:true}),
+        autocompletion({override:[snippetCompletionSource(language),semanticCompletionSource(language),memberCompletionSource(language),language==='JAVA'?javaNameCompletion:language==='CPP'?cppNameCompletion:pythonNameCompletion], defaultKeymap:false, activateOnTyping:true, selectOnOpen:true, interactionDelay:0}),
         editable.current.of([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled)]),
         EditorView.contentAttributes.of({ 'aria-label': label, 'aria-description': 'Ctrl+Space 후보 열기, 방향키 선택, Enter 또는 Tab 확정, Esc 닫기. 후보가 없으면 Tab은 들여쓰기.',
           'aria-multiline': 'true', spellcheck: 'false', autocapitalize: 'off', autocorrect: 'off' }),

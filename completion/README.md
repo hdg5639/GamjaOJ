@@ -60,3 +60,11 @@ The template catalog is in `frontend/app/code-snippets.js`; help is available in
 the editor's tools menu. C++ templates assume the appropriate standard headers
 are already included, as in the starter program. Validate expansion, linked
 fields, indentation and Vim interaction with `tests/snippets.spec.mjs`.
+
+Tab accepts the selected visible completion before moving to another snippet
+field, in both the regular editor and Vim insert mode. There is no completion
+interaction delay, so a candidate can be accepted immediately after opening.
+Without a candidate, snippet field navigation and ordinary indentation retain
+their existing behavior. `tests/tab-completion.spec.mjs` covers all three languages
+in practice/diagnostic editors and both modes, including acceptance at opening time
+and completion inside an active snippet.
