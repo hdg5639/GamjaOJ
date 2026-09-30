@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import socket
 import subprocess
 import time
 import urllib.error
@@ -70,12 +71,18 @@ def main():
                 data = json.dumps(body).encode()
                 headers['Content-Type'] = 'application/json'
         request = urllib.request.Request(base + path, data=data, headers=headers, method=method)
-        try:
-            with client.open(request, timeout=30) as response:
-                raw = response.read()
-                return json.loads(raw) if raw else None
-        except urllib.error.HTTPError as error:
-            raise RuntimeError(f'{method} {path} -> {error.code} {error.read()[:300]!r}')
+        for attempt in range(3):
+            try:
+                with client.open(request, timeout=30) as response:
+                    raw = response.read()
+                    return json.loads(raw) if raw else None
+            except urllib.error.HTTPError as error:
+                raise RuntimeError(f'{method} {path} -> {error.code} {error.read()[:300]!r}')
+            except (socket.timeout, urllib.error.URLError, ConnectionError):
+                # Retry read-only polling only; a timed-out mutation may already have committed.
+                if method != 'GET' or attempt == 2:
+                    raise
+                time.sleep(2)
 
     username = 'probe_' + secrets.token_hex(5)
     password = secrets.token_urlsafe(24)
@@ -158,6 +165,13 @@ def main():
         pending=int(sql(pending_query))
         while pending and time.monotonic()<settle_deadline:
             time.sleep(5);pending=int(sql(pending_query))
+        snapshots=json.loads(sql(f"SELECT coalesce(json_agg(json_build_object('onboardingId',id,'status',status,'authorPackage',author_json::json,'repair',repair_json::json))::text,'[]') FROM hybrid_rule_onboarding WHERE owner_id IN {owner}"))
+        for snapshot in snapshots:
+            record=next((r for r in results if r['onboardingId']==snapshot['onboardingId']),None)
+            if record is None:
+                record={'onboardingId':snapshot['onboardingId'],'status':snapshot['status'],'interrupted':True}
+                results.append(record)
+            record['finalOnboardingEvidence']=snapshot
         for record in results:
             generation=record.get('generation')
             if generation:
