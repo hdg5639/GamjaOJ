@@ -108,6 +108,18 @@ def quota_exhausted(events):
     return False
 
 
+
+def invocation_timeout(assignment, now=None):
+    phase = assignment['spec'].get('phase')
+    if phase not in ('HYBRID_V1', 'RULE_AUTHOR_V1'):
+        return 480
+    deadline = datetime.fromisoformat(assignment['deadlineAt'].replace('Z', '+00:00'))
+    remaining = (deadline - (now or datetime.now(timezone.utc))).total_seconds()
+    limit = min(1200, max(1, int(assignment.get('timeoutSeconds', 1200)))) if phase == 'RULE_AUTHOR_V1' else 120
+    if remaining <= 0:
+        raise RuntimeError('HYBRID_DEADLINE_EXCEEDED')
+    return min(limit, remaining)
+
 class GenerationAdapter:
     def produce(self, assignment, directory):
         raise NotImplementedError
@@ -357,12 +369,7 @@ class CodexCli(GenerationAdapter):
             # Final structured output only: no partial-event handoff, no workspace sharing.
             contract.write_text(json.dumps(assignment['outputSchema']))
             prompt = spec['instructions'] + '\nTask data:\n' + json.dumps(spec['input'], ensure_ascii=False)
-        timeout = 480
-        if assignment['spec'].get('phase') in ('HYBRID_V1', 'RULE_AUTHOR_V1'):
-            deadline = datetime.fromisoformat(assignment['deadlineAt'].replace('Z', '+00:00'))
-            timeout = min(600 if assignment['spec']['phase'] == 'RULE_AUTHOR_V1' else 120, (deadline - datetime.now(timezone.utc)).total_seconds())
-            if timeout <= 0:
-                raise RuntimeError('HYBRID_DEADLINE_EXCEEDED')
+        timeout = invocation_timeout(assignment)
         command = [self.binary, 'exec', '--ignore-user-config', '--ignore-rules', '--ephemeral',
                    '--skip-git-repo-check', '--sandbox', 'read-only', '-c', 'features.shell_tool=false',
                    '-c', 'model_reasoning_effort=' + json.dumps(assignment['effort']),

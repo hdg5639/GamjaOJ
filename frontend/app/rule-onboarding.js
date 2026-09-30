@@ -6,6 +6,7 @@ import Pager,{usePage} from './pager';
 import {categoryLabels} from './diagnostic-categories';
 
 const labels={QUEUED:'대기',AUTHORING:'규칙·코드 작성 중',AUTHORED:'독립 검증 코드 준비',ORACLE:'독립 검증 코드 작성 중',QUALIFYING:'실행 검증 중',ACTIVE:'등록 완료',HELD:'검증 보류',FAILED:'등록 실패',CANCELLED:'취소됨',DEADLINE_EXCEEDED:'처리 기한 초과'};
+const authorStages={DESIGN:'규칙 설계',CODE:'정답 코드',TESTS:'검증기·테스트'};
 const running=['QUEUED','AUTHORING','AUTHORED','ORACLE','QUALIFYING'];
 const steps=['대기','규칙·코드 작성','독립 검증 코드','실행 검증'];
 const stepOf=status=>({QUEUED:'대기',AUTHORING:'규칙·코드 작성',AUTHORED:'독립 검증 코드',ORACLE:'독립 검증 코드',QUALIFYING:'실행 검증'})[status];
@@ -68,7 +69,7 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
   }
   return <section className="rule-onboarding" aria-labelledby="rule-onboarding-heading">
     <h3 id="rule-onboarding-heading">재사용할 규칙 만들기</h3>
-    <p className="draft-help">난이도와 스타일을 고르면 AI가 입력·행동·목표와 제약을 설계하고, 정답 코드·별도로 작성한 완전탐색 검증 코드·오답·느린 풀이·대형 입력을 모두 실제 채점기로 검증한 뒤에만 등록합니다. 소재와 등장인물은 규칙에 고정하지 않으며, 문제를 만들 때마다 바꿀 수 있어요. 요청당 AI 예산은 최대 $1, 처리 기한은 20분이며 실패해도 자동으로 다시 시도하지 않습니다.</p>
+    <p className="draft-help">난이도와 스타일을 고르면 AI가 입력·행동·목표와 제약을 설계하고, 정답 코드·별도로 작성한 완전탐색 검증 코드·오답·느린 풀이·대형 입력을 모두 실제 채점기로 검증한 뒤에만 등록합니다. 소재와 등장인물은 규칙에 고정하지 않으며, 문제를 만들 때마다 바꿀 수 있어요. 요청당 API 예산은 최대 $1입니다. 상·최상은 최대 40분 동안 단계를 나누어 작성하고, 완료한 단계는 저장합니다. 하·중은 최대 20분입니다. 작성 결과의 오류는 제한적으로 수정하며, 시간 초과나 사용량을 확인할 수 없는 중단은 직접 재시도해야 합니다.</p>
     {enabled===false&&<p className="notice">지금은 새 규칙을 등록할 수 없어요.</p>}
     {error&&<p className="notice error" role="alert">{error}</p>}
     {draft&&text===draft.text&&<p className="notice" role="status">진단 결과에서 가져온 초안이에요. 내용을 확인하고 필요하면 고친 뒤 요청해 주세요.</p>}
@@ -97,7 +98,7 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
         const state=stateOf(item.status),step=steps.indexOf(stepOf(item.status));
         return <li key={item.id} className="onboard-card" data-state={state}>
           <div className="onboard-main">
-            <div className="onboard-head"><span className="state-badge" data-state={state}>{labels[item.status]||item.status}</span>
+            <div className="onboard-head"><span className="state-badge" data-state={state}>{item.status==='AUTHORING'&&item.authorStage?`${authorStages[item.authorStage]} 작성 중`:labels[item.status]||item.status}</span>
               <time dateTime={item.createdAt}>{when(item.createdAt)}</time></div>
             <p className="onboard-title">{item.label||item.request?.slice(0,80)||'자동으로 고른 주제'}</p>
             <p className="onboard-chips">{item.difficulty&&<span data-kind="level">{difficulties[item.difficulty]||item.difficulty}</span>}
@@ -106,6 +107,8 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
               {item.targeted&&<span data-kind="target">진단 습관 겨냥</span>}
               {item.repairs>0&&<span>자동 수정 {item.repairs}회</span>}</p>
             {state==='running'&&<ol className="onboard-steps" aria-label="진행 단계">{steps.map((name,index)=><li key={name} data-done={index<step} data-current={index===step}>{name}</li>)}</ol>}
+            {item.authorStage&&['QUEUED','AUTHORING','HELD','DEADLINE_EXCEEDED'].includes(item.status)&&<p className="onboard-note">작성 단계: {authorStages[item.authorStage]||item.authorStage}</p>}
+            {item.completedAuthorStages?.length>0&&<p className="onboard-note">저장 완료: {item.completedAuthorStages.map(stage=>authorStages[stage]||stage).join(' · ')}</p>}
             {item.status==='QUALIFYING'&&<p className="onboard-note">실행 검증 {Object.values(item.checks||{}).filter(v=>['AC','OK','WA'].includes(v)).length}건 완료</p>}
             {item.status==='ACTIVE'&&item.publish&&<p className="onboard-note">{item.followupError?`문제를 바로 만들지 못했어요: ${item.followupError}`:item.followupStatus?followups[item.followupStatus]||item.followupStatus:'문제 생성 준비 중'}</p>}
             {state==='failed'&&<p className="onboard-note onboard-reason">{reasons[item.error]||'검증 조건을 충족하지 못해 등록하지 않았어요.'}{item.failedCheck?` · 실패한 검사: ${item.failedCheck}`:''}</p>}
@@ -114,6 +117,7 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
           </div>
           <div className="onboard-actions">
             {item.publishedVersion&&onOpen&&<button className="primary" disabled={busy} onClick={()=>onOpen(item.publishedVersion)}>문제 풀기</button>}
+            {item.failedAuthorAttempt&&<button className="secondary" disabled={busy||busyWork||!enabled} onClick={()=>act(`/api/rules/onboarding/${item.id}/retry`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({attemptId:item.failedAuthorAttempt})})}>저장된 단계에서 재시도</button>}
             {running.includes(item.status)&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/onboarding/${item.id}/cancel`,{method:'POST'})}>등록 취소</button>}
           </div>
         </li>;})}</ul>
@@ -144,7 +148,7 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
         const state=stateOf(item.status),step=steps.indexOf(stepOf(item.status));
         return <li key={item.id} className="onboard-card" data-state={state}>
           <div className="onboard-main">
-            <div className="onboard-head"><span className="state-badge" data-state={state}>{labels[item.status]||item.status}</span>
+            <div className="onboard-head"><span className="state-badge" data-state={state}>{item.status==='AUTHORING'&&item.authorStage?`${authorStages[item.authorStage]} 작성 중`:labels[item.status]||item.status}</span>
               <time dateTime={item.createdAt}>{when(item.createdAt)}</time></div>
             <p className="onboard-title">{item.label||item.request?.slice(0,80)||'자동으로 고른 주제'}</p>
             <p className="onboard-chips">{item.difficulty&&<span data-kind="level">{difficulties[item.difficulty]||item.difficulty}</span>}
@@ -153,6 +157,8 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
               {item.targeted&&<span data-kind="target">진단 습관 겨냥</span>}
               {item.repairs>0&&<span>자동 수정 {item.repairs}회</span>}</p>
             {state==='running'&&<ol className="onboard-steps" aria-label="진행 단계">{steps.map((name,index)=><li key={name} data-done={index<step} data-current={index===step}>{name}</li>)}</ol>}
+            {item.authorStage&&['QUEUED','AUTHORING','HELD','DEADLINE_EXCEEDED'].includes(item.status)&&<p className="onboard-note">작성 단계: {authorStages[item.authorStage]||item.authorStage}</p>}
+            {item.completedAuthorStages?.length>0&&<p className="onboard-note">저장 완료: {item.completedAuthorStages.map(stage=>authorStages[stage]||stage).join(' · ')}</p>}
             {item.status==='QUALIFYING'&&<p className="onboard-note">실행 검증 {Object.values(item.checks||{}).filter(v=>['AC','OK','WA'].includes(v)).length}건 완료</p>}
             {item.status==='ACTIVE'&&item.publish&&<p className="onboard-note">{item.followupError?`문제를 바로 만들지 못했어요: ${item.followupError}`:item.followupStatus?followups[item.followupStatus]||item.followupStatus:'문제 생성 준비 중'}</p>}
             {state==='failed'&&<p className="onboard-note onboard-reason">{reasons[item.error]||'검증 조건을 충족하지 못해 등록하지 않았어요.'}{item.failedCheck?` · 실패한 검사: ${item.failedCheck}`:''}</p>}
@@ -161,6 +167,7 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
           </div>
           <div className="onboard-actions">
             {item.publishedVersion&&onOpen&&<button className="primary" disabled={busy} onClick={()=>onOpen(item.publishedVersion)}>문제 풀기</button>}
+            {item.failedAuthorAttempt&&<button className="secondary" disabled={busy||busyWork||!enabled} onClick={()=>act(`/api/rules/onboarding/${item.id}/retry`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({attemptId:item.failedAuthorAttempt})})}>저장된 단계에서 재시도</button>}
             {running.includes(item.status)&&<button className="secondary" disabled={busy} onClick={()=>act(`/api/rules/onboarding/${item.id}/cancel`,{method:'POST'})}>등록 취소</button>}
           </div>
         </li>;})}</ul>

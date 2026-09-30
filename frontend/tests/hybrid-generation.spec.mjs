@@ -227,3 +227,25 @@ test('held rule requests explain unmet requirements without exposing package cod
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:'/tmp/gamjaoj-rule-unmet-reasons.png',fullPage:true});
 });
+for(const width of [390,1440])test('staged rule retry preserves saved work and sends a fenced attempt at '+width,async({page})=>{
+  await page.setViewportSize({width,height:950});const writes=[];
+  let item={id:'staged-rule',status:'HELD',error:'CODEX_TIMEOUT',difficulty:'EXPERT',request:'주기적인 열차망의 이동 규칙',authorStage:'CODE',completedAuthorStages:['DESIGN'],failedAuthorAttempt:'failed-code',checks:{}};
+  await fixture(page,async(route,path,req)=>{
+    if(path==='/api/rules/onboarding/options'){await route.fulfill({json:{enabled:true}});return true;}
+    if(path==='/api/rules/onboarding'){await route.fulfill({json:[item]});return true;}
+    if(path==='/api/rules/onboarding/staged-rule/retry'){
+      writes.push(req.postDataJSON());item={...item,status:'AUTHORING',error:null,failedAuthorAttempt:null};
+      await route.fulfill({json:item});return true;
+    }
+  });
+  await page.getByRole('tab',{name:/등록 기록/}).click();
+  await expect(page.getByText('저장 완료: 규칙 설계',{exact:true})).toBeVisible();
+  await expect(page.getByText('작성 단계: 정답 코드',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'저장된 단계에서 재시도',exact:true}).click();
+  await expect.poll(()=>writes).toEqual([{attemptId:'failed-code'}]);
+  await expect(page.getByText('정답 코드 작성 중',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'저장된 단계에서 재시도',exact:true})).toHaveCount(0);
+  await expect(page.getByText('저장 완료: 규칙 설계',{exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:`/tmp/gamjaoj-staged-author-${width}.png`,fullPage:true});
+});

@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Member-requested rule onboarding (background, bounded time and budget). Two isolated model calls
  * produce a candidate package and an independent brute-force oracle; staged Runner checks qualify it.
- * Only a fully qualified package becomes an ACTIVE, owner-private rule version. Nothing is repaired.
+ * Only a fully qualified package becomes an ACTIVE, owner-private rule version. Repairs preserve prior evidence.
  */
 @Service
 class HybridRuleOnboarding {
@@ -28,16 +28,16 @@ class HybridRuleOnboarding {
     record View(UUID id,String status,String error,String request,OffsetDateTime createdAt,OffsetDateTime deadlineAt,
                 String versionId,String label,BigDecimal spentUsd,Map<String,String> checks,String failedCheck,
                 String difficulty,String style,String category,boolean targeted,boolean publish,
-                UUID followupGenerationId,String followupStatus,String followupError,String publishedVersion,int repairs,List<String> requirementIssues) {}
+                UUID followupGenerationId,String followupStatus,String followupError,String publishedVersion,int repairs,List<String> requirementIssues,String authorStage,List<String> completedAuthorStages,UUID failedAuthorAttempt) {}
     static final List<String> DIFFICULTIES=List.of("EASY","MEDIUM","HARD","EXPERT"),STYLES=List.of("GENERAL","SIMULATION","COMMAND");
     /** target: server-resolved habit to break ({pattern,risk,category,quote}); never raw client text. */
     record Spec(String request,String difficulty,String style,String category,JsonNode target,boolean publish,boolean shared) {}
     record Call(UUID attemptId,UUID onboarding,String role,AiSettings.Model model,String instructions,String input,
                 JsonNode schema,OffsetDateTime deadlineAt) {}
     private final JdbcClient jdbc;private final AiSettings config;private final AiTasks ledger;private final Submissions submissions;
-    private final HybridRuleRegistry registry;private final ApplicationEventPublisher events;
-    HybridRuleOnboarding(JdbcClient jdbc,AiSettings config,AiTasks ledger,Submissions submissions,HybridRuleRegistry registry,ApplicationEventPublisher events) {
-        this.jdbc=jdbc;this.config=config;this.ledger=ledger;this.submissions=submissions;this.registry=registry;this.events=events;
+    private final HybridRuleAuthorStages stages;private final HybridRuleRegistry registry;private final ApplicationEventPublisher events;
+    HybridRuleOnboarding(JdbcClient jdbc,AiSettings config,AiTasks ledger,Submissions submissions,HybridRuleRegistry registry,ApplicationEventPublisher events,HybridRuleAuthorStages stages) {
+        this.jdbc=jdbc;this.config=config;this.ledger=ledger;this.submissions=submissions;this.registry=registry;this.events=events;this.stages=stages;
     }
     private static OffsetDateTime now(){return OffsetDateTime.now(ZoneOffset.UTC);}
     private void lock(){jdbc.sql("SELECT id FROM ai_budget_lock WHERE id=1 FOR UPDATE").query(Integer.class).single();}
@@ -89,9 +89,37 @@ class HybridRuleOnboarding {
         if(b.spentUsd().add(b.reservedUsd()).add(budget()).compareTo(b.limitUsd())>0)throw new AccountException(429,"이번 달 AI 예산이 부족해 새 규칙을 등록할 수 없어요.");
         var created=now();
         jdbc.sql("INSERT INTO hybrid_rule_onboarding(id,owner_id,request_json,request_sha256,status,budget_usd,created_at,deadline_at,updated_at) VALUES (?,?,?,?,'QUEUED',?,?,?,?)")
-                .param(id).param(owner).param(raw).param(hash).param(budget()).param(created).param(created.plusMinutes(setting("HYBRID_RULE_ONBOARDING_MINUTES",20,5,60))).param(created).update();
+                .param(id).param(owner).param(raw).param(hash).param(budget()).param(created).param(created.plusMinutes(requestMinutes(raw))).param(created).update();
         events.publishEvent(new HybridExecution.Wakeup());
         return view(owner,id);
+    }
+    private int requestMinutes(String request) {
+        return codexAuthor(request)?setting("HYBRID_RULE_CODEX_MINUTES",40,10,120):setting("HYBRID_RULE_ONBOARDING_MINUTES",20,5,60);
+    }
+    private UUID retryableAttempt(UUID id,String status) {
+        if(!Set.of("HELD","DEADLINE_EXCEEDED").contains(status))return null;
+        var latest=jdbc.sql("SELECT id,status,receipt_json,error_code FROM hybrid_rule_codex_call WHERE onboarding_id=? ORDER BY created_at DESC LIMIT 1")
+                .param(id).query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getString(4)}).optional();
+        return latest.isPresent()&&Set.of("FAILED","REJECTED","UNKNOWN").contains(latest.get()[1])&&latest.get()[2]!=null&&!"ONBOARDING_ARTIFACT_FENCE".equals(latest.get()[3])?(UUID)latest.get()[0]:null;
+    }
+    /** Owner-explicit retry is fenced by the failed attempt; replay cannot start a second retry. */
+    @Transactional
+    View retryAuthor(String user,UUID id,UUID failedAttempt) {
+        UUID owner=submissions.owner(user,false);lock();var current=view(owner,id);
+        var old=jdbc.sql("SELECT retry_requested_at FROM hybrid_rule_codex_call WHERE id=? AND onboarding_id=?")
+                .param(failedAttempt).param(id).query((r,n)->new Object[]{r.getObject(1)}).optional();
+        if(old.isEmpty())throw new AccountException(409,"재시도할 작성 기록을 확인해 주세요.");
+        if(old.get()[0]!=null)return current;
+        if(!Objects.equals(retryableAttempt(id,current.status()),failedAttempt))throw new AccountException(409,"현재 보류된 작성 단계만 재시도할 수 있어요.");
+        if(!enabled())throw new AccountException(503,"새 규칙 등록은 아직 사용할 수 없어요.");
+        if(jdbc.sql("SELECT count(*) FROM hybrid_rule_onboarding WHERE status IN ('QUEUED','AUTHORING','AUTHORED','ORACLE','QUALIFYING')").query(Integer.class).single()>=setting("HYBRID_RULE_ONBOARDING_MAX_ACTIVE",1,1,3)
+                ||jdbc.sql("SELECT count(*) FROM hybrid_rule_onboarding WHERE owner_id=? AND status IN ('QUEUED','AUTHORING','AUTHORED','ORACLE','QUALIFYING')").param(owner).query(Integer.class).single()>0)
+            throw new AccountException(429,"진행 중인 규칙 등록이 끝난 뒤 다시 시도해 주세요.");
+        String request=jdbc.sql("SELECT request_json FROM hybrid_rule_onboarding WHERE id=?").param(id).query(String.class).single();
+        jdbc.sql("UPDATE hybrid_rule_codex_call SET retry_requested_at=CURRENT_TIMESTAMP WHERE id=?").param(failedAttempt).update();
+        jdbc.sql("UPDATE hybrid_rule_onboarding SET status='QUEUED',error_code=NULL,deadline_at=?,updated_at=? WHERE id=?")
+                .param(now().plusMinutes(requestMinutes(request))).param(now()).param(id).update();
+        events.publishEvent(new HybridExecution.Wakeup());return view(owner,id);
     }
     List<View> list(String user) {
         UUID owner=submissions.owner(user,false);
@@ -109,11 +137,20 @@ class HybridRuleOnboarding {
                     if(carrier!=null)jdbc.sql("SELECT e.role,j.status,j.verdict FROM hybrid_execution_check e JOIN hybrid_branch b ON b.id=e.branch_id JOIN judge_job j ON j.submission_id=e.submission_id WHERE b.generation_id=?")
                             .param(carrier).query((x,m)->checks.put(x.getString(1),"FINISHED".equals(x.getString(2))?x.getString(3):x.getString(2))).list();
                     String catalog=r.getString("catalog_json");var req=JudgeJson.parse(r.getString("request_json"));
+                    String author=r.getString("author_json");
+                    if(r.getString("oracle_json")==null&&"REQUIREMENTS_NOT_MET".equals(r.getString("error_code"))) {
+                        var rejected=jdbc.sql("SELECT receipt_json FROM hybrid_rule_codex_call WHERE onboarding_id=? AND repair_round=? AND stage='DESIGN' AND status='REJECTED' ORDER BY created_at DESC LIMIT 1")
+                                .param(id).param(r.getInt("repairs")).query(String.class).optional();
+                        if(rejected.isPresent())author=JudgeJson.canonical(JudgeJson.parse(rejected.get()).path("payload"));
+                    }
                     return new View(id,r.getString("status"),r.getString("error_code"),req.path("request").asText(),
                             r.getObject("created_at",OffsetDateTime.class),r.getObject("deadline_at",OffsetDateTime.class),r.getString("version_id"),
                             catalog==null?null:JudgeJson.parse(catalog).path("label").asText(),spent(id),checks,failedCheck(r.getString("answers_json")),
                             req.path("difficulty").asText(null),req.path("style").asText(null),req.path("category").asText(null),req.has("target"),req.path("publish").asBoolean(false),
-                            r.getObject("followup_generation_id",UUID.class),r.getString("followup_status"),r.getString("followup_error"),r.getString("published_version_id"),r.getInt("repairs"),requirementIssues(r.getString("error_code"),r.getString("author_json"),r.getString("oracle_json")));
+                            r.getObject("followup_generation_id",UUID.class),r.getString("followup_status"),r.getString("followup_error"),r.getString("published_version_id"),r.getInt("repairs"),requirementIssues(r.getString("error_code"),author,r.getString("oracle_json")),
+                            codexAuthor(r.getString("request_json"))?stages.snapshot(id,r.getInt("repairs")).next():null,
+                            codexAuthor(r.getString("request_json"))?stages.snapshot(id,r.getInt("repairs")).completed():List.of(),
+                            retryableAttempt(id,r.getString("status")));
                 }).optional().orElseThrow(()->new AccountException(404,"규칙 등록 요청을 찾을 수 없어요."));
     }
     private static List<String> requirementIssues(String error,String author,String oracle) {
@@ -287,24 +324,41 @@ class HybridRuleOnboarding {
         var next=rows.stream().filter(row->codexAuthor((String)row[1])).findFirst();
         if(next.isEmpty())return null;
         var row=next.get();UUID id=(UUID)row[0],attempt=UUID.randomUUID(),token=UUID.randomUUID();
-        String input=authorInput((String)row[1],(String)row[2]),hash=JudgeJson.hash(input);
+        int round=(int)row[3];var snapshot=stages.snapshot(id,round);
+        String stage=snapshot.next();
+        if(stage==null)throw new IllegalStateException("Completed author should not be queued");
+        var input=(ObjectNode)JudgeJson.parse(authorInput((String)row[1],(String)row[2]));
+        input.put("stage",stage);
+        for(String dependency:snapshot.completed()) {
+            var saved=input.putObject(dependency.equals("DESIGN")?"completedDesign":"completedCode");
+            for(String field:HybridRuleAuthorStages.FIELDS.get(dependency))saved.set(field,snapshot.partial().path(field));
+        }
+        var previous=jdbc.sql("SELECT stage_attempt,error_code,receipt_json FROM hybrid_rule_codex_call WHERE onboarding_id=? AND repair_round=? AND stage=? ORDER BY stage_attempt DESC LIMIT 1")
+                .param(id).param(round).param(stage).query((r,n)->new Object[]{r.getInt(1),r.getString(2),r.getString(3)}).optional();
+        int stageAttempt=previous.isEmpty()?0:(int)previous.get()[0]+1;
+        if(previous.isPresent()&&previous.get()[1]!=null) {
+            var failure=input.putObject("stageFailure").put("error",(String)previous.get()[1]);
+            if(previous.get()[2]!=null)failure.set("previousOutput",JudgeJson.parse((String)previous.get()[2]).path("payload"));
+        }
+        String raw=JudgeJson.canonical(input),hash=JudgeJson.hash(raw);
         String model=config.value("CODEX_RULE_AUTHOR_MODEL","gpt-6-sol"),effort=config.value("CODEX_RULE_AUTHOR_REASONING","high");
-        jdbc.sql("INSERT INTO hybrid_rule_codex_call(id,onboarding_id,repair_round,token,input_json,input_sha256,model,effort,prompt_version,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,'RUNNING',CURRENT_TIMESTAMP)")
-                .param(attempt).param(id).param(row[3]).param(token).param(input).param(hash).param(model).param(effort).param(GenerationRequirements.AUTHOR_VERSION).update();
+        jdbc.sql("INSERT INTO hybrid_rule_codex_call(id,onboarding_id,repair_round,stage,stage_attempt,token,input_json,input_sha256,model,effort,prompt_version,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'RUNNING',CURRENT_TIMESTAMP)")
+                .param(attempt).param(id).param(round).param(stage).param(stageAttempt).param(token).param(raw).param(hash).param(model).param(effort).param(GenerationRequirements.AUTHOR_VERSION).update();
         jdbc.sql("UPDATE hybrid_rule_onboarding SET status='AUTHORING',updated_at=? WHERE id=?").param(now()).param(id).update();
         var work=JudgeJson.JSON.createObjectNode().put("pipelineVersion","RULE_AUTHOR_V1").put("token",token.toString())
-                .put("model",model).put("effort",effort).put("deadlineAt",row[4].toString());
-        work.set("outputSchema",authorSchema());
-        var spec=work.putObject("spec").put("phase","RULE_AUTHOR_V1").put("role","AUTHOR").put("instructions",AUTHOR_INSTRUCTIONS+AUTHOR_TARGETING);
-        spec.set("input",JudgeJson.parse(input));
+                .put("model",model).put("effort",effort).put("deadlineAt",row[4].toString())
+                .put("timeoutSeconds",setting("CODEX_RULE_AUTHOR_SECONDS",1200,60,1200));
+        work.set("outputSchema",HybridRuleAuthorStages.schema(stage));
+        var spec=work.putObject("spec").put("phase","RULE_AUTHOR_V1").put("role","AUTHOR").put("stage",stage).put("instructions",HybridRuleAuthorStages.instructions(stage));
+        spec.set("input",input);
         spec.putObject("assignment").put("attemptId",attempt.toString()).put("token",token.toString()).put("inputHash",hash);
         return work;
     }
     @Transactional
     void finishCodexAuthor(CodexCompletion result) {
         lock();recover();
-        var row=jdbc.sql("SELECT onboarding_id,token,input_sha256,prompt_version,receipt_json FROM hybrid_rule_codex_call WHERE id=?")
-                .param(result.attemptId()).query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getObject(2,UUID.class),r.getString(3),r.getString(4),r.getString(5)}).optional()
+        var row=jdbc.sql("SELECT onboarding_id,token,input_sha256,prompt_version,receipt_json,stage,repair_round,stage_attempt FROM hybrid_rule_codex_call WHERE id=?")
+                .param(result.attemptId()).query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getObject(2,UUID.class),r.getString(3),r.getString(4),r.getString(5),r.getString(6),r.getInt(7),r.getInt(8)}).optional()
                 .orElseThrow(()->new AccountException(404,"Unknown rule author attempt"));
         if(!Objects.equals(row[1],result.token())||!Objects.equals(row[2],result.inputHash()))throw new AccountException(409,"Stale rule author result");
         String receipt;
@@ -316,12 +370,37 @@ class HybridRuleOnboarding {
         }
         String error=result.error();
         if(error!=null&&!error.matches("[A-Z][A-Z0-9_]{0,79}"))throw new AccountException(400,"Invalid author error");
-        jdbc.sql("UPDATE hybrid_rule_codex_call SET status=?,receipt_json=? WHERE id=?")
-                .param(error==null&&result.payload()!=null?"COMPLETED":"FAILED").param(receipt).param(result.attemptId()).update();
-        UUID id=(UUID)row[0];
-        if(!"AUTHORING".equals(jdbc.sql("SELECT status FROM hybrid_rule_onboarding WHERE id=?").param(id).query(String.class).single()))return;
+        jdbc.sql("UPDATE hybrid_rule_codex_call SET status=?,receipt_json=?,error_code=? WHERE id=?")
+                .param(error==null&&result.payload()!=null?"COMPLETED":"FAILED").param(receipt).param(error).param(result.attemptId()).update();
+        UUID id=(UUID)row[0];String stage=(String)row[5];int round=(int)row[6];
+        if(jdbc.sql("SELECT count(*) FROM hybrid_rule_onboarding WHERE id=? AND status='AUTHORING' AND repairs=?")
+                .param(id).param(round).query(Integer.class).single()!=1)return;
         if(error!=null||result.payload()==null){stop(id,"HELD",error==null?"INVALID_RULE_PACKAGE":error);return;}
-        acceptPayload(id,"AUTHOR",(String)row[3],result.payload());
+        if(stage.equals("PACKAGE")){acceptPayload(id,"AUTHOR",(String)row[3],result.payload());return;} // Pre-migration in-flight request.
+        try {
+            var before=stages.snapshot(id,round);HybridArtifacts.require(stage.equals(before.next()),"ONBOARDING_ARTIFACT_FENCE");
+            var payload=HybridRuleAuthorStages.validate(stage,result.payload());
+            if(stage.equals("TESTS")) {
+                var assembled=before.partial().deepCopy();assembled.setAll((ObjectNode)payload);assembled.remove("solutionPlan");
+                validateAuthor(assembled); // Do not persist a terminal checkpoint that cannot be assembled.
+            }
+            stages.save(id,round,stage,result.attemptId(),payload);
+            var after=stages.snapshot(id,round);
+            if(after.next()==null) {
+                var assembled=after.partial();assembled.remove("solutionPlan");acceptPayload(id,"AUTHOR",(String)row[3],assembled);
+            } else {
+                jdbc.sql("UPDATE hybrid_rule_onboarding SET status='QUEUED',updated_at=? WHERE id=?").param(now()).param(id).update();
+                events.publishEvent(new HybridExecution.Wakeup());
+            }
+        } catch(HybridArtifacts.Invalid|IllegalArgumentException invalid) {
+            String code=invalid.getMessage()!=null&&invalid.getMessage().matches("[A-Z][A-Z0-9_]{0,79}")?invalid.getMessage():"INVALID_RULE_PACKAGE";
+            jdbc.sql("UPDATE hybrid_rule_codex_call SET status='REJECTED',error_code=? WHERE id=?").param(code).param(result.attemptId()).update();
+            // One bounded structural correction of this stage; execution/unknown-usage failures require owner retry.
+            if((int)row[7]==0&&!code.equals("ONBOARDING_ARTIFACT_FENCE")) {
+                jdbc.sql("UPDATE hybrid_rule_onboarding SET status='QUEUED',updated_at=? WHERE id=?").param(now()).param(id).update();
+                events.publishEvent(new HybridExecution.Wakeup());
+            } else stop(id,"HELD",code);
+        }
     }
     /** Settles cost first, then accepts the payload only for the matching still-running stage. */
     @Transactional
@@ -382,13 +461,13 @@ class HybridRuleOnboarding {
         }
         events.publishEvent(new HybridExecution.Wakeup());
     }
-    private static String source(JsonNode n) {
+    static String source(JsonNode n) {
         if(!n.isTextual()||n.asText().isBlank()||n.asText().getBytes(StandardCharsets.UTF_8).length>65536||!n.asText().matches("(?s).*\\bclass\\s+Main\\b.*"))
             throw new HybridArtifacts.Invalid("INVALID_RULE_SOURCE");
         return n.asText();
     }
-    private static List<String> inputs(JsonNode n,int min,int max,int bytes,String code){return inputs(n,min,max,bytes,code,false);}
-    private static List<String> inputs(JsonNode n,int min,int max,int bytes,String code,boolean blank) {
+    static List<String> inputs(JsonNode n,int min,int max,int bytes,String code){return inputs(n,min,max,bytes,code,false);}
+    static List<String> inputs(JsonNode n,int min,int max,int bytes,String code,boolean blank) {
         if(!n.isArray()||n.size()<min||n.size()>max)throw new HybridArtifacts.Invalid(code);
         var out=new ArrayList<String>();var seen=new HashSet<String>();
         for(var v:n) {
@@ -664,15 +743,18 @@ class HybridRuleOnboarding {
     }
     /** Sends the package back to the author once with the failed check; a fresh oracle and every Runner check follow. */
     private boolean repair(UUID id,String code,JsonNode detail) {
-        var row=jdbc.sql("SELECT repairs,author_json,carrier_generation_id,deadline_at FROM hybrid_rule_onboarding WHERE id=? AND status IN ('AUTHORING','ORACLE','QUALIFYING')").param(id)
-                .query((r,n)->new Object[]{r.getInt(1),r.getString(2),r.getObject(3,UUID.class),r.getObject(4,OffsetDateTime.class)}).optional();
+        var row=jdbc.sql("SELECT repairs,author_json,carrier_generation_id,deadline_at,request_json FROM hybrid_rule_onboarding WHERE id=? AND status IN ('AUTHORING','ORACLE','QUALIFYING')").param(id)
+                .query((r,n)->new Object[]{r.getInt(1),r.getString(2),r.getObject(3,UUID.class),r.getObject(4,OffsetDateTime.class),r.getString(5)}).optional();
         if(row.isEmpty()||(int)row.get()[0]>=setting("HYBRID_RULE_ONBOARDING_REPAIRS",1,0,2)||!repairable(code)||row.get()[1]==null)return false;
         var context=JudgeJson.JSON.createObjectNode();var failure=context.putObject("failure").put("code",code);
         if(detail!=null)failure.set("detail",detail);
         context.set("previousPackage",JudgeJson.parse((String)row.get()[1]));
         if(row.get()[2]!=null)jdbc.sql("UPDATE hybrid_generation SET status='HELD',error_code=?,updated_at=? WHERE id=? AND status='QUALIFYING'").param(code).param(now()).param(row.get()[2]).update();
         // A repair gets its own time: the original deadline would otherwise expire mid-qualification.
-        var deadline=((OffsetDateTime)row.get()[3]).isAfter(now().plusMinutes(15))?(OffsetDateTime)row.get()[3]:now().plusMinutes(setting("HYBRID_RULE_ONBOARDING_REPAIR_MINUTES",15,5,30));
+        boolean staged=codexAuthor((String)row.get()[4]);
+        if(staged)stages.copyPrefix(id,(int)row.get()[0],(int)row.get()[0]+1,HybridRuleAuthorStages.repairFrom(code,detail));
+        int minutes=staged?requestMinutes((String)row.get()[4]):setting("HYBRID_RULE_ONBOARDING_REPAIR_MINUTES",15,5,30);
+        var deadline=((OffsetDateTime)row.get()[3]).isAfter(now().plusMinutes(minutes))?(OffsetDateTime)row.get()[3]:now().plusMinutes(minutes);
         jdbc.sql("UPDATE hybrid_rule_onboarding SET status='QUEUED',repairs=repairs+1,repair_json=?,oracle_json=NULL,oracle_sha256=NULL,carrier_generation_id=NULL,answers_json=NULL,error_code=NULL,deadline_at=?,updated_at=? WHERE id=?")
                 .param(JudgeJson.canonical(context)).param(deadline).param(now()).param(id).update();
         events.publishEvent(new HybridExecution.Wakeup());
