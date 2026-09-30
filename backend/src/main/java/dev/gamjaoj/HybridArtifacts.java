@@ -120,6 +120,13 @@ final class HybridArtifacts {
             require(r.path(gate).isBoolean()&&r.path(gate).asBoolean(),"CONTENT_REVIEW_REJECTED");
         require(r.path("issues").isEmpty(),"CONTENT_REVIEW_REJECTED");return r;
     }
+    static JsonNode reader(JsonNode candidate,JsonNode semantics) {
+        if(!semantics.has("callable"))return reader(candidate);
+        var normalized=bounded(candidate).deepCopy();
+        for(String key:List.of("adversarialInputs","examples"))for(var item:normalized.path(key))
+            if(item.path("input").isArray())((ObjectNode)item).put("input",CallablePrograms.serializeReaderInput(semantics.path("callable"),item.path("input")));
+        return reader(normalized);
+    }
     static JsonNode reader(JsonNode candidate) {
         var r=bounded(candidate);unfence(r,"oracleSource");
         // Worked examples arrived later; readers written before them stay valid.

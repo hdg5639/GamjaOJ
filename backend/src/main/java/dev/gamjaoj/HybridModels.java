@@ -24,7 +24,8 @@ final class HybridModels {
         return input.path("semantics").has("callable")||input.path("publicSnapshot").path("semantics").has("callable")||input.path("contract").has("callable");
     }
     static String apiInstructions(HybridGeneration.Assignment assignment,JsonNode input) {
-        return instructions(assignment)+(callableInput(input)?CallablePrograms.publicInstructions(assignment.role()==CONTENT_REVIEW):"");
+        return instructions(assignment)+(callableInput(input)?CallablePrograms.publicInstructions(assignment.role()==CONTENT_REVIEW):"")
+            +(assignment.role()==READER&&callableInput(input)?" For adversarialInputs and examples, the input field must be a structured array of cases, each containing call objects with method and arguments fields according to the output schema. Arguments is an object keyed by exact parameter names. Do not write a JSON string or wire call tuple here: the server serializes these typed objects into the canonical execution wire format. oracleSource still reads the canonical wire format, not these provider transport objects.":"");
     }
     /** Provider-neutral author task: Codex and the API fallback receive identical instructions, data and schema. */
     record AuthorTask(String instructions,JsonNode input,JsonNode schema) {}
@@ -147,6 +148,9 @@ final class HybridModels {
             for(String key:java.util.List.of("schemaVersion","title","context","sections","hints","editorial"))required.add(key);
             if(HybridPresentationRules.retheme(a.input()))required.add("ruleExplanations");
         }
+        if(a.role()==READER&&a.input().path("semantics").has("callable"))
+            for(String key:List.of("adversarialInputs","examples"))
+                ((ObjectNode)result.path("properties").path(key).path("items").path("properties")).set("input",CallablePrograms.readerInputSchema(a.input().path("semantics").path("callable")));
         if(a.role()==CONTENT_REVIEW&&a.input().has("requirements"))GenerationRequirements.addSchema(result);
         return result;
     }

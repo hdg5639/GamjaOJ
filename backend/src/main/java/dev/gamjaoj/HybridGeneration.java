@@ -144,7 +144,7 @@ class HybridGeneration {
                 case CONTRACT -> HybridArtifacts.contract(c.payload);
                 case CORE -> HybridCoreSupport.assemble(b.input,c.payload);
                 case PRESENTATION -> HybridPresentationRules.assemble(b.input,c.payload,artifact(latest(j).get(Role.CONTRACT)));
-                case READER -> HybridArtifacts.reader(c.payload);
+                case READER -> HybridArtifacts.reader(c.payload,b.input.path("semantics"));
                 case CONTENT_REVIEW -> HybridArtifacts.contentReview(c.payload,b.inputHash,b.input.has("requirements"));
                 case VALIDATION -> throw new HybridArtifacts.Invalid("VALIDATION_ADAPTER_NOT_CONNECTED");
             };

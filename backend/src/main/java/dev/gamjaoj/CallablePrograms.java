@@ -54,6 +54,46 @@ final class CallablePrograms {
           """);
         return (ObjectNode)s;
     }
+    /** Provider transport uses typed objects; server alone serializes callable wire inputs. */
+    static JsonNode readerInputSchema(JsonNode api) {
+        validate(api);var call=JudgeJson.JSON.createObjectNode();var variants=call.putArray("anyOf");
+        for(var method:api.path("methods")) {
+            var object=variants.addObject().put("type","object").put("additionalProperties",false);
+            object.putArray("required").add("method").add("arguments");var properties=object.putObject("properties");
+            properties.putObject("method").put("type","string").putArray("enum").add(method.path("name").asText());
+            var args=properties.putObject("arguments").put("type","object").put("additionalProperties",false);
+            var required=args.putArray("required");var params=args.putObject("properties");
+            for(var parameter:method.path("parameters")) {
+                String name=parameter.path("name").asText(),type=parameter.path("type").asText();required.add(name);
+                var value=params.putObject(name);boolean array=type.endsWith("[]");
+                if(array){type=type.substring(0,type.length()-2);value.put("type","array");value=value.putObject("items");}
+                value.put("type",type.equals("String")?"string":type.equals("boolean")?"boolean":"integer");
+            }
+        }
+        var cases=JudgeJson.JSON.createObjectNode().put("type","array").put("minItems",1).put("maxItems",100);
+        var calls=cases.putObject("items").put("type","array").put("minItems",1)
+            .put("maxItems",api.path("mode").asText().equals("SINGLE_FUNCTION")?1:1000000);
+        calls.set("items",call);return cases;
+    }
+    static String serializeReaderInput(JsonNode api,JsonNode cases) {
+        validate(api);HybridArtifacts.require(cases.isArray()&&!cases.isEmpty()&&cases.size()<=100,"INVALID_CALLABLE_READER_INPUT");
+        var wire=JudgeJson.JSON.createArrayNode();
+        for(var calls:cases) {
+            HybridArtifacts.require(calls.isArray()&&!calls.isEmpty()&&calls.size()<=1000000
+                &&(!api.path("mode").asText().equals("SINGLE_FUNCTION")||calls.size()==1),"INVALID_CALLABLE_READER_INPUT");
+            var out=wire.addArray();
+            for(var call:calls) {
+                HybridArtifacts.fields(call,"method","arguments");
+                JsonNode method=null;for(var m:api.path("methods"))if(m.path("name").equals(call.path("method")))method=m;
+                HybridArtifacts.require(method!=null,"INVALID_CALLABLE_READER_METHOD");
+                var names=new ArrayList<String>();method.path("parameters").forEach(p->names.add(p.path("name").asText()));
+                HybridArtifacts.fields(call.path("arguments"),names.toArray(String[]::new));
+                var tuple=out.addArray().add(call.path("method").asText());
+                for(String name:names)tuple.add(call.path("arguments").path(name).deepCopy());
+            }
+        }
+        return JudgeJson.canonical(wire);
+    }
     static String template(JsonNode api) {
         validate(api);StringBuilder b=new StringBuilder("public class UserSolution {\n");
         for(var m:api.path("methods")) {
