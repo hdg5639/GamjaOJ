@@ -344,6 +344,23 @@ class HybridAdmissionIntegrationTest {
         assertThat(JudgeJson.parse(jdbc.sql("SELECT execution_profile_json FROM submission WHERE id=?").param(submitted.id()).query(String.class).single()).path("testWallSeconds").asInt()).isEqualTo(12);
         HybridProfiles.unregister(profile.id());
     }
+    @Test void callableInstructionsReachTheActualWriterAndReaderDispatcher() throws Exception {
+        UUID owner=submissions.owner("owner",false);var reference=f.core();reference.remove(List.of("generator","inputValidator"));
+        var pack=fixturePackage();((com.fasterxml.jackson.databind.node.ObjectNode)pack.path("contract")).set("callable",CallableProgramsTest.multi());
+        reference.put("reference",CallablePrograms.executable(CallableProgramsTest.multi(),CallablePrograms.template(CallableProgramsTest.multi())));
+        var profile=registry.activate(owner,onboardingRow(owner),"rule-fixture-v1",pack,reference);
+        UUID id=UUID.randomUUID();mvc.perform(postRequest(id,BODY.replace(HybridAdmission.PROFILE,profile.id()))).andExpect(status().isOk());
+        var writer=execution.claimApi();assertThat(writer.request().instructions()).contains("CALLABLE JAVA CONTRACT");
+        var prose=f.presentation();prose.remove("semantics");prose.set("ruleExplanations",writer.request().assignment().input().path("serverRules").path("rules").deepCopy());
+        execution.finish(writer.attemptId(),result(prose),null);
+        var reader=execution.claimApi();assertThat(reader.request().instructions()).contains("CALLABLE JAVA CONTRACT","canonical JSON");
+        assertThat(reader.request().assignment().input().path("semantics").path("callable")).isEqualTo(CallableProgramsTest.multi());
+        var now=java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
+        assertThat(ResponsesHybridProvider.timeout(new HybridExecution.Work(reader.attemptId(),reader.request(),now.plusSeconds(600)),now)).isEqualTo(java.time.Duration.ofSeconds(280));
+        assertThat(ResponsesHybridProvider.timeout(new HybridExecution.Work(reader.attemptId(),reader.request(),now.plusSeconds(7)),now)).isEqualTo(java.time.Duration.ofSeconds(7));
+        assertThat(ResponsesHybridProvider.timeout(new HybridExecution.Work(writer.attemptId(),writer.request(),now.plusSeconds(600)),now)).isEqualTo(java.time.Duration.ofSeconds(90));
+        assertThatThrownBy(()->ResponsesHybridProvider.timeout(new HybridExecution.Work(reader.attemptId(),reader.request(),now),now)).isInstanceOf(dev.gamjaoj.ai.OpenAiResponses.Failure.class);
+    }
     @Test void registeredDataPackageRunsWithoutProfileCodeAndStaysPrivateUntilShared() throws Exception {
         overrides.put("HYBRID_FUNCTIONAL_ENABLED","true");overrides.put("HYBRID_PIPELINE_V2_ENABLED","true");overrides.put("HYBRID_ALLOWED_USERS","owner,other");
         UUID owner=submissions.owner("owner",false);var reference=f.core();reference.remove(List.of("generator","inputValidator"));

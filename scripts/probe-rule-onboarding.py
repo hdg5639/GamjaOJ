@@ -43,6 +43,9 @@ def main():
     parser.add_argument('--generate', action='store_true', help='Also generate one problem from each qualified rule')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--only', type=int, nargs='*', help='Request indexes to run')
+    parser.add_argument('--request-file', type=Path, help='One UTF-8 request, instead of the built-in suite')
+    parser.add_argument('--style', choices=['GENERAL','SIMULATION','COMMAND','COMMAND_MULTI','COMMAND_SINGLE'])
+    parser.add_argument('--difficulty', choices=['EASY','MEDIUM','HARD','EXPERT'], default='MEDIUM')
     args = parser.parse_args()
     if not args.execute:
         parser.error('--execute is required: this spends API budget and Runner time')
@@ -80,41 +83,66 @@ def main():
     try:
         call('/api/auth/signup', 'POST', dict(username=username, password=password, nickname='규칙 등록 측정', inviteCode=invite))
         call('/api/auth/login', 'POST', dict(username=username, password=password), form=True)
-        indexes = args.only if args.only else range(len(REQUESTS))
+        requests = [args.request_file.read_text()] if args.request_file else REQUESTS
+        indexes = args.only if args.only else range(len(requests))
         for index in indexes:
-            request = REQUESTS[index]
+            request = requests[index]
             started = time.monotonic()
-            onboarding = call('/api/rules/onboarding', 'POST', {'request': request}, str(uuid.uuid4()))
-            while onboarding['status'] not in TERMINAL and time.monotonic() - started < 25 * 60:
+            body = {'request': request}
+            if args.style: body.update(style=args.style,difficulty=args.difficulty,category='AUTO',publish=False,shared=False)
+            onboarding = call('/api/rules/onboarding', 'POST', body, str(uuid.uuid4()))
+            print(json.dumps({'onboardingId':onboarding['id'],'style':args.style,'status':onboarding['status']}),flush=True)
+            last = None
+            while onboarding['status'] not in TERMINAL and time.monotonic() - started < 45 * 60:
+                observed=(onboarding['status'],onboarding.get('authorStage'),onboarding.get('repairs'))
+                if observed!=last: print(json.dumps({'progress':observed}),flush=True);last=observed
                 time.sleep(10)
                 onboarding = next(v for v in call('/api/rules/onboarding') if v['id'] == onboarding['id'])
-            record = {'index': index, 'request': request, 'status': onboarding['status'], 'error': onboarding['error'],
+            record = {'onboardingId':onboarding['id'],'style':args.style,'index': index, 'request': request, 'status': onboarding['status'], 'error': onboarding['error'],
                       'label': onboarding['label'], 'versionId': onboarding['versionId'], 'spentUsd': onboarding['spentUsd'],
                       'seconds': round(time.monotonic() - started, 1), 'checks': onboarding['checks']}
+            results.append(record)
             print(json.dumps({k: record[k] for k in ('index', 'status', 'error', 'label', 'spentUsd', 'seconds')}, ensure_ascii=False), flush=True)
             if onboarding['status'] == 'ACTIVE':
-                timing = sql("SELECT json_agg(json_build_object('role',e.role,'verdict',j.verdict,'generated',(SELECT json_agg(json_build_object('wall',t->>'wall_ms','bytes',t->>'input_bytes','verdict',t->>'verdict')) FROM json_array_elements(j.result_json::json->'tests') t WHERE t->>'kind'='generated'))) "
+                timing = sql("SELECT json_agg(json_build_object('role',e.role,'verdict',j.verdict,'execution',j.result_json::json->'execution_profile','generated',(SELECT json_agg(json_build_object('wall',t->>'wall_ms','bytes',t->>'input_bytes','verdict',t->>'verdict')) FROM json_array_elements(j.result_json::json->'tests') t WHERE t->>'kind'='generated'))) "
                              "FROM hybrid_execution_check e JOIN hybrid_branch b ON b.id=e.branch_id JOIN judge_job j ON j.submission_id=e.submission_id "
-                             f"JOIN hybrid_rule_onboarding o ON o.carrier_generation_id=b.generation_id WHERE o.id='{uuid.UUID(onboarding['id'])}' AND e.role IN ('q-slow','q-large-reference-0','q-large-valid')")
+                             f"JOIN hybrid_rule_onboarding o ON o.carrier_generation_id=b.generation_id WHERE o.id='{uuid.UUID(onboarding['id'])}' AND e.role IN ('q-slow','q-final-slow','q-final-reference','q-large-reference-0','q-large-valid')")
                 record['largeEvidence'] = json.loads(timing) if timing else None
             if onboarding['status'] == 'ACTIVE' and args.generate:
                 started = time.monotonic()
                 key = str(uuid.uuid4())
                 job = call('/api/generation/hybrid', 'POST', {'profileId': onboarding['versionId'], 'shared': False, 'publishOnSuccess': True}, key)
                 active = {'QUEUED', 'DESIGNING', 'BUILDING', 'VALIDATING', 'REVIEWING'}
-                while (job['status'] in active or (job['status'] == 'HELD' and job['error'] in ('VALIDATION_ADAPTER_NOT_CONNECTED', 'CONTENT_REVIEW_REQUIRED'))) and time.monotonic() - started < 300:
+                while (job['status'] in active or (job['status'] == 'HELD' and job['error'] in ('VALIDATION_ADAPTER_NOT_CONNECTED', 'CONTENT_REVIEW_REQUIRED'))) and time.monotonic() - started < 1200:
                     time.sleep(5)
                     job = call('/api/generation/hybrid/' + job['id'])
-                record['generation'] = {'status': job['status'], 'error': job['error'], 'seconds': round(time.monotonic() - started, 1)}
+                record['generation'] = {'id':job['id'],'publishedVersionId':job.get('publishedVersionId'),'status': job['status'], 'error': job['error'], 'seconds': round(time.monotonic() - started, 1)}
+                record['generation']['apiEvidence']=json.loads(sql(f"SELECT coalesce(json_agg(json_build_object('role',r.role,'status',a.status,'error',a.error_code,'usage',a.usage_json::json,'receipt',r.receipt_json::json))::text,'[]') FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id WHERE r.generation_id='{uuid.UUID(job['id'])}'"))
+                if job['status']=='PUBLISHED' and args.style in ('COMMAND_MULTI','COMMAND_SINGLE'):
+                    version=job['publishedVersionId'];assert version and "'" not in version
+                    problem=next(p for p in call('/api/problems') if p['version']==version)
+                    assert problem['api']['api']['mode']==('MULTI_API' if args.style=='COMMAND_MULTI' else 'SINGLE_FUNCTION')
+                    assert [l['id'] for l in problem['languages']]==['JAVA']
+                    package=json.loads(sql(f"SELECT package_json FROM problem_version WHERE id='{version}'"))
+                    source=package['generated']['reference'];suffix='\n'+problem['api']['driver']
+                    assert source.endswith(suffix)
+                    source=source[:-len(suffix)]
+                    submission=call('/api/submissions','POST',dict(problemVersion=version,language='JAVA',source=source),str(uuid.uuid4()))
+                    deadline=time.monotonic()+120
+                    while submission['status']!='FINISHED' and time.monotonic()<deadline:
+                        time.sleep(2);submission=call('/api/submissions/'+submission['id'])
+                    record['generation']['learnerVerdict']=submission.get('verdict')
+                    record['generation']['publicProblem']=problem
+                    assert submission.get('verdict')=='AC', submission
                 if job['status'] == 'HELD' and job['error'] == 'CONTENT_REVIEW_REJECTED':
                     issues = sql("SELECT coalesce(b.completion_json::json->'payload'->>'issues','') FROM hybrid_branch b WHERE b.generation_id='"
                                  + str(uuid.UUID(job['id'])) + "' AND b.role='CONTENT_REVIEW'")
                     record['generation']['issues'] = issues[:2000]
-                print(json.dumps({'index': index, 'generation': record['generation']}, ensure_ascii=False), flush=True)
+                print(json.dumps({'index': index, 'generation': {k:v for k,v in record['generation'].items() if k not in ('apiEvidence','publicProblem')}}, ensure_ascii=False), flush=True)
             if onboarding['status'] != 'ACTIVE':
                 author = sql(f"SELECT coalesce(left(author_json,6000),'') FROM hybrid_rule_onboarding WHERE id='{uuid.UUID(onboarding['id'])}'")
                 record['authorExcerpt'] = author
-            results.append(record)
+                record['qualificationFailures']=sql(f"SELECT coalesce(json_agg(json_build_object('role',e.role,'verdict',j.verdict,'result',j.result_json::json))::text,'[]') FROM hybrid_execution_check e JOIN hybrid_branch b ON b.id=e.branch_id JOIN judge_job j ON j.submission_id=e.submission_id JOIN hybrid_rule_onboarding o ON o.carrier_generation_id=b.generation_id WHERE o.id='{uuid.UUID(onboarding['id'])}' AND j.verdict NOT IN ('AC','OK')")
     finally:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(results, ensure_ascii=False, indent=2))

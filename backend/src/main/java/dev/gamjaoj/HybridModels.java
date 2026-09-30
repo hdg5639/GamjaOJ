@@ -17,8 +17,14 @@ final class HybridModels {
     static ApiRequest api(HybridGeneration.Assignment a,AiSettings config) {
         if(a.role()!=PRESENTATION&&a.role()!=READER&&a.role()!=CONTENT_REVIEW)throw new IllegalArgumentException("Not an API role");
         JsonNode input=checkedInput(a);
-        return new ApiRequest(a,slot(config,a.role()),instructions(a)+(input.path("semantics").has("callable")||input.path("publicSnapshot").path("semantics").has("callable")?CallablePrograms.INSTRUCTIONS:""),JudgeJson.canonical(input),
+        return new ApiRequest(a,slot(config,a.role()),apiInstructions(a,input),JudgeJson.canonical(input),
                 (a.role()==CONTENT_REVIEW&&input.has("requirements")?"hybrid_content_review_requirements_v1":"hybrid_"+a.role().name().toLowerCase(Locale.ROOT)+"_v1"),outputSchema(a));
+    }
+    static boolean callableInput(JsonNode input) {
+        return input.path("semantics").has("callable")||input.path("publicSnapshot").path("semantics").has("callable")||input.path("contract").has("callable");
+    }
+    static String apiInstructions(HybridGeneration.Assignment assignment,JsonNode input) {
+        return instructions(assignment)+(callableInput(input)?CallablePrograms.INSTRUCTIONS:"");
     }
     /** Provider-neutral author task: Codex and the API fallback receive identical instructions, data and schema. */
     record AuthorTask(String instructions,JsonNode input,JsonNode schema) {}

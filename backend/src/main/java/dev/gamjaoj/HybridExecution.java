@@ -191,7 +191,7 @@ class HybridExecution {
                         "hybrid_"+a.role().name().toLowerCase(Locale.ROOT)+"_v1",task.schema()));
             }
             var input=HybridModels.checkedInput(a);
-            String instructions=HybridModels.instructions(a);
+            String instructions=HybridModels.apiInstructions(a,input);
             if(a.role()==READER) {
                 var selected=jdbc.sql("SELECT profile_id FROM hybrid_public_request WHERE generation_id=?").param(a.generationId()).query(String.class).optional();
                 if(selected.isPresent())instructions+=HybridProfiles.byId(selected.get()).readerInstructions();
