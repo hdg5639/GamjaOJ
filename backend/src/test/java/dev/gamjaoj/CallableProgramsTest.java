@@ -52,6 +52,9 @@ class CallableProgramsTest {
         var candidates=HybridPackagePlan.candidates(generated,f.reader(),123);
         var pack=HybridPackagePlan.pack("callable-package",candidates,presentation);
         assertThat(pack.path("api")).isEqualTo(CallablePrograms.bundle(multi()));
+        assertThat(pack.path("statement").asText()).contains("public class UserSolution","public void init(int n)","public long query()","구동 코드가 그 반환값을 출력합니다","첫 호출은 init");
+        var single=JudgeJson.parse("{\"mode\":\"SINGLE_FUNCTION\",\"methods\":[{\"name\":\"solution\",\"returns\":\"int[]\",\"parameters\":[{\"name\":\"values\",\"type\":\"int[]\"}],\"description\":\"결과 반환\"}]}");
+        assertThat(CallablePrograms.submissionGuide(single)).contains("public int[] solution(int[] values)","정확히 한 번").doesNotContain("첫 호출은 init");
     }
     @Test void rejectsArbitraryTypesNamesAndInvalidSingleSignature() {
         var api=(com.fasterxml.jackson.databind.node.ObjectNode)multi().deepCopy();

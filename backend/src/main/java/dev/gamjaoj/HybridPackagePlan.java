@@ -88,6 +88,7 @@ final class HybridPackagePlan {
                 .put("title",presentation.path("title").asText()).put("mode","HYBRID_V1");
         var sem=presentation.path("semantics");var statement=new StringBuilder(presentation.path("context").asText());
         statement.append("\n\n규칙\n");for(var rule:presentation.path("ruleExplanations"))statement.append(rule.path("text").asText()).append('\n');
+        if(sem.has("callable"))statement.append(CallablePrograms.submissionGuide(sem.path("callable")));
         if(presentation.has("sections")) {
             // Learner prose checked for Korean wording and contract bounds; the contract itself stays for review only.
             var s=presentation.path("sections");
