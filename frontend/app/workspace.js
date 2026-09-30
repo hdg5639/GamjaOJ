@@ -63,7 +63,9 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
   const activeSession = sessions.find(item => item.status === 'ACTIVE');
   const [version, setVersion] = useState('');
   const [language,setLanguage]=useState('JAVA');
-  const lang=languageInfo[language];
+  const callable=problems.find(p=>p.version===version)?.api;
+  const lang={...languageInfo[language],...(callable?{file:callable.sourceFile}: {})};
+  const initialSource=callable?.template||starters[language];
   const [source, setSource] = useState(starter);
   const [history, setHistory] = useState([]);
   const [selected, setSelected] = useState(null),[justSubmitted,setJustSubmitted]=useState(null);
@@ -104,7 +106,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       const initialLanguage=languageInfo[chosen] && (items.find(p=>p.version===initialVersion)?.languages||[languageInfo.JAVA]).some(l=>l.id===chosen)?chosen:'JAVA';
       setLanguage(initialLanguage);
       setProblems(items); setVersion(initialVersion); setHistory(submissions);
-      restoreDraft(initialVersion, restoredPending?.problemVersion === initialVersion ? restoredPending.source : starters[initialLanguage],initialLanguage);
+      restoreDraft(initialVersion, restoredPending?.problemVersion === initialVersion ? restoredPending.source : (items.find(p=>p.version===initialVersion)?.api?.template||starters[initialLanguage]),initialLanguage);
       if(restoredPending)setScreen('practice');
       setLoaded(true);
     }).catch(e => { if (live.current) setError(e.message); });
@@ -160,7 +162,8 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     return `gamjaoj-draft-v1-${user.id}-${encodeURIComponent(problemVersion)}${chosen==='JAVA'?'':'-'+chosen}`;
   }
 
-  function restoreDraft(problemVersion, fallback = starters[language], chosen=language) {
+  function restoreDraft(problemVersion, fallback = problems.find(p=>p.version===problemVersion)?.api?.template||starters[language], chosen=language) {
+    if(problems.find(p=>p.version===problemVersion)?.api){chosen='JAVA';setLanguage('JAVA');}
     setSource(fallback);
     let local=null;
     try {
@@ -344,10 +347,11 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       <article className="problem-card">
         <span className="version">문제 · {problem.version}</span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2>
         <LimitChips profile={inspected?inspected.execution:problem.languages?.find(l=>l.id===language)} label={inspected?recordLanguageLabel(inspected):(problem.languages?.find(l=>l.id===language)||languageInfo[language])?.label}/><p>{problem.statement}</p>
+        {problem.api&&<section aria-label="구현할 API"><h3>{problem.api.api.mode==='MULTI_API'?'명령 처리 - 다중 API':'명령 처리 - 단일 함수'} · Java</h3><p>UserSolution의 메서드를 완성하세요. 입력과 출력은 제공된 구동 코드가 처리합니다. 한 케이스의 호출은 같은 객체를 사용하고, 다음 케이스에서는 새 객체를 만듭니다. 시간 제한은 입력에 포함된 모든 케이스와 호출 전체에 적용됩니다.</p>{problem.api.api.methods.map(m=><div key={m.name}><h4><code>{m.returns} {m.name}({m.parameters.map(p=>`${p.type} ${p.name}`).join(', ')})</code></h4><p>{m.description}</p></div>)}<details><summary>Main.java · 읽기 전용</summary><pre>{problem.api.driver}</pre></details></section>}
         <Examples examples={problem.examples?.length?problem.examples:[{input:problem.sampleInput,output:problem.sampleOutput}]}/>
         {problem.problemHeld&&<p className="notice">문제 검토 중 · {problem.reviewReason} · 기존 코드와 기록은 보존되며 새 실행·제출·분석은 보류됩니다.</p>}
         {!problem.problemHeld&&<ProblemTeaching key={version} version={version} api={api} />}
-        <p className="muted">{language==='JAVA'?'클래스 이름은 Main으로 작성해 주세요. ':''}제출한 코드는 기록에서 다시 확인할 수 있어요.</p>
+        <p className="muted">{language==='JAVA'?`클래스 이름은 ${callable?'UserSolution':'Main'}으로 작성해 주세요. `:''}제출한 코드는 기록에서 다시 확인할 수 있어요.</p>
       </article>
       <ResizeHandle className="problem-resizer" label="문제와 편집기 비율" value={size.ratio} min={20} max={70} step={2} scale={splitScale} onChange={ratio=>changeSize({ratio})}/>
       <div className="editor-column">
@@ -357,7 +361,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
             ? '이 문제의 제출은 진행 중인 훈련에 저장돼요. 다른 문제도 자유롭게 선택할 수 있어요.'
             : `${activeSession.problemVersion} 훈련은 유지 중이에요. 현재 문제의 제출은 자유 풀이로 저장돼요.`}
         </p>}
-        <div className="code-heading"><div className="code-caption"><span className="code-filename">{inspected?languageInfo[recordLanguage(inspected)].file:lang.file}</span><span className="draft-status code-save-note" hidden={!!inspected} title={draftStatus} aria-live="polite">{draftStatus}</span></div>
+        <div className="code-heading"><div className="code-caption"><span className="code-filename">{inspected?(problems.find(p=>p.version===inspected.problemVersion)?.api?.sourceFile||languageInfo[recordLanguage(inspected)].file):lang.file}</span><span className="draft-status code-save-note" hidden={!!inspected} title={draftStatus} aria-live="polite">{draftStatus}</span></div>
           <span className="code-tools"><label className="language-choice"><span className="visually-hidden">언어</span><select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
           {!inspected&&<EditorTools id="editor-tools"><summary>도구</summary><div className="tool-pop-panel">
             <label className="check-row vim-toggle"><input type="checkbox" checked={vim} onChange={e=>setVim(e.target.checked)}/>Vim 모드 <small>Esc 명령 모드 · i 입력 모드</small></label>
@@ -366,7 +370,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
             <label className="file-import">{language==='JAVA'?'Java':lang.label} 파일 불러오기<input type="file" accept={lang.extension} disabled={busy} onChange={importSource} /></label>
             <button type="button" className="secondary" onClick={downloadSource}>{lang.file} 내려받기</button>
             <span>초안은 계정·문제·언어별로 이 브라우저에만 남아요. 다른 기기로 옮길 때는 파일을 내려받아 주세요.</span></div></EditorTools>}
-          {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(starters[language]);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</span></div>
+          {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(initialSource);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</span></div>
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
         {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}

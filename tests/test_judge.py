@@ -199,6 +199,25 @@ class CompileCacheTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("GAMJAOJ_DOCKER_TESTS") == "1", "real Docker opt-in")
 class DockerTests(unittest.TestCase):
+    def test_callable_driver_is_separate_and_part_of_compile_cache(self):
+        self.problem["version"] = CompileCacheTests.version
+        self.problem["tests"] = [{"id": "api", "input": "", "output": "3"}]
+        driver = 'public class Main {public static void main(String[] a){System.out.println(new UserSolution().query());}}'
+        self.problem["callable"] = {"format": "JAVA_CALLABLE_V1", "sourceFile": "UserSolution.java", "driver": driver}
+        self.runner.compile_cache = CompileCache()
+        source = b'public class UserSolution {public int query(){return 3;}}'
+        first = self.runner.judge(source, self.problem)
+        self.assertEqual("AC", first["verdict"])
+        replay = self.runner.judge(source, self.problem)
+        self.assertEqual("AC", replay["verdict"])
+        self.assertTrue(replay["compile"]["cache_hit"])
+        self.problem["callable"]["driver"] = driver.replace('().query()', '().query()+1')
+        changed = self.runner.judge(source, self.problem)
+        self.assertEqual("WA", changed["verdict"])
+        self.assertFalse(changed["compile"]["cache_hit"])
+        self.assertEqual("CE", self.runner.judge(source + b' class Main {}', self.problem)["verdict"])
+        self.assertEqual("CE", self.runner.judge(source.replace(b'int query()', b'int missing()'), self.problem)["verdict"])
+
     def test_java8_runtime_and_newer_api_rejection(self):
         self.check('if (!System.getProperty("java.specification.version").equals("1.8")) throw new RuntimeException("Wrong Java"); System.out.println(3);', 'AC')
         self.check('System.out.println(java.util.List.of(3));', 'CE')

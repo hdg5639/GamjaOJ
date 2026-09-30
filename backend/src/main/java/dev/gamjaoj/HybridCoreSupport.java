@@ -36,6 +36,11 @@ final class HybridCoreSupport {
         var result=(ObjectNode)payload.deepCopy();
         result.set("generator",input.path("serverSupport").path("generator"));
         result.set("inputValidator",input.path("serverSupport").path("inputValidator"));
+        if(input.path("contract").has("callable")) {
+            var api=input.path("contract").path("callable");String source=result.path("reference").asText();
+            // A verified reused reference already ends with this exact server-generated driver.
+            if(!source.endsWith("\n"+CallablePrograms.driver(api)))result.put("reference",CallablePrograms.executable(api,source));
+        }
         return HybridArtifacts.core(result);
     }
 }

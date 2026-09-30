@@ -49,6 +49,25 @@ class SubmissionIntegrationTest {
     Submissions.View submit(String name, UUID key) {
         return submissions.submit(name, key, new SubmissionController.Request("sum-v1", SOURCE));
     }
+    @Test void callableCatalogAndSubmissionsPinTheDriverWithoutExposingTests() {
+        String previous=jdbc.sql("SELECT package_json FROM problem_version WHERE id='sum-v1'").query(String.class).single();
+        var plan=(com.fasterxml.jackson.databind.node.ObjectNode)JudgeJson.parse(previous);var bundle=CallablePrograms.bundle(CallableProgramsTest.multi());plan.set("api",bundle);
+        try {
+            jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id='sum-v1'").param(plan.toString()).param(JudgeJson.hash(plan.toString())).update();
+            var catalog=submissions.problems(alice).stream().filter(p->p.version().equals("sum-v1")).findFirst().orElseThrow();
+            assertThat(catalog.languages()).extracting(LanguageProfiles.Option::id).containsExactly("JAVA");assertThat(catalog.api()).isEqualTo(bundle);
+            UUID key=UUID.randomUUID();var saved=submit(alice,key);
+            var stored=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(saved.id()).query(String.class).single());
+            assertThat(stored.path("callable")).isEqualTo(bundle);assertThat(saved.input()).isNull();
+            var task=queue.claim(UUID.randomUUID()).orElseThrow();assertThat(task.problem().path("callable")).isEqualTo(bundle);
+            assertThat(task.problemSha256()).isEqualTo(JudgeJson.hash(JudgeJson.canonical(task.problem())));
+            assertThat(submit(alice,key).id()).isEqualTo(saved.id());
+            var run=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"[[[\"init\",0],[\"query\"]]]",null,null,"JAVA"));
+            var runPlan=JudgeJson.parse(jdbc.sql("SELECT run_package FROM submission WHERE id=?").param(run.id()).query(String.class).single());
+            assertThat(runPlan.path("callable")).isEqualTo(bundle);assertThat(runPlan.path("output_policy").asText()).isEqualTo("RUN_ONLY");
+            assertThatThrownBy(()->submissions.submit(bob,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,"CPP"))).isInstanceOf(AccountException.class);
+        } finally {jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id='sum-v1'").param(previous).param(JudgeJson.hash(previous)).update();}
+    }
     @Test void problemLimitsReachCatalogQueueAndRemainFrozenAcrossRetries() {
         String limits=ProblemTimeLimitsTest.limits(2,1,4);
         try {

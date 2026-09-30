@@ -17,7 +17,7 @@ final class HybridModels {
     static ApiRequest api(HybridGeneration.Assignment a,AiSettings config) {
         if(a.role()!=PRESENTATION&&a.role()!=READER&&a.role()!=CONTENT_REVIEW)throw new IllegalArgumentException("Not an API role");
         JsonNode input=checkedInput(a);
-        return new ApiRequest(a,slot(config,a.role()),instructions(a),JudgeJson.canonical(input),
+        return new ApiRequest(a,slot(config,a.role()),instructions(a)+(input.path("semantics").has("callable")||input.path("publicSnapshot").path("semantics").has("callable")?CallablePrograms.INSTRUCTIONS:""),JudgeJson.canonical(input),
                 (a.role()==CONTENT_REVIEW&&input.has("requirements")?"hybrid_content_review_requirements_v1":"hybrid_"+a.role().name().toLowerCase(Locale.ROOT)+"_v1"),outputSchema(a));
     }
     /** Provider-neutral author task: Codex and the API fallback receive identical instructions, data and schema. */
@@ -42,7 +42,7 @@ final class HybridModels {
             var required=reduced.putArray("required");required.add("schemaVersion").add("reference").add("authorNotes");
             outputSchema=reduced;
         }
-        return new AuthorTask(instructions+GenerationRequirements.AUTHOR,input,outputSchema);
+        return new AuthorTask(instructions+GenerationRequirements.AUTHOR+(input.path("contract").has("callable")?CallablePrograms.INSTRUCTIONS:""),input,outputSchema);
     }
     static CodexRequest codex(HybridGeneration.Assignment a,AiSettings config,OffsetDateTime deadline) {
         if(!author(a.role()))throw new IllegalArgumentException("Not a Codex role");
@@ -78,11 +78,11 @@ final class HybridModels {
                 }
                 else HybridArtifacts.fields(input,"language","semantics");
                 HybridArtifacts.require(input.path("language").asText().equals("ko"),"INVALID_LANGUAGE");
-                HybridArtifacts.fields(input.path("semantics"),HybridArtifacts.PUBLIC_FIELDS.toArray(String[]::new));}
+                HybridArtifacts.publicSemanticsShape(input.path("semantics"));}
             case READER -> {
                 if(input.has("sections"))HybridArtifacts.fields(input,"schemaVersion","title","context","sections","semantics","ruleExplanations");
                 else HybridArtifacts.fields(input,"schemaVersion","title","context","semantics","ruleExplanations");
-                HybridArtifacts.fields(input.path("semantics"),HybridArtifacts.PUBLIC_FIELDS.toArray(String[]::new));
+                HybridArtifacts.publicSemanticsShape(input.path("semantics"));
                 HybridArtifacts.require(JudgeJson.hash(JudgeJson.canonical(input)).equals(a.publicHash()),"PUBLIC_REVISION_MISMATCH");
             }
             case CONTENT_REVIEW -> {

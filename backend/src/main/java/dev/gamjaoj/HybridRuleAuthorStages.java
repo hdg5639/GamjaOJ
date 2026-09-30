@@ -34,8 +34,9 @@ class HybridRuleAuthorStages {
         }
         return new Snapshot(next,partial,List.copyOf(completed));
     }
-    static JsonNode schema(String stage) {
-        var whole=HybridRuleOnboarding.authorSchema();var result=JudgeJson.JSON.createObjectNode().put("type","object").put("additionalProperties",false);
+    static JsonNode schema(String stage) {return schema(stage,"GENERAL");}
+    static JsonNode schema(String stage,String style) {
+        var whole=HybridRuleOnboarding.authorSchema(style);var result=JudgeJson.JSON.createObjectNode().put("type","object").put("additionalProperties",false);
         var properties=result.putObject("properties");var required=result.putArray("required");
         for(String field:FIELDS.get(stage)) {
             properties.set(field,field.equals("solutionPlan")?JudgeJson.JSON.createObjectNode().put("type","string"):whole.path("properties").path(field).deepCopy());
@@ -43,9 +44,10 @@ class HybridRuleAuthorStages {
         }
         return result;
     }
-    static String instructions(String stage) {
+    static String instructions(String stage) {return instructions(stage,"GENERAL");}
+    static String instructions(String stage,String style) {
         return "STAGED RULE AUTHORING. The following requirements describe the final assembled package; this call produces ONLY the current stage's output schema. "
-                +HybridRuleOnboarding.AUTHOR_INSTRUCTIONS+HybridRuleOnboarding.AUTHOR_TARGETING
+                +HybridRuleOnboarding.AUTHOR_INSTRUCTIONS+HybridRuleOnboarding.AUTHOR_TARGETING+(CallablePrograms.style(style)?CallablePrograms.INSTRUCTIONS:"")
                 +" CURRENT STAGE: "+stage+". Return only "+String.join(", ",FIELDS.get(stage))+". "
                 +switch(stage) {
                     case "DESIGN" -> "Resolve the exact mathematical objective, legal domain and intended multi-step solution first. solutionPlan must explain algorithms, complexity at all joint maximum bounds, and why prohibited shortcuts fail. Do not write source code. If user objectives and required algorithms cannot be reconciled without changing explicit requirements, mark requirementsReview unsatisfied with specific reasons; do not silently change the objective.";
@@ -66,11 +68,11 @@ class HybridRuleAuthorStages {
             for(var rule:v.path("rules")){HybridArtifacts.fields(rule,"id","text");HybridArtifacts.text(rule.path("text"),4000);HybridArtifacts.require(ids.remove(rule.path("id").asText()),"RULE_PACKAGE_RULES");}
         } else if(stage.equals("CODE")) {
             HybridArtifacts.unfence(v,"reference","slowSolution");
-            HybridRuleOnboarding.source(v.path("reference"));HybridRuleOnboarding.source(v.path("slowSolution"));
+            HybridRuleOnboarding.solutionSource(v.path("reference"),v.path("reference").asText().matches("(?s).*\\bclass\\s+UserSolution\\b.*"));HybridRuleOnboarding.solutionSource(v.path("slowSolution"),v.path("slowSolution").asText().matches("(?s).*\\bclass\\s+UserSolution\\b.*"));
             HybridArtifacts.fields(v.path("authorNotes"),"algorithm","complexity","edgeCases");
             for(String key:List.of("algorithm","complexity","edgeCases"))HybridArtifacts.text(v.path("authorNotes").path(key),4000);
             HybridArtifacts.require(v.path("mutants").isArray()&&v.path("mutants").size()==2,"RULE_PACKAGE_MUTANTS");
-            for(var m:v.path("mutants")){HybridArtifacts.fields(m,"idea","source");HybridArtifacts.text(m.path("idea"),4000);HybridArtifacts.unfence(m,"source");HybridRuleOnboarding.source(m.path("source"));}
+            for(var m:v.path("mutants")){HybridArtifacts.fields(m,"idea","source");HybridArtifacts.text(m.path("idea"),4000);HybridArtifacts.unfence(m,"source");HybridRuleOnboarding.solutionSource(m.path("source"),m.path("source").asText().matches("(?s).*\\bclass\\s+UserSolution\\b.*"));}
         } else {
             HybridArtifacts.unfence(v,"generator","validator","largeGenerator");
             for(String key:List.of("generator","validator","largeGenerator"))HybridRuleOnboarding.source(v.path(key));

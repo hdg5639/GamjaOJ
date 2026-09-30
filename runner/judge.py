@@ -329,6 +329,8 @@ class Runner:
     def _judge(self, source, problem):
         try:
             validate_problem(problem)
+            if problem.get("callable") and self.profile["language"] != "JAVA":
+                raise ValueError("Callable problems require Java")
             if len(source) > SOURCE_LIMIT:
                 raise ValueError("Source exceeds 64 KiB")
         except ValueError as reason:
@@ -337,7 +339,7 @@ class Runner:
         run_dir = self.state_dir / "runs" / run_id
         run_dir.mkdir(parents=True, mode=0o700)
         problem_bytes = json.dumps(problem, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
-        (run_dir / self.profile["sourceFile"]).write_bytes(source)
+        (run_dir / ("UserSolution.java" if problem.get("callable") else self.profile["sourceFile"])).write_bytes(source)
         (run_dir / "problem.json").write_bytes(problem_bytes)
         custom = problem["output_policy"] == "RUN_ONLY"
         report = {"run_id": run_id, "policy": (runtime_policies(self.image)[1 if custom else 0] if self.image in [p['image'] for p in LANGUAGES.values()] + [(ROOT / 'runner/java21-image.txt').read_text().strip()] else POLICY), "image": self.image,
@@ -355,14 +357,23 @@ class Runner:
                 preparation_started = time.monotonic()
                 work = Path(directory)
                 work.chmod(0o755)
-                (work / self.profile["sourceFile"]).write_bytes(source)
-                (work / self.profile["sourceFile"]).chmod(0o444)
+                source_file = "UserSolution.java" if problem.get("callable") else self.profile["sourceFile"]
+                (work / source_file).write_bytes(source)
+                (work / source_file).chmod(0o444)
+                compile_command = self.profile["compileCommand"]
+                cache_source = source
+                if problem.get("callable"):
+                    driver = problem["callable"]["driver"].encode()
+                    (work / "Main.java").write_bytes(driver)
+                    (work / "Main.java").chmod(0o444)
+                    compile_command = [part.replace("/work/Main.java", "/work/Main.java /work/UserSolution.java") for part in compile_command]
+                    cache_source = source + b"\0JAVA_CALLABLE_V1\0" + driver
                 self.timings.segments.append(dict(phase="workspace_prepare", elapsedMs=round((time.monotonic()-preparation_started)*1000,3)))
-                cache_key = self.compile_cache.key(problem["version"], self.image, source) if self.compile_cache is not None else None
+                cache_key = self.compile_cache.key(problem["version"], self.image, cache_source) if self.compile_cache is not None else None
                 result = self.timings.call("compile_cache_lookup", self.compile_cache.get, cache_key) if cache_key is not None else None
                 cache_hit = result is not None
                 if result is None:
-                    result = self.timings.call("compile_total", self.sandbox, work, self.profile["compileCommand"], compile_phase=True)
+                    result = self.timings.call("compile_total", self.sandbox, work, compile_command, compile_phase=True)
                 report["compile"] = evidence(result)
                 report["compile"]["cache_hit"] = cache_hit
                 # wall_ms remains original build evidence, not current request latency.
@@ -497,6 +508,12 @@ def unpack_classes(archive, destination, artifact="class"):
 
 
 def validate_problem(problem):
+    if "callable" in problem:
+        api = problem["callable"]
+        if (not isinstance(api, dict) or api.get("format") != "JAVA_CALLABLE_V1"
+                or api.get("sourceFile") != "UserSolution.java"
+                or not isinstance(api.get("driver"), str) or not 1 <= len(api["driver"].encode()) <= 65536):
+            raise ValueError("Invalid callable driver")
     if problem.get("output_policy") not in ("TOKEN_EXACT", "RUN_ONLY") or not problem.get("version"):
         raise ValueError("Version and TOKEN_EXACT policy required")
     tests = problem.get("tests", [])
