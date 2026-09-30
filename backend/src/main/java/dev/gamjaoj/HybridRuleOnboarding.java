@@ -298,7 +298,7 @@ class HybridRuleOnboarding {
         if(next.isEmpty())return null;
         UUID id=(UUID)next.get()[0];boolean author=next.get()[1].equals("QUEUED");String role=author?"AUTHOR":"ORACLE";
         var request=JudgeJson.parse((String)next.get()[2]);
-        var m=model(role,request.path("difficulty").asText("MEDIUM"));String instructions=(author?AUTHOR_INSTRUCTIONS+AUTHOR_TARGETING:ORACLE_INSTRUCTIONS)+(CallablePrograms.style(request.path("style").asText())?CallablePrograms.INSTRUCTIONS:"");
+        var m=model(role,request.path("difficulty").asText("MEDIUM"));String instructions=(author?AUTHOR_INSTRUCTIONS+AUTHOR_TARGETING:ORACLE_INSTRUCTIONS)+(CallablePrograms.style(request.path("style").asText())?(author?CallablePrograms.INSTRUCTIONS:CallablePrograms.publicInstructions(false)):"");
         String repairContext=author?jdbc.sql("SELECT repair_json FROM hybrid_rule_onboarding WHERE id=?").param(next.get()[0]).query(String.class).optional().orElse(null):null;
         String input=author?authorInput((String)next.get()[2],repairContext):oracleInput(JudgeJson.parse((String)next.get()[3]),(String)next.get()[2]);JsonNode schema=author?authorSchema(JudgeJson.parse((String)next.get()[2]).path("style").asText()):oracleSchema();
         var amount=reserve(m,instructions,input,schema);var b=ledger.budget();

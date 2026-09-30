@@ -100,6 +100,7 @@ def main():
                 onboarding = next(v for v in call('/api/rules/onboarding') if v['id'] == onboarding['id'])
             record = {'onboardingId':onboarding['id'],'style':args.style,'index': index, 'request': request, 'status': onboarding['status'], 'error': onboarding['error'],
                       'label': onboarding['label'], 'versionId': onboarding['versionId'], 'spentUsd': onboarding['spentUsd'],
+                      'requirementIssues':onboarding.get('requirementIssues',[]),
                       'seconds': round(time.monotonic() - started, 1), 'checks': onboarding['checks']}
             results.append(record)
             print(json.dumps({k: record[k] for k in ('index', 'status', 'error', 'label', 'spentUsd', 'seconds')}, ensure_ascii=False), flush=True)
