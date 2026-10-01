@@ -41,7 +41,7 @@ for(const width of [390,768,1440])test(`home catalog filters, sharing and editor
   }
   await page.getByLabel('난이도',{exact:true}).selectOption('EASY');
   await expect(page.getByText('일치하는 문제가 없어요.',{exact:false})).toBeVisible();
-  await page.getByRole('button',{name:'검색 지우기',exact:true}).click();
+  await page.getByRole('button',{name:'검색 초기화',exact:true}).click();
   await page.getByRole('button',{name:'내가 만든 문제',exact:true}).click();
   await expect(list).toContainText('비공개');
   await page.getByRole('button',{name:'공개·분류 설정',exact:true}).click();
@@ -97,7 +97,7 @@ for(const width of [390,1440])test(`personal solve filters use catalog facts and
   await expect(list).toContainText('채점 중인 문제');
   finished=true;
   await expect(list).toBeHidden({timeout:10000}); // completion refresh removes it from the active filter, without a page reload
-  await page.getByRole('button',{name:'검색 지우기',exact:true}).click();
+  await page.getByRole('button',{name:'검색 초기화',exact:true}).click();
   await expect(page.getByLabel('내 풀이 상태')).toHaveValue('');
   if(!await page.getByLabel('내 풀이 상태').isVisible())await page.getByRole('button',{name:/^필터/}).click();
   await page.getByLabel('내 풀이 상태').selectOption('SOLVED');

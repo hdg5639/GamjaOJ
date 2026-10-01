@@ -27,7 +27,7 @@ public class SubmissionController {
         return ResponseEntity.accepted().body(submissions.submit(principal.getName(), key, request));
     }
     @GetMapping("/api/submissions")
-    List<Submissions.View> history(Principal principal,@RequestParam(required=false) String problemVersion,@RequestParam(defaultValue="0") int page) { return submissions.history(principal.getName(),problemVersion,page); }
+    List<Submissions.View> history(Principal principal,@RequestParam(required=false) String problemVersion,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size) { return submissions.history(principal.getName(),problemVersion,page,size); }
     @GetMapping("/api/submissions/{id}")
     Submissions.View detail(Principal principal, @PathVariable UUID id) { return submissions.detail(principal.getName(), id); }
 }

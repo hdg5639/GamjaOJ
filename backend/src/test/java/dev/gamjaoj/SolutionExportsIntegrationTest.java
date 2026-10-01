@@ -33,13 +33,14 @@ class SolutionExportsIntegrationTest {
  }
  ObjectNode target(){return ExportRemote.obj().put("id","123").put("repo","owner/repo").put("branch","main").put("prefix","GamjaOJ").put("label","owner/repo");}
  void connect(String provider,boolean auto){jdbc.sql("INSERT INTO export_connection(id,user_id,provider,credentials,account_label,target_json,auto_enabled) VALUES (?,?,?,?,?,?,?)").param(UUID.randomUUID()).param(user).param(provider).param(vault.seal(user+":"+provider,ExportRemote.obj().put("access_token","test-token"))).param("fixture").param(target().toString()).param(auto).update();}
- UUID accepted(){var s=submissions.submit(name,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE));var a=queue.claim(UUID.randomUUID()).orElseThrow();var r=new SubmissionIntegrationTest().report(a);queue.complete(s.id(),a.token(),r);queue.complete(s.id(),a.token(),r);return s.id();}
+ UUID accepted(){var s=submissions.submit(name,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE));var a=queue.claim(UUID.randomUUID()).orElseThrow();var r=new SubmissionIntegrationTest().report(a);for(var t:r.path("tests"))((ObjectNode)t).put("memory_peak_bytes",33554432).put("memory_measurement","cgroup-peak-observed");queue.complete(s.id(),a.token(),r);queue.complete(s.id(),a.token(),r);return s.id();}
  int count(){return jdbc.sql("SELECT count(*) FROM solution_export").query(Integer.class).single();}
  @Test void realJudgeCompletionAtomicallyEnqueuesOnceAndExternalIoHoldsNoTransaction(){
   UUID submission=accepted();assertThat(count()).isEqualTo(1);verifyNoInteractions(remote);
   when(remote.publish(anyString(),anyString(),any(),any(),any(),any(),any())).thenAnswer(call->{
    assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
    assertThat(call.getArgument(1,String.class)).isEqualTo("test-token");assertThat(call.getArgument(3,ObjectNode.class).path("source").asText()).isEqualTo(SOURCE);
+   var payload=call.getArgument(3,ObjectNode.class);assertThat(payload.path("difficulty").asText()).isEqualTo("EASY");assertThat(payload.path("maxWallMs").asLong()).isEqualTo(1);assertThat(payload.path("maxMemoryBytes").asLong()).isEqualTo(33554432);assertThat(payload.has("tests")).isFalse();assertThat(payload.has("statement")).isFalse();
    ((Runnable)call.getArgument(6)).run();return "https://github.com/owner/repo";
   });
   assertThat(exports.runOne()).isTrue();assertThat(exports.deliveries(name,submission).getFirst().status()).isEqualTo("SUCCEEDED");assertThat(exports.runOne()).isFalse();
@@ -73,6 +74,13 @@ class SolutionExportsIntegrationTest {
   when(remote.target(anyString(),anyString(),anyString(),any(),any())).thenReturn(target().put("prefix","different"));exports.save(name,"GITHUB","owner/repo","main","different",true);
   assertThatThrownBy(()->exports.fence(work)).isInstanceOf(ExportRemote.Failure.class);assertThat(exports.deliveries(name,null).getFirst().status()).isEqualTo("CANCELLED");
  }
+ @Test void httpSelectsReadableLayoutAndKeepsLegacyIdentitySeparate()throws Exception{
+  accepted();var old=exports.claim();when(remote.target(anyString(),anyString(),anyString(),any(),any())).thenReturn(target());
+  mvc.perform(put("/api/integrations/GITHUB/target").with(user(name)).with(csrf()).contentType("application/json").content("{\"targetId\":\"owner/repo\",\"branch\":\"main\",\"prefix\":\"GamjaOJ\",\"autoEnabled\":true,\"layout\":\"problem-v1\"}")).andExpect(status().isNoContent());
+  var selected=exports.connection(user,"GITHUB").target();assertThat(selected.path("layout").asText()).isEqualTo("problem-v1");
+  assertThat(SolutionExports.targetHash(selected)).isNotEqualTo(SolutionExports.targetHash(target()));assertThatThrownBy(()->exports.fence(old)).isInstanceOf(ExportRemote.Failure.class);
+  mvc.perform(put("/api/integrations/GITHUB/target").with(user(name)).with(csrf()).contentType("application/json").content("{\"targetId\":\"owner/repo\",\"layout\":\"invalid\"}")).andExpect(status().isBadRequest());
+ }
  @Test void vaultBindsCiphertextToOwnerAndNeverExposesCredentialsOverHttp()throws Exception{
   var c=exports.connection(user,"GITHUB");assertThat(c.credentials()).doesNotContain("test-token");assertThatThrownBy(()->vault.open("wrong-owner",c.credentials())).isInstanceOf(ExportRemote.Failure.class);
   mvc.perform(get("/api/integrations")).andExpect(status().isUnauthorized());
@@ -86,6 +94,15 @@ class SolutionExportsIntegrationTest {
   exports.callback(name,"GITHUB",state,"code");assertThatThrownBy(()->exports.callback(name,"GITHUB",state,"code")).isInstanceOf(AccountException.class);verify(remote,times(1)).exchange(anyString(),anyString(),anyString());
   String next=exports.start(name,"GITHUB");when(remote.exchange(anyString(),anyString(),anyString())).thenAnswer(c->{exports.disconnect(name,"GITHUB");return ExportRemote.obj().put("access_token","lost-token");});
   assertThatThrownBy(()->exports.callback(name,"GITHUB",next,"code")).isInstanceOf(AccountException.class);assertThatThrownBy(()->exports.connection(user,"GITHUB")).isInstanceOf(AccountException.class);
+ }
+ @Test void automaticSwitchIsOwnerBoundCsrfProtectedAndPreservesDestinationAndManualExports()throws Exception{
+  var before=exports.connection(user,"GITHUB").target();
+  mvc.perform(patch("/api/integrations/GITHUB/automatic").with(user(name)).contentType("application/json").content("{\"enabled\":false}")).andExpect(status().isForbidden());
+  mvc.perform(patch("/api/integrations/GITHUB/automatic").with(user(name)).with(csrf()).contentType("application/json").content("{\"enabled\":false}")).andExpect(status().isNoContent());
+  assertThat(exports.connection(user,"GITHUB").target()).isEqualTo(before);assertThat(exports.connection(user,"GITHUB").auto()).isFalse();
+  UUID id=accepted();assertThat(count()).isZero();exports.request(name,"GITHUB",id);assertThat(count()).isEqualTo(1);
+  mvc.perform(patch("/api/integrations/GITHUB/automatic").with(user(name)).with(csrf()).contentType("application/json").content("{\"enabled\":true}")).andExpect(status().isNoContent());
+  assertThat(exports.connection(user,"GITHUB").auto()).isTrue();verifyNoInteractions(remote);
  }
  @Test void disabledAutoRequiresManualAndUserDeletionCascades(){jdbc.sql("UPDATE export_connection SET auto_enabled=false").update();UUID id=accepted();assertThat(count()).isZero();exports.request(name,"GITHUB",id);assertThat(count()).isEqualTo(1);jdbc.sql("DELETE FROM app_user WHERE id=?").param(user).update();assertThat(count()).isZero();assertThat(jdbc.sql("SELECT count(*) FROM export_connection").query(Integer.class).single()).isZero();}
  @Test void reconnectSameAccountPreservesPageMappingAndRefreshPreservesAccountIdentity(){
@@ -112,4 +129,25 @@ class SolutionExportsIntegrationTest {
   assertThat(vault.open(user+":GITHUB",exports.connection(user,"GITHUB").credentials()).path("refresh_token").asText()).isEqualTo("rotated");
  }
 
+ @Test void notionTableSetupStateIsSharedAcrossDeliveriesAndSurvivesUncertainCreation(){
+  var tables=new NotionTableRegistry(jdbc,mvc.getDispatcherServlet().getWebApplicationContext().getBean(org.springframework.transaction.PlatformTransactionManager.class));
+  var parent=ExportRemote.obj().put("id","parent").put("kind","notion_table_parent");
+  when(remote.notionTableSource(anyString(),any(),any(),any(),any())).thenAnswer(call->{
+   assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+   ObjectNode state=call.getArgument(2);((Runnable)call.getArgument(4)).run();
+   var checkpoint=call.getArgument(3,java.util.function.Consumer.class);
+   if(!state.path("creatingTable").asBoolean()){
+    state.put("creatingTable",true);checkpoint.accept(state);throw new ExportRemote.Failure("NETWORK_ERROR",true);
+   }
+   assertThat(jdbc.sql("SELECT remote_json FROM notion_export_table WHERE user_id=?").param(user).query(String.class).single()).contains("creatingTable");
+   state.put("dataSourceId","source");checkpoint.accept(state);return "source";
+  });
+  assertThatThrownBy(()->tables.resolve(user,"token",parent,remote,()->{})).hasMessage("NETWORK_ERROR");
+  assertThat(tables.resolve(user,"token",parent,remote,()->{}).path("dataSourceId").asText()).isEqualTo("source");
+  assertThat(jdbc.sql("SELECT count(*) FROM notion_export_table WHERE user_id=?").param(user).query(Integer.class).single()).isEqualTo(1);
+  assertThat(jdbc.sql("SELECT count(*) FROM notion_export_table WHERE user_id=? AND lease_token IS NULL").param(user).query(Integer.class).single()).isEqualTo(1);
+  var secondProcess=new NotionTableRegistry(jdbc,mvc.getDispatcherServlet().getWebApplicationContext().getBean(org.springframework.transaction.PlatformTransactionManager.class));
+  assertThat(secondProcess.resolve(user,"token",parent,remote,()->{}).path("dataSourceId").asText()).isEqualTo("source");
+  assertThat(SolutionExports.targetHash(parent)).isNotEqualTo(SolutionExports.targetHash(ExportRemote.obj().put("id","parent")));
+ }
 }

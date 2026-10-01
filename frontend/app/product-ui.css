@@ -667,6 +667,14 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
 .export-toggle input { width: 18px; height: 18px; flex: 0 0 auto; }
 .export-disconnect { margin-top: 12px; }
 .export-disconnect button+button { margin-left: 8px; }
+.export-auto-control { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 0; margin-bottom:16px; border-bottom:1px solid var(--line); }
+.export-auto-control strong { font-size:13px; }
+.export-auto-control .muted { margin:4px 0 0; }
+.export-auto-switch { display:flex; align-items:center; gap:8px; flex-shrink:0; padding:6px; border:0; border-radius:6px; background:transparent; color:var(--ink); font-size:12px; }
+.export-switch-track { display:flex; align-items:center; width:40px; height:24px; padding:3px; border:1px solid var(--muted); border-radius:14px; background:var(--subtle); }
+.export-switch-track>span { width:16px; height:16px; border-radius:50%; background:var(--muted); }
+.export-auto-switch[aria-checked="true"] .export-switch-track { justify-content:flex-end; background:var(--green); border-color:var(--green); }
+.export-auto-switch[aria-checked="true"] .export-switch-track>span { background:white; }
 .export-current,.export-deliveries { overflow-wrap: anywhere; }
 .export-deliveries { list-style: none; padding: 0; margin: 12px 0; }
 .export-deliveries li { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding: 12px 0; font-size: 12px; }
@@ -676,3 +684,91 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
 .submission-export { margin: 12px 0; padding: 12px 0; border-top: 1px solid var(--line); }
 .export-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 @media(max-width:600px) { .export-search,.export-fields { grid-template-columns: minmax(0,1fr); } .export-search button { justify-self: start; } .export-deliveries li { flex-wrap: wrap; } }
+
+/* Settings have their own reading width and navigation, independent of the login form. */
+.settings-page { max-width:1200px; min-height:0; padding:32px; margin:0 auto; }
+.settings-container { min-width:0; }
+.settings-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:28px; padding:0; border:0; background:transparent; }
+.settings-heading .workspace-title { margin:0 0 8px; font-size:26px; letter-spacing:-.8px; }
+.settings-heading .muted { margin:0; font-size:13px; }
+.settings-username { color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
+.settings-layout { display:grid; grid-template-columns:180px minmax(0,1fr); align-items:start; gap:32px; }
+.settings-navigation { position:sticky; top:0; display:grid; gap:4px; padding:8px 0; }
+.settings-navigation a { padding:12px; border-radius:6px; color:var(--muted); font-size:13px; font-weight:600; text-decoration:none; }
+.settings-navigation a:hover,.settings-navigation a:focus-visible { color:var(--ink); background:var(--subtle); }
+.settings-content { min-width:0; display:grid; gap:24px; }
+.settings-section { min-width:0; padding:24px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); }
+.settings-section-heading { margin-bottom:24px; }
+.settings-section-heading h2 { font-size:18px; margin:0 0 8px; }
+.settings-section-heading .muted { margin:0; max-width:70ch; }
+.settings-profile form { max-width:600px; }
+.settings-profile .primary { justify-self:start; min-width:128px; }
+.settings-content :is(h2,h3) { scroll-margin-top:24px; }
+.settings-content .integrations { margin:0; }
+.export-providers { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; align-items:start; }
+.export-providers .export-provider { min-width:0; padding:0; border:0; }
+.export-providers .export-provider + .export-provider { border-left:1px solid var(--line); padding-left:24px; }
+.export-providers .export-heading { align-items:baseline; margin-bottom:16px; }
+.export-providers .export-heading h3 { margin:0; font-size:16px; }
+.export-providers .export-heading .muted { margin:0; }
+.export-providers .export-search { grid-template-columns:minmax(0,1fr); gap:8px; }
+.export-providers .export-search button { justify-self:start; }
+.export-providers .export-current { padding:12px; background:var(--subtle); border-left:3px solid var(--green); font-size:12px; line-height:1.65; margin-bottom:16px; }
+.export-providers form>.muted { margin:0; }
+.export-history { margin-top:24px; padding-top:16px; border-top:1px solid var(--line); }
+.export-history .export-heading { margin-bottom:12px; }
+.export-history .export-heading h3 { margin:0; }
+.export-history .export-deliveries { margin-bottom:0; }
+.settings-account .account-deletion { margin:0; padding:0; border:0; }
+.settings-account .account-deletion summary { width:fit-content; padding:8px 0; font-size:13px; }
+.settings-account .account-deletion[open] summary { margin-bottom:12px; }
+.settings-account .account-deletion p { max-width:75ch; font-size:13px; line-height:1.8; color:var(--muted); }
+.settings-account .account-deletion form { max-width:600px; }
+.settings-account .danger { justify-self:start; }
+.catalog-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:12px; align-items:end; }
+.catalog-toolbar label { max-width:none; min-width:0; margin:0; }
+.catalog-toolbar .catalog-reset { background:var(--surface); color:var(--muted); min-height:42px; }
+.catalog-toolbar .filter-toggle { min-height:42px; }
+.catalog-results { scroll-margin-top:16px; }
+.list-pagination { display:flex; align-items:center; justify-content:center; gap:8px; padding:20px 0; flex-wrap:wrap; }
+.pagination-numbers { display:flex; align-items:center; gap:4px; }
+.pagination-numbers button { min-width:36px; padding:8px; }
+.pagination-numbers button[aria-current="page"] { background:var(--green); border-color:var(--green); color:white; }
+.pagination-numbers span { padding:0 4px; color:var(--muted); }
+.pagination-position { display:none; color:var(--muted); font-size:13px; }
+.my-record-toolbar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin:16px 0; }
+.my-record-toolbar .muted { margin:0; scroll-margin-top:16px; }
+.my-record-toolbar .list-pagination { padding:0; }
+.execution-metrics { display:flex; flex-wrap:wrap; gap:8px 24px; margin:12px 0; font-size:12px; color:var(--muted); }
+.execution-metrics span { display:flex; gap:8px; }
+.execution-metrics strong { color:var(--ink); font-variant-numeric:tabular-nums; }
+.run-console .execution-metrics { color:#9fb2ad; }
+.run-console .execution-metrics strong { color:#e6efec; }
+@media(max-width:600px) {
+ .catalog-toolbar { grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+ .catalog-toolbar label { grid-column:1 / -1; }
+ .catalog-toolbar .catalog-reset { justify-self:start; }
+ .pagination-numbers { display:none; }
+ .pagination-position { display:block; padding:0 12px; }
+}
+@media(max-width:1050px) {
+ .settings-layout { grid-template-columns:160px minmax(0,1fr); gap:24px; }
+ .export-providers { grid-template-columns:minmax(0,1fr); }
+ .export-providers .export-provider + .export-provider { border-left:0; padding-left:0; border-top:1px solid var(--line); padding-top:24px; }
+ .export-providers .export-search { grid-template-columns:minmax(0,1fr) auto; align-items:end; }
+}
+@media(max-width:760px) {
+ .settings-page { padding:24px 16px; }
+ .settings-heading { flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+ .settings-heading .workspace-title { font-size:23px; }
+ .settings-layout { grid-template-columns:minmax(0,1fr); gap:20px; }
+ .settings-navigation { position:static; display:flex; flex-wrap:wrap; gap:4px; border-bottom:1px solid var(--line); padding:0 0 12px; }
+ .settings-navigation a { padding:8px 10px; font-size:12px; }
+ .settings-section { padding:20px; }
+ .settings-content { gap:20px; }
+ .settings-section-heading { margin-bottom:20px; }
+}
+@media(max-width:480px) {
+ .export-providers .export-search { grid-template-columns:minmax(0,1fr); }
+ .settings-profile .primary { width:100%; }
+}

@@ -29,9 +29,9 @@ def main():
     key=local.get('OPENAI_API_KEY','')
     if not key or any(c.isspace() for c in key):parser.error('OPENAI_API_KEY is missing or invalid')
     update={'OPENAI_API_KEY':key,'AI_API_ENABLED':str(args.enable).lower(),'AI_MONTHLY_BUDGET_USD':str(Decimal(args.budget_usd)),
-            'AI_DEFAULT_MODEL':'gpt-5.6-luna','AI_DEFAULT_REASONING':'low',
-            'AI_STRONG_MODEL':'gpt-5.6-terra','AI_STRONG_REASONING':'medium',
-            'CODEX_GENERATION_MODEL':'gpt-5.6-sol','CODEX_GENERATION_REASONING':'medium'}
+            'AI_DEFAULT_MODEL':'gpt-6-luna','AI_DEFAULT_REASONING':'low',
+            'AI_STRONG_MODEL':'gpt-6.1-sol','AI_STRONG_REASONING':'medium',
+            'CODEX_GENERATION_MODEL':'gpt-6.1-sol','CODEX_GENERATION_REASONING':'medium'}
     if args.operators is not None:update['AI_OPERATOR_USERS']=args.operators
     remote='''import json,os,secrets,sys
 from pathlib import Path

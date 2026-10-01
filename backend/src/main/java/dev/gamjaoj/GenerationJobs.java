@@ -53,7 +53,7 @@ public class GenerationJobs {
         if(jdbc.sql("SELECT count(*) FROM generation_job WHERE owner_id=? AND status IN ('QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING')").param(owner).query(Integer.class).single()>0)
             throw new AccountException(409,"진행 중인 생성 작업을 먼저 마쳐 주세요.");
         JsonNode learning=sourceAnalysis==null?null:learningContext(owner,sourceAnalysis,type);
-        String model=settings.value("CODEX_GENERATION_MODEL","gpt-5.6-sol"),effort=settings.value("CODEX_GENERATION_REASONING","medium");
+        String model=settings.value("CODEX_GENERATION_MODEL","gpt-6.1-sol"),effort=settings.value("CODEX_GENERATION_REASONING","medium");
         if(!List.of("low","medium","high","xhigh","max").contains(effort)) throw new AccountException(503,"Codex reasoning 설정을 확인해 주세요.");
         jdbc.sql("INSERT INTO generation_job (id,owner_id,template_id,status,model,effort,focus) VALUES (?,?,?,'QUEUED',?,?,?)")
                 .param(key).param(owner).param(template).param(model).param(effort).param(focus).update();

@@ -30,7 +30,7 @@ class AiIntegrationTest {
     @MockitoBean AiProvider provider;
     UUID alice,bob,submission;
     @BeforeEach void setup() {
-        TestPropertyValues.of("AI_API_ENABLED=true","AI_MONTHLY_BUDGET_USD=10","AI_DEFAULT_MODEL=gpt-5.6-luna").applyTo(environment);
+        TestPropertyValues.of("AI_API_ENABLED=true","AI_MONTHLY_BUDGET_USD=10","AI_DEFAULT_MODEL=gpt-6-luna").applyTo(environment);
         jdbc.sql("DELETE FROM ai_attempt").update();jdbc.sql("DELETE FROM ai_budget_notice").update();jdbc.sql("DELETE FROM app_user").update();
         alice=createUser("alice");bob=createUser("bob");submission=submission(alice,null);
     }
@@ -42,7 +42,7 @@ class AiIntegrationTest {
         jdbc.sql("INSERT INTO judge_job (submission_id,status,verdict,result_json,result_sha256,finished_at) VALUES (?,'FINISHED','WA','{}',?,CURRENT_TIMESTAMP)").param(id).param(JudgeJson.hash("{}" )).update();return id;
     }
     static JsonNode feedback() { return JudgeJson.parse("{\"summary\":\"확인한 피드백\",\"observations\":[\"코드 근거\"],\"nextSteps\":[\"입력을 확인하세요\"],\"uncertainty\":\"숨은 테스트는 알 수 없음\"}"); }
-    OpenAiResponses.Result result() { return new OpenAiResponses.Result(feedback(),JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":50,\"input_tokens_details\":{\"cached_tokens\":20}}"),"response","request","gpt-5.6-luna"); }
+    OpenAiResponses.Result result() { return new OpenAiResponses.Result(feedback(),JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":50,\"input_tokens_details\":{\"cached_tokens\":20}}"),"response","request","gpt-6-luna"); }
     @Test void cacheIsPerUserSubmissionJudgeAndSettingsAndDoesNotChangeVerdict() {
         var first=tasks.request("alice",submission,"ANALYSIS","",false);
         assertThat(tasks.request("alice",submission,"ANALYSIS","",false).id()).isEqualTo(first.id());
@@ -51,7 +51,7 @@ class AiIntegrationTest {
         assertThat(tasks.request("alice",submission,"ANALYSIS","",false).id()).isEqualTo(first.id());
         worker.tick();verify(provider,times(1)).feedback(any(),anyString());
         assertThat(jdbc.sql("SELECT verdict FROM judge_job WHERE submission_id=?").param(submission).query(String.class).single()).isEqualTo("WA");
-        assertThat(tasks.budget("alice").spentUsd()).isEqualByComparingTo("0.0000764");
+        assertThat(tasks.budget("alice").spentUsd()).isEqualByComparingTo("0.0000332");
         assertThat(tasks.budget("alice").reservedUsd()).isZero();
         jdbc.sql("UPDATE judge_job SET result_sha256=? WHERE submission_id=?").param(JudgeJson.hash("new judge evidence")).param(submission).update();
         assertThat(tasks.request("alice",submission,"ANALYSIS","",false).id()).isNotEqualTo(first.id());
@@ -85,14 +85,14 @@ class AiIntegrationTest {
         assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt").query(Integer.class).single()).isEqualTo(2);
     }
     @Test void concurrentAdmissionReservesServiceWideBudgetBeforeCalls() throws Exception {
-        TestPropertyValues.of("AI_MONTHLY_BUDGET_USD=0.005").applyTo(environment);
+        TestPropertyValues.of("AI_MONTHLY_BUDGET_USD=0.0025").applyTo(environment);
         tasks.request("alice",submission,"ANALYSIS","",false);
         tasks.request("bob",submission(bob,null),"ANALYSIS","",false);
         try(var pool=java.util.concurrent.Executors.newFixedThreadPool(2)) {
             var a=pool.submit(()->tasks.claim());var b=pool.submit(()->tasks.claim());
             assertThat(java.util.stream.Stream.of(a.get(),b.get()).filter(java.util.Objects::nonNull).count()).isEqualTo(1);
         }
-        assertThat(tasks.budget("alice").reservedUsd()).isLessThanOrEqualTo(new BigDecimal("0.005"));
+        assertThat(tasks.budget("alice").reservedUsd()).isLessThanOrEqualTo(new BigDecimal("0.0025"));
     }
     @Test void sessionEndingSelectsLatestFinishedSubmissionOnceAndNotEveryWrongAnswer() {
         worker.tick();verifyNoInteractions(provider);
@@ -105,9 +105,9 @@ class AiIntegrationTest {
     }
     @Test void operatorStrongIsExplicitAndModelFailureNeverPromotesOrFallsBack() {
         var task=tasks.request("alice",submission,"ANALYSIS","",true);
-        assertThat(task.model()).isEqualTo("gpt-5.6-terra");assertThat(task.effort()).isEqualTo("medium");
+        assertThat(task.model()).isEqualTo("gpt-6.1-sol");assertThat(task.effort()).isEqualTo("medium");
         when(provider.feedback(any(),anyString())).thenThrow(new OpenAiResponses.Failure("REQUEST_REJECTED",null,"model-not-available"));
-        worker.tick();worker.tick();verify(provider,times(1)).feedback(argThat(s->s.model().equals("gpt-5.6-terra")),anyString());
+        worker.tick();worker.tick();verify(provider,times(1)).feedback(argThat(s->s.model().equals("gpt-6.1-sol")),anyString());
         assertThat(tasks.detail("alice",task.id()).errorCode()).isEqualTo("REQUEST_REJECTED");
     }
     @Test void wildcardOperatorListOpensStrongAnalysisToEveryUser() {
@@ -115,12 +115,12 @@ class AiIntegrationTest {
         assertThatThrownBy(()->tasks.request("bob",own,"ANALYSIS","",true)).isInstanceOf(AccountException.class);
         TestPropertyValues.of("AI_OPERATOR_USERS=*").applyTo(environment);
         try {
-            assertThat(tasks.request("bob",own,"ANALYSIS","",true).model()).isEqualTo("gpt-5.6-terra");
+            assertThat(tasks.request("bob",own,"ANALYSIS","",true).model()).isEqualTo("gpt-6.1-sol");
             assertThat(tasks.budget("bob").limitUsd()).isNotNull();
         } finally { TestPropertyValues.of("AI_OPERATOR_USERS=alice").applyTo(environment); }
     }
     @Test void eightyPercentIsPersistentOperatorNotice() {
-        TestPropertyValues.of("AI_MONTHLY_BUDGET_USD=0.004").applyTo(environment);
+        TestPropertyValues.of("AI_MONTHLY_BUDGET_USD=0.002").applyTo(environment);
         tasks.request("alice",submission,"ANALYSIS","",false);tasks.claim();
         assertThat(tasks.budget("alice").warning()).isTrue();
         assertThat(jdbc.sql("SELECT count(*) FROM ai_budget_notice").query(Integer.class).single()).isEqualTo(1);

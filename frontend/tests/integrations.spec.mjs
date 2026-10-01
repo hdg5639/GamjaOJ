@@ -12,7 +12,7 @@ for(const width of [390,1440])test(`export settings select destination, retry an
   if(u.pathname==='/api/integrations/deliveries')data=deliveries;
   if(u.pathname==='/api/integrations/GITHUB/targets')data=[{id:'learner/solutions',label:'learner/solutions',privateTarget:false,branch:'main'}];
   if(u.pathname==='/api/integrations/GITHUB/target'){
-   expect(r.headers()['x-csrf-token']).toBe('fixture');saved=r.postDataJSON();connections[0]={...connections[0],autoEnabled:saved.autoEnabled,target:{id:'repo-id',repo:saved.targetId,label:saved.targetId,url:'https://github.com/'+saved.targetId,private:false,branch:saved.branch,prefix:saved.prefix}};
+   expect(r.headers()['x-csrf-token']).toBe('fixture');saved=r.postDataJSON();connections[0]={...connections[0],autoEnabled:saved.autoEnabled,target:{id:'repo-id',repo:saved.targetId,label:saved.targetId,url:'https://github.com/'+saved.targetId,private:false,branch:saved.branch,prefix:saved.prefix,layout:saved.layout}};
    return route.fulfill({status:204});
   }
   if(u.pathname==='/api/integrations/deliveries/delivery/retry'){retries++;deliveries=[{...deliveries[0],status:'QUEUED',error:null}];return route.fulfill({status:204});}
@@ -24,7 +24,7 @@ for(const width of [390,1440])test(`export settings select destination, retry an
  const github=page.getByRole('region',{name:'GitHub 연동'});
  await github.getByRole('button',{name:'목록 불러오기'}).click();await github.getByRole('combobox',{name:'저장 위치',exact:true}).selectOption('learner/solutions');
  await github.getByLabel('앞으로 통과한 풀이 자동 저장').check();await github.getByRole('button',{name:'저장 설정 적용'}).click();
- await expect(github.getByText('저장 위치와 자동 저장 설정을 적용했어요.')).toBeVisible();expect(saved).toEqual({targetId:'learner/solutions',branch:'main',prefix:'GamjaOJ',autoEnabled:true});
+ await expect(github.getByText('저장 위치와 자동 저장 설정을 적용했어요.')).toBeVisible();expect(saved).toEqual({targetId:'learner/solutions',branch:'main',prefix:'GamjaOJ',autoEnabled:true,layout:'problem-v1'});
  await expect(github.locator('.export-current')).toContainText('공개 저장소');await page.screenshot({path:`/tmp/gamja-integrations-connected-${width}.png`,fullPage:true});await page.getByRole('button',{name:'재시도',exact:true}).click();await expect(page.getByText('저장 대기',{exact:true})).toBeVisible();expect(retries).toBe(1);
  await github.getByRole('button',{name:'연결 해제',exact:true}).click();expect(disconnected).toBe(false);await github.getByRole('button',{name:'취소',exact:true}).click();
  await github.getByRole('button',{name:'연결 해제',exact:true}).click();await github.getByRole('button',{name:'연결 해제 확인'}).click();await expect(github.getByRole('button',{name:'GitHub 연결'})).toBeVisible();expect(disconnected).toBe(true);
@@ -35,4 +35,30 @@ for(const width of [390,1440])test(`export settings select destination, retry an
 test('failed settings load offers refresh and preserves the account form',async({page})=>{
  await page.route('**/api/**',route=>{const p=new URL(route.request().url()).pathname;if(p==='/api/me')return route.fulfill({json:{id:'error-user',username:'learner',nickname:'학습자'}});if(p==='/api/integrations')return route.fulfill({status:503,json:{message:'잠시 후 다시 시도해 주세요.'}});return route.fulfill({json:[]});});
  await page.goto(base+'/?settings=integrations');await expect(page.locator('.integrations [role=alert]')).toContainText('잠시 후 다시 시도해 주세요.');await expect(page.getByLabel('닉네임')).toHaveValue('학습자');await expect(page.getByRole('button',{name:'새로고침',exact:true})).toBeEnabled();
+});
+for(const width of [390,1440])test(`Notion selects a page for an automatic table or an existing database at ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:900});let saved;
+ let connection={provider:'NOTION',available:true,connected:true,status:'CONNECTED',account:'내 작업 공간',target:null,autoEnabled:false};
+ await page.route('**/api/**',async route=>{
+  const r=route.request(),p=new URL(r.url()).pathname;let data=[];
+  if(p==='/api/me')data={id:'notion-user',username:'learner',nickname:'학습자',trainingGoal:''};
+  if(p==='/api/integrations')data=[connection];
+  if(p==='/api/integrations/NOTION/targets')data=[{id:'parent',label:'페이지 · 학습 노트'},{id:'data_source:source',label:'표 · 풀이 기록'}];
+  if(p==='/api/integrations/NOTION/target'){
+   expect(r.headers()['x-csrf-token']).toBe('fixture');saved=r.postDataJSON();
+   connection={...connection,autoEnabled:saved.autoEnabled,target:{id:saved.targetId,kind:saved.targetId.startsWith('data_source:')?'notion_table':'notion_table_parent',label:'풀이 기록',url:'https://www.notion.so/test'}};
+   return route.fulfill({status:204});
+  }
+  if(p==='/api/auth/csrf')data={headerName:'X-CSRF-TOKEN',token:'fixture'};
+  return route.fulfill({json:data});
+ });
+ await page.goto(base+'/?settings=integrations');const notion=page.getByRole('region',{name:'Notion 연동'});
+ await expect(notion.getByText(/첫 풀이 저장 때/)).toBeVisible();await notion.getByRole('button',{name:'목록 불러오기'}).click();
+ const destination=notion.getByRole('combobox',{name:'저장 위치',exact:true});await destination.selectOption('parent');
+ await notion.getByLabel('앞으로 통과한 풀이 자동 저장').check();await notion.getByRole('button',{name:'저장 설정 적용'}).click();
+ await expect(notion.locator('.export-current')).toContainText('페이지 안의 풀이 표');expect(saved.targetId).toBe('parent');expect(saved.autoEnabled).toBe(true);
+ await destination.selectOption('data_source:source');await notion.getByRole('button',{name:'저장 설정 적용'}).click();
+ await expect.poll(()=>saved?.targetId).toBe('data_source:source');await expect(notion.locator('.export-current')).toContainText(' · 풀이 표');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.screenshot({path:`/tmp/gamja-notion-table-${width}.png`,fullPage:true});
 });

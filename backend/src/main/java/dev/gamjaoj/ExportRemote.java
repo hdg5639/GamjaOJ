@@ -69,12 +69,16 @@ class ExportRemote {
                 if(targets.size()>=200)break;
             }
         } else {
-            var body=obj().put("page_size",100).put("query",search);body.putObject("filter").put("property","object").put("value","page");
+            var body=obj().put("page_size",100).put("query",search);
             for(int page=0;page<10;page++) {
                 var response=api(provider,token,"POST","/search",body);
                 for(var item:response.path("results"))if(!item.path("archived").asBoolean()&&!item.path("in_trash").asBoolean()){
-                    String title="";for(var property:item.path("properties"))if(property.path("type").asText().equals("title"))title=plain(property.path("title"));
-                    targets.add(new Target(item.path("id").asText(),title.isBlank()?"제목 없는 페이지":title,item.path("url").asText(),true,null));
+                    boolean table=item.path("object").asText().equals("data_source");
+                    if(!table&&!item.path("object").asText().equals("page"))continue;
+                    String title=table?plain(item.path("title")):"";
+                    if(!table)for(var property:item.path("properties"))if(property.path("type").asText().equals("title"))title=plain(property.path("title"));
+                    targets.add(new Target((table?"data_source:":"")+item.path("id").asText(),
+                        (table?"표 · ":"페이지 · ")+(title.isBlank()?"제목 없음":title),item.path("url").asText(),true,null));
                 }
                 if(!response.path("has_more").asBoolean()||targets.size()>=200)break;
                 body.put("start_cursor",response.path("next_cursor").asText());
@@ -96,31 +100,61 @@ class ExportRemote {
             return obj().put("id",repo.path("id").asText()).put("label",repo.path("full_name").asText()).put("repo",repo.path("full_name").asText())
                 .put("branch",selected).put("prefix",folder).put("private",repo.path("private").asBoolean()).put("url",repo.path("html_url").asText());
         }
-        try{id=UUID.fromString(id).toString();}catch(Exception e){throw new Failure("INVALID_TARGET",false);}
+        boolean table=id.startsWith("data_source:");
+        try{id=UUID.fromString(table?id.substring(12):id).toString();}catch(Exception e){throw new Failure("INVALID_TARGET",false);}
+        if(table)return new NotionTables(this).target(token,id);
         var page=api(provider,token,"GET","/pages/"+id,null);
         if(page.path("archived").asBoolean()||page.path("in_trash").asBoolean())throw new Failure("TARGET_NOT_FOUND",false);
         String title="";for(var prop:page.path("properties"))if(prop.path("type").asText().equals("title"))title=plain(prop.path("title"));
-        return obj().put("id",id).put("label",title.isBlank()?"제목 없는 페이지":title).put("url",page.path("url").asText());
+        return obj().put("id",id).put("kind","notion_table_parent").put("label",title.isBlank()?"제목 없는 페이지":title).put("url",page.path("url").asText());
     }
     String publish(String provider,String token,JsonNode target,JsonNode payload,ObjectNode state,Consumer<ObjectNode> checkpoint,Runnable fence){
         deliveryFence.set(fence);
-        try {if(provider.equals("GITHUB"))return github(token,target,payload,fence);
+        try {if(provider.equals("GITHUB"))return github(token,target,payload,state,checkpoint,fence);
+            if(target.path("kind").asText().startsWith("notion_table"))
+                return new NotionTables(this).publish(token,target,payload,state,checkpoint,fence);
             return notion(token,target,payload,state,checkpoint,fence);
         } finally {deliveryFence.remove();}
     }
-    String github(String token,JsonNode target,JsonNode payload,Runnable fence){
+    String notionTableSource(String token,JsonNode target,ObjectNode state,Consumer<ObjectNode> checkpoint,Runnable fence){
+        deliveryFence.set(fence);
+        try{return new NotionTables(this).source(token,target,state,checkpoint,fence);}
+        finally{deliveryFence.remove();}
+    }
+    String github(String token,JsonNode target,JsonNode payload,ObjectNode state,Consumer<ObjectNode> checkpoint,Runnable fence){
         String repo=target.path("repo").asText(),branch=target.path("branch").asText();
         var current=api("GITHUB",token,"GET","/repos/"+repo,null);
         if(!current.path("id").asText().equals(target.path("id").asText()))throw new Failure("TARGET_CHANGED",false);
-        String folder=target.path("prefix").asText()+"/"+payload.path("username").asText()+"/"+payload.path("problemVersion").asText()+"/"+payload.path("language").asText();
-        putFile(token,repo,branch,folder+"/"+payload.path("filename").asText(),payload.path("source").asText(),payload,fence);
-        String readme="# "+payload.path("title").asText().replace('\n',' ')+"\n\n- 문제: "+payload.path("problemUrl").asText()+"\n- 언어: "+payload.path("language").asText()+"\n- 결과: AC\n- 통과 시각: "+payload.path("finishedAt").asText()+"\n\nGamjaOJ에서 자동으로 관리하는 풀이 기록입니다.\n";
+        String folder=state.path("githubFolder").asText();
+        if(folder.isBlank()){
+            folder=GitHubSolutionLayout.folder(target,payload);state.put("githubFolder",folder);checkpoint.accept(state);
+        }
+        if(!folder.startsWith(target.path("prefix").asText()+"/")||Arrays.asList(folder.split("/")).contains(".."))throw new Failure("TARGET_CHANGED",false);
+        boolean compact=target.path("layout").asText().equals("problem-v1");
+        if(compact){
+            try{
+                var old=api("GITHUB",token,"GET","/repos/"+repo+"/contents/"+GitHubSolutionLayout.path(folder+"/README.md")+"?ref="+enc(branch),null);
+                if(!old.path("type").asText().equals("file")||!old.path("encoding").asText().equals("base64"))throw new Failure("PATH_CONFLICT",false);
+                String content=new String(Base64.getMimeDecoder().decode(old.path("content").asText()),StandardCharsets.UTF_8);
+                if(!content.contains(GitHubSolutionLayout.marker(payload)))throw new Failure("PATH_CONFLICT",false);
+            }catch(Failure e){
+                if(!e.code.equals("TARGET_NOT_FOUND"))throw e;
+                try{
+                    api("GITHUB",token,"GET","/repos/"+repo+"/contents/"+GitHubSolutionLayout.path(folder)+"?ref="+enc(branch),null);
+                    throw new Failure("PATH_CONFLICT",false);
+                }catch(Failure directory){if(!directory.code.equals("TARGET_NOT_FOUND"))throw directory;}
+            }
+        }
+        if(!compact)putFile(token,repo,branch,folder+"/"+payload.path("filename").asText(),payload.path("source").asText(),payload,fence);
+        String readme="# "+payload.path("title").asText().replace('\n',' ')+"\n\n- 문제: "+payload.path("problemUrl").asText()+"\n- 언어: "+payload.path("language").asText()+"\n- 결과: AC\n- 통과 시각: "+payload.path("finishedAt").asText()+"\n- 최대 실행 시간: "+ExecutionMetrics.time(payload)+"\n- 최대 메모리: "+ExecutionMetrics.memory(payload)+"\n\n메모리는 호스트 관측 컨테이너 cgroup 최고 사용량 (런타임·파일 캐시 포함)입니다.\n\nGamjaOJ에서 자동으로 관리하는 풀이 기록입니다.\n";
+        if(compact)readme=GitHubSolutionLayout.readme(payload);
         putFile(token,repo,branch,folder+"/README.md",readme,payload,fence);
-        return "https://github.com/"+repo+"/tree/"+enc(branch)+"/"+folder;
+        if(compact)putFile(token,repo,branch,folder+"/"+payload.path("filename").asText(),payload.path("source").asText(),payload,fence);
+        return "https://github.com/"+repo+"/tree/"+enc(branch)+"/"+GitHubSolutionLayout.path(folder);
     }
     void putFile(String token,String repo,String branch,String path,String content,JsonNode payload,Runnable fence){
         String sha=null;try{
-            var old=api("GITHUB",token,"GET","/repos/"+repo+"/contents/"+path+"?ref="+enc(branch),null);
+            var old=api("GITHUB",token,"GET","/repos/"+repo+"/contents/"+GitHubSolutionLayout.path(path)+"?ref="+enc(branch),null);
             if(!old.path("type").asText().equals("file"))throw new Failure("REMOTE_CONFLICT",false);
             if(old.path("encoding").asText().equals("base64")) {
                 String existing=new String(Base64.getMimeDecoder().decode(old.path("content").asText()),StandardCharsets.UTF_8);
@@ -128,9 +162,9 @@ class ExportRemote {
             }
             sha=old.path("sha").asText();
         }catch(Failure e){if(!e.code.equals("TARGET_NOT_FOUND"))throw e;}
-        var body=obj().put("message","[GamjaOJ] AC "+payload.path("problemVersion").asText()+" ("+payload.path("language").asText()+")")
+        var body=obj().put("message","[GamjaOJ]["+GitHubSolutionLayout.difficulty(payload)+"] "+payload.path("title").asText().replaceAll("[\\p{Cntrl}]"," ")+" - "+GitHubSolutionLayout.language(payload)+" (AC), Time: "+ExecutionMetrics.time(payload)+", Memory: "+ExecutionMetrics.memory(payload))
             .put("branch",branch).put("content",Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8)));
-        if(sha!=null)body.put("sha",sha);fence.run();api("GITHUB",token,"PUT","/repos/"+repo+"/contents/"+path,body);
+        if(sha!=null)body.put("sha",sha);fence.run();api("GITHUB",token,"PUT","/repos/"+repo+"/contents/"+GitHubSolutionLayout.path(path),body);
     }
     String notion(String token,JsonNode target,JsonNode payload,ObjectNode state,Consumer<ObjectNode> checkpoint,Runnable fence){
         String identity="GamjaOJ · "+payload.path("username").asText()+" · "+payload.path("problemVersion").asText()+" · "+payload.path("language").asText();
@@ -182,7 +216,7 @@ class ExportRemote {
         }
         throw new Failure("PAGE_TOO_LARGE",false);
     }
-    static String info(String identity,JsonNode p){return identity+"\n문제: "+p.path("problemUrl").asText()+"\n결과: AC\n통과 시각: "+p.path("finishedAt").asText();}
+    static String info(String identity,JsonNode p){return identity+"\n문제: "+p.path("problemUrl").asText()+"\n결과: AC\n통과 시각: "+p.path("finishedAt").asText()+"\n최대 실행 시간: "+ExecutionMetrics.time(p)+"\n최대 메모리: "+ExecutionMetrics.memory(p)+"\n메모리는 호스트 관측 컨테이너 cgroup 최고 사용량 (런타임·파일 캐시 포함)입니다.";}
     static JsonNode rich(String text){
         var out=JudgeJson.JSON.createArrayNode();for(int from=0;from<text.length();){int to=Math.min(from+1800,text.length());if(to<text.length()&&Character.isHighSurrogate(text.charAt(to-1)))to--;out.addObject().put("type","text").putObject("text").put("content",text.substring(from,to));from=to;}return out;
     }

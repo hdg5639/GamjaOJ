@@ -7,11 +7,11 @@ import java.util.*;
 /** Display metadata is separate from immutable judge packages and never represents calibrated ratings. */
 final class ProblemCatalogMetadata {
     record Metadata(String category, List<String> tags, String difficulty, String difficultySource) {}
-    static Metadata read(ResultSet r) throws SQLException {
+    static Metadata read(ResultSet r) throws SQLException {return read(r,r.getString("id"));}
+    static Metadata read(ResultSet r,String version) throws SQLException {
         String category="미분류", difficulty="UNRATED", source="UNRATED";
         List<String> tags=List.of();
         String template=r.getString("template_id"),spec=r.getString("spec_json");
-        String version=r.getString("id");
         if(template!=null) {
             var type=GenerationType.of(template);
             category=GenerationStructures.category(type);
@@ -30,6 +30,6 @@ final class ProblemCatalogMetadata {
         if(r.getString("catalog_category")!=null)category=r.getString("catalog_category");
         if(r.getString("catalog_tags")!=null)tags=r.getString("catalog_tags").isBlank()?List.of():Arrays.asList(r.getString("catalog_tags").split(","));
         if(r.getString("catalog_difficulty")!=null){difficulty=r.getString("catalog_difficulty");source=difficulty.equals("UNRATED")?"UNRATED":"AUTHOR_ESTIMATE";}
-        return new Metadata(category,tags,difficulty,source);
+        return new Metadata(ProblemCategories.display(category),tags,difficulty,source);
     }
 }

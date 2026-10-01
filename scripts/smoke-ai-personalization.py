@@ -73,7 +73,7 @@ def main():
                 if task['status'] in ('COMPLETED','FAILED','UNKNOWN','HELD_BUDGET','HELD_DISABLED'):break
                 time.sleep(2)
             assert task['status']=='COMPLETED',(task['status'],task['errorCode'])
-            assert task['model']=='gpt-5.6-luna'
+            assert task['model']=='gpt-6-luna'
             assert a('/api/ai/tasks','POST',body)[1]['id']==task['id']
             assert b('/api/ai/tasks/'+task['id'])[0]==404
             audit=json.loads(sql("SELECT json_build_object('attempts',count(*),'actualUsd',sum(actual_usd),'unsettled',count(*) FILTER (WHERE actual_usd IS NULL)) FROM ai_attempt WHERE task_id='"+task['id']+"';"))

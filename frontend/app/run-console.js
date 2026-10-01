@@ -1,5 +1,6 @@
 'use client';
 
+import ExecutionMetrics,{memoryText} from './execution-metrics';
 import { useEffect, useRef, useState } from 'react';
 import { languageInfo, recordLanguageLabel, limitText } from './languages';
 import {ExportSubmission} from './integrations-panel';
@@ -111,7 +112,7 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
         <p className="submission-summary">정식 제출 〉 <strong>{submission.status === 'FINISHED' ? verdictText(submission.verdict) : '채점 중이에요…'}</strong>
           {submission.status === 'FINISHED' && verdictHelp[submission.verdict] && <span> · {verdictHelp[submission.verdict]}</span>}</p>
         {submission.compileMessage && <pre className="compiler-message">{submission.compileMessage}</pre>}
-        <SubmitTests submission={submission} />
+        <ExecutionMetrics result={submission}/><SubmitTests submission={submission} />
         {exportEnabled&&submission.verdict==='AC'&&<ExportSubmission key={submission.id} api={api} submission={submission}/>}
         {onShowRecords && <button type="button" className="secondary" onClick={onShowRecords}>제출 기록·피드백 보기</button>}
       </article>}
@@ -125,6 +126,7 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
           {c.result?.status === 'FINISHED' && <><dt>출력</dt><dd><pre aria-label={`${c.label} 출력`}>{c.result.stdout || '(출력 없음)'}</pre></dd></>}
           <dt>실행 결과</dt><dd><strong className="console-outcome">{results[index][0]}</strong></dd>
         </dl>
+        <ExecutionMetrics result={c.result}/>
         {c.result?.outputTruncated && <p className="notice">출력이 길어 일부만 표시했어요.</p>}
         {c.result?.compileMessage && <pre className="compiler-message">{c.result.compileMessage}</pre>}
         {c.result?.stderr && <><h4>표준 오류</h4><pre>{c.result.stderr}</pre></>}
@@ -142,7 +144,7 @@ export function SubmitTests({ submission }) {
   const rest = total - tests.length;
   return <ol className="submit-tests" aria-label="테스트별 채점 결과">
     {tests.map(t => <li key={t.number} data-pass={t.verdict === 'AC'}>테스트 {t.number} 〉 <strong>{t.verdict === 'AC' ? '통과' : '실패'}</strong>
-      <span> ({t.verdict === 'AC' ? (t.wallMs != null ? `${t.wallMs}ms` : '통과') : verdictNames[t.verdict] || t.verdict})</span></li>)}
+      <span> ({t.verdict === 'AC' ? (t.wallMs != null ? `${t.wallMs}ms` : '통과') : verdictNames[t.verdict] || t.verdict}) · 메모리 {memoryText(t.memoryPeakBytes)}</span></li>)}
     {rest > 0 && <li className="skipped">테스트 {tests.length + 1}{rest > 1 ? `~${total}` : ''} 〉 앞선 실패로 채점하지 않았어요</li>}
   </ol>;
 }

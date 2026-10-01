@@ -60,7 +60,7 @@ final class HybridModels {
         // Envelope stays out of the model prompt, but accompanies durable completion delivery.
         spec.set("assignment",JudgeJson.JSON.valueToTree(a));
         return new CodexRequest(HybridArtifacts.VERSION,a.generationId(),a.token(),
-                config.value("CODEX_GENERATION_MODEL","gpt-5.6-sol"),
+                config.value("CODEX_GENERATION_MODEL","gpt-6.1-sol"),
                 config.value("CODEX_GENERATION_REASONING","medium"),deadline,spec,task.schema());
     }
     static JsonNode checkedInput(HybridGeneration.Assignment a) {

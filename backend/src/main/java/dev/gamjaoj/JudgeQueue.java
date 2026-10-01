@@ -152,6 +152,8 @@ public class JudgeQueue {
         if (judgeAll && !expected.judgeAll()) throw new AccountException(400, "Judge-all report for a plan that stops at the first failure");
         String firstFailure = null;
         for (int i = 0; i < tests.size(); i++) {
+            var memory=tests.get(i).get("memory_peak_bytes");
+            if(memory!=null&&(!memory.isIntegralNumber()||!memory.canConvertToLong()||memory.asLong()<0||!tests.get(i).path("memory_measurement").asText().equals("cgroup-peak-observed")))throw new AccountException(400,"Invalid memory evidence");
             String testVerdict = tests.get(i).path("verdict").asText();
             if (!tests.get(i).path("id").equals(expectedTests.get(i).path("id"))
                     || (i >= explicit) != "generated".equals(tests.get(i).path("kind").asText())
