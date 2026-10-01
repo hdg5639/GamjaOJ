@@ -42,8 +42,9 @@ class PracticeFollowups {
                     if(r.getBoolean("review_hold"))throw new AccountException(409,"검토 중인 문제의 분석은 훈련 근거로 사용할 수 없어요.");
                     var result=JudgeJson.parse(r.getString("result_json"));
                     if(!AiTasks.validFeedback(result))throw new AccountException(409,"분석 결과를 확인해 주세요.");
-                    String version=r.getString("problem_version");return new Source(version,template(version),result);
-                }).optional().orElseThrow(()->new AccountException(404,"완료된 본인의 정식 제출 분석을 선택해 주세요."));
+                    String version=r.getString("problem_version");return new Source(version,null,result);
+                }).optional().map(row->new Source(row.version,template(row.version),row.result))
+                .orElseThrow(()->new AccountException(404,"완료된 본인의 정식 제출 분석을 선택해 주세요."));
     }
     Options options(String username,UUID analysis){
         var source=source(submissions.owner(username,false),analysis);
@@ -84,25 +85,27 @@ class PracticeFollowups {
                             .param(p.version()).query(String.class).optional().map(value->Arrays.asList(value.split(",")).contains(focus)).orElse(false);
                 }).limit(3).toList();
     }
+    private record FollowupRow(UUID session,UUID reviewed,Boolean helped,boolean held,String sessionStatus,
+            UUID roundId,boolean requested,String contract,UUID analysis,String goal,String focus,String source,String target,int round) {}
     private View view(UUID owner,UUID id){
-        return jdbc.sql("SELECT f.*,p.review_hold,t.problem_version AS target_version,t.status AS session_status,tp.review_hold AS target_held FROM practice_followup f JOIN problem_version p ON p.id=f.source_version LEFT JOIN training_session t ON t.id=f.session_id LEFT JOIN problem_version tp ON tp.id=t.problem_version WHERE f.id=? AND f.user_id=?")
-                .param(id).param(owner).query((r,n)->{
-                    UUID session=r.getObject("session_id",UUID.class),reviewed=r.getObject("reviewed_submission_id",UUID.class);
-                    Boolean helped=r.getObject("used_help",Boolean.class);boolean held=r.getBoolean("review_hold")||r.getBoolean("target_held");
-                    String state=held?"HELD":reviewed!=null?(Boolean.TRUE.equals(helped)?"AC_WITH_HELP":"SELF_REPORTED_UNASSISTED_AC"):session==null?"READY_TO_PRACTICE":"ACTIVE";
-                    if(!held&&reviewed==null&&session!=null&&"ENDED".equals(r.getString("session_status"))){
-                        int pending=jdbc.sql("SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=? AND j.status<>'FINISHED'").param(session).query(Integer.class).single();
-                        state=pending>0?"WAITING_JUDGE":latestAc(session)!=null?"AWAITING_REFLECTION":"NEEDS_PRACTICE";
-                    }
-                    UUID roundId=r.getObject("round_id",UUID.class);
-                    boolean requested=r.getBoolean("generation_requested");String contract=r.getString("template_id");
-                    String generationStatus=!requested?null:rule(contract)
-                            ?jdbc.sql("SELECT status FROM hybrid_generation WHERE id=?").param(roundId).query(String.class).optional()
-                                    .or(()->jdbc.sql("SELECT status FROM generation_spec_draft WHERE id=?").param(roundId).query(String.class).optional()).orElse("UNAVAILABLE")
-                            :jdbc.sql(contract==null?"SELECT status FROM generation_spec_draft WHERE id=?":"SELECT status FROM generation_job WHERE id=?").param(roundId).query(String.class).optional().orElse("UNAVAILABLE");
-                    return new View(id,r.getObject("analysis_id",UUID.class),r.getString("goal"),r.getString("focus"),state,
-                            held||session!=null?List.of():candidates(owner,r.getString("source_version"),contract,r.getString("focus"),id,roundId,requested),session,r.getString("target_version"),generationStatus,helped,reviewed,r.getInt("round_number"),attempts(id));
-                }).optional().orElseThrow(()->new AccountException(404,"다음 훈련 기록을 찾을 수 없어요."));
+        var row=jdbc.sql("SELECT f.*,p.review_hold,t.problem_version AS target_version,t.status AS session_status,tp.review_hold AS target_held FROM practice_followup f JOIN problem_version p ON p.id=f.source_version LEFT JOIN training_session t ON t.id=f.session_id LEFT JOIN problem_version tp ON tp.id=t.problem_version WHERE f.id=? AND f.user_id=?")
+                .param(id).param(owner).query((r,n)->new FollowupRow(r.getObject("session_id",UUID.class),r.getObject("reviewed_submission_id",UUID.class),
+                    r.getObject("used_help",Boolean.class),r.getBoolean("review_hold")||r.getBoolean("target_held"),r.getString("session_status"),
+                    r.getObject("round_id",UUID.class),r.getBoolean("generation_requested"),r.getString("template_id"),r.getObject("analysis_id",UUID.class),
+                    r.getString("goal"),r.getString("focus"),r.getString("source_version"),r.getString("target_version"),r.getInt("round_number")))
+                .optional().orElseThrow(()->new AccountException(404,"다음 훈련 기록을 찾을 수 없어요."));
+        String state=row.held?"HELD":row.reviewed!=null?(Boolean.TRUE.equals(row.helped)?"AC_WITH_HELP":"SELF_REPORTED_UNASSISTED_AC"):row.session==null?"READY_TO_PRACTICE":"ACTIVE";
+        if(!row.held&&row.reviewed==null&&row.session!=null&&"ENDED".equals(row.sessionStatus)){
+            int pending=jdbc.sql("SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=? AND j.status<>'FINISHED'").param(row.session).query(Integer.class).single();
+            state=pending>0?"WAITING_JUDGE":latestAc(row.session)!=null?"AWAITING_REFLECTION":"NEEDS_PRACTICE";
+        }
+        String generationStatus=!row.requested?null:rule(row.contract)
+                ?jdbc.sql("SELECT status FROM hybrid_generation WHERE id=?").param(row.roundId).query(String.class).optional()
+                        .or(()->jdbc.sql("SELECT status FROM generation_spec_draft WHERE id=?").param(row.roundId).query(String.class).optional()).orElse("UNAVAILABLE")
+                :jdbc.sql(row.contract==null?"SELECT status FROM generation_spec_draft WHERE id=?":"SELECT status FROM generation_job WHERE id=?").param(row.roundId).query(String.class).optional().orElse("UNAVAILABLE");
+        return new View(id,row.analysis,row.goal,row.focus,state,
+                row.held||row.session!=null?List.of():candidates(owner,row.source,row.contract,row.focus,id,row.roundId,row.requested),
+                row.session,row.target,generationStatus,row.helped,row.reviewed,row.round,attempts(id));
     }
     private List<Attempt> attempts(UUID id){
         return jdbc.sql("SELECT a.*,t.problem_version,p.review_hold FROM practice_followup_attempt a JOIN training_session t ON t.id=a.session_id JOIN problem_version p ON p.id=t.problem_version WHERE a.followup_id=? ORDER BY a.round_number DESC")

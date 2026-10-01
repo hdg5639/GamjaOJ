@@ -95,10 +95,17 @@ public class GenerationJobs {
     public List<View> list(String username) { return jdbc.sql("SELECT id FROM generation_job WHERE owner_id=? ORDER BY created_at DESC LIMIT 30").param(submissions.owner(username,false)).query(UUID.class).list().stream().map(id->view(username,id)).toList(); }
     public View view(String username,UUID id) { if(jdbc.sql("SELECT count(*) FROM generation_job WHERE id=? AND owner_id=?").param(id).param(submissions.owner(username,false)).query(Integer.class).single()==0)
         throw new AccountException(404,"생성 작업을 찾을 수 없어요.");return find(id); }
+    private record JobRow(String status,int revision,String model,String effort,String hash,JsonNode artifacts,
+                          JsonNode validation,String error,String template,boolean held,String reviewReason) {}
     private View find(UUID id) {
-        return jdbc.sql("SELECT g.*,COALESCE(p.review_hold,false) AS problem_held,p.review_reason FROM generation_job g LEFT JOIN problem_version p ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) WHERE g.id=?").param(id).query((r,n)->new View(id,r.getString("status"),r.getInt("revision"),r.getString("model"),r.getString("effort"),r.getString("artifacts_sha256"),
-                r.getString("artifacts_json")==null?null:JudgeJson.parse(r.getString("artifacts_json")),r.getString("validation_json")==null?null:JudgeJson.parse(r.getString("validation_json")),r.getString("error_code"),preview(id,GenerationType.of(r.getString("template_id"))),r.getString("status").equals("READY")?version(id,r.getInt("revision")):null,themeFor(id),r.getBoolean("problem_held"),r.getString("review_reason")))
+        // Materialize the row before enrichment: a mapper still owns its JDBC connection.
+        var row=jdbc.sql("SELECT g.*,COALESCE(p.review_hold,false) AS problem_held,p.review_reason FROM generation_job g LEFT JOIN problem_version p ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) WHERE g.id=?").param(id)
+                .query((r,n)->new JobRow(r.getString("status"),r.getInt("revision"),r.getString("model"),r.getString("effort"),r.getString("artifacts_sha256"),
+                    r.getString("artifacts_json")==null?null:JudgeJson.parse(r.getString("artifacts_json")),r.getString("validation_json")==null?null:JudgeJson.parse(r.getString("validation_json")),
+                    r.getString("error_code"),r.getString("template_id"),r.getBoolean("problem_held"),r.getString("review_reason")))
                 .optional().orElseThrow(()->new AccountException(404,"생성 작업을 찾을 수 없어요."));
+        return new View(id,row.status,row.revision,row.model,row.effort,row.hash,row.artifacts,row.validation,row.error,
+                preview(id,GenerationType.of(row.template)),row.status.equals("READY")?version(id,row.revision):null,themeFor(id),row.held,row.reviewReason);
     }
     private JsonNode preview(UUID id,GenerationType type) {
         var preview=type.spec().put("contractTitle",type.title);preview.set("structure",structures.summary(id,type));return preview;
