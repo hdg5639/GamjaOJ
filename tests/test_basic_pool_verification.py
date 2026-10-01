@@ -132,3 +132,23 @@ class GeneratedInputAuditTests(unittest.TestCase):
             self.assertEqual('PASS',result['status'])
             self.assertEqual(audit.verify.digest(package),result['packageSha256'])
             self.assertEqual([{'inputSha256':hashlib.sha256(b'2\n').hexdigest(),'inputBytes':2,'id':'large-seed-11'}],result['generated'])
+
+class BasicPoolApiPreflightTests(unittest.TestCase):
+    setUp=BasicPoolVerificationTests.setUp
+    write=BasicPoolVerificationTests.write
+    def test_missing_later_directory_fails_before_remote_user_creation(self):
+        import sys
+        smoke=module('pool_smoke_tests','smoke-basic-pool.py')
+        with patch.object(sys,'argv',['smoke-basic-pool.py',str(self.directory),str(self.directory/'missing'),'--output',str(self.directory/'live.json')]):
+            with patch.object(smoke.helper,'ssh') as remote:
+                with self.assertRaises(FileNotFoundError):smoke.main()
+                remote.assert_not_called()
+
+    def test_missing_solution_fails_before_remote_user_creation(self):
+        import sys
+        smoke=module('pool_smoke_source_tests','smoke-basic-pool.py')
+        (self.directory/'solutions/cpp/Main.cpp').unlink()
+        with patch.object(sys,'argv',['smoke-basic-pool.py',str(self.directory),'--output',str(self.directory/'live.json')]):
+            with patch.object(smoke.helper,'ssh') as remote:
+                with self.assertRaises(FileNotFoundError):smoke.main()
+                remote.assert_not_called()

@@ -25,6 +25,17 @@ def main():
     parser.add_argument('--language',choices=['ALL','JAVA','CPP','PYTHON'],default='ALL')
     parser.add_argument('--output',type=Path,required=True)
     args=parser.parse_args()
+    # Validate every local candidate before creating a user or submitting any job.
+    candidates=[]
+    languages=('JAVA','CPP','PYTHON') if args.language=='ALL' else (args.language,)
+    for directory in args.directories:
+        package=json.loads((directory/'package.json').read_text())
+        meta=json.loads((directory/'metadata.json').read_text())
+        sources={}
+        for language in languages:
+            filename={'JAVA':'Main.java','CPP':'Main.cpp','PYTHON':'Main.py'}[language]
+            sources[language]=(directory/'solutions'/language.lower()/filename).read_text()
+        candidates.append((package,meta,sources))
     invitation=helper.ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
     base=helper.ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env").rstrip('/')
     client=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
@@ -48,8 +59,8 @@ def main():
         assert call('/api/auth/login','POST',dict(username=username,password=password),form=True)[0]==204
         status,catalog=call('/api/problems');assert status==200
         by_id={p['version']:p for p in catalog}
-        for directory in args.directories:
-            package=json.loads((directory/'package.json').read_text());meta=json.loads((directory/'metadata.json').read_text());version=package['version']
+        for package,meta,sources in candidates:
+            version=package['version']
             p=by_id[version]
             assert p['category']==meta['category'] and p['difficulty']==meta['difficulty']
             assert p['shared'] and not p['mine'] and p['submissionsEnabled']
@@ -57,9 +68,8 @@ def main():
             assert [(x['input'],x['output']) for x in p['examples']]==[(x['input'],x['output']) for x in package['samples']]
             assert not p['generated']
             assert not any(k in p for k in ('tests','package','reference','teaching','generator','seed'))
-            for language in (('JAVA','CPP','PYTHON') if args.language=='ALL' else (args.language,)):
-                filename={'JAVA':'Main.java','CPP':'Main.cpp','PYTHON':'Main.py'}[language]
-                source=(directory/'solutions'/language.lower()/filename).read_text()
+            for language in languages:
+                source=sources[language]
                 payload=dict(problemVersion=version,source=source,language=language);key=str(uuid.uuid4())
                 status,saved=call('/api/submissions','POST',payload,key);assert status==202,saved
                 job=str(uuid.UUID(saved['id']))
