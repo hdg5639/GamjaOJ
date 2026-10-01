@@ -130,28 +130,33 @@ class HybridRuleOnboarding {
         UUID owner=submissions.owner(user,false);lock();view(owner,id);
         stop(id,"CANCELLED","CANCELLED_BY_OWNER");return view(owner,id);
     }
+    private record OnboardingRow(String status,String error,String request,OffsetDateTime created,OffsetDateTime deadline,
+            String version,String catalog,String author,String oracle,String answers,UUID carrier,UUID followup,
+            String followupStatus,String followupError,String published,int repairs) {}
     private View view(UUID owner,UUID id) {
-        return jdbc.sql("SELECT o.*,v.catalog_json,g.status AS followup_status,g.published_version_id FROM hybrid_rule_onboarding o LEFT JOIN hybrid_rule_version v ON v.id=o.version_id LEFT JOIN hybrid_generation g ON g.id=o.followup_generation_id WHERE o.id=? AND o.owner_id=?").param(id).param(owner)
-                .query((r,n)->{
-                    var checks=new TreeMap<String,String>();UUID carrier=r.getObject("carrier_generation_id",UUID.class);
-                    if(carrier!=null)jdbc.sql("SELECT e.role,j.status,j.verdict FROM hybrid_execution_check e JOIN hybrid_branch b ON b.id=e.branch_id JOIN judge_job j ON j.submission_id=e.submission_id WHERE b.generation_id=?")
-                            .param(carrier).query((x,m)->checks.put(x.getString(1),"FINISHED".equals(x.getString(2))?x.getString(3):x.getString(2))).list();
-                    String catalog=r.getString("catalog_json");var req=JudgeJson.parse(r.getString("request_json"));
-                    String author=r.getString("author_json");
-                    if(r.getString("oracle_json")==null&&"REQUIREMENTS_NOT_MET".equals(r.getString("error_code"))) {
-                        var rejected=jdbc.sql("SELECT receipt_json FROM hybrid_rule_codex_call WHERE onboarding_id=? AND repair_round=? AND stage='DESIGN' AND status='REJECTED' ORDER BY created_at DESC LIMIT 1")
-                                .param(id).param(r.getInt("repairs")).query(String.class).optional();
-                        if(rejected.isPresent())author=JudgeJson.canonical(JudgeJson.parse(rejected.get()).path("payload"));
-                    }
-                    return new View(id,r.getString("status"),r.getString("error_code"),req.path("request").asText(),
-                            r.getObject("created_at",OffsetDateTime.class),r.getObject("deadline_at",OffsetDateTime.class),r.getString("version_id"),
-                            catalog==null?null:JudgeJson.parse(catalog).path("label").asText(),spent(id),checks,failedCheck(r.getString("answers_json")),
-                            req.path("difficulty").asText(null),req.path("style").asText(null),req.path("category").asText(null),req.has("target"),req.path("publish").asBoolean(false),
-                            r.getObject("followup_generation_id",UUID.class),r.getString("followup_status"),r.getString("followup_error"),r.getString("published_version_id"),r.getInt("repairs"),requirementIssues(r.getString("error_code"),author,r.getString("oracle_json")),
-                            codexAuthor(r.getString("request_json"))?stages.snapshot(id,r.getInt("repairs")).next():null,
-                            codexAuthor(r.getString("request_json"))?stages.snapshot(id,r.getInt("repairs")).completed():List.of(),
-                            retryableAttempt(id,r.getString("status")));
-                }).optional().orElseThrow(()->new AccountException(404,"규칙 등록 요청을 찾을 수 없어요."));
+        var row=jdbc.sql("SELECT o.*,v.catalog_json,g.status AS followup_status,g.published_version_id FROM hybrid_rule_onboarding o LEFT JOIN hybrid_rule_version v ON v.id=o.version_id LEFT JOIN hybrid_generation g ON g.id=o.followup_generation_id WHERE o.id=? AND o.owner_id=?").param(id).param(owner)
+                .query((r,n)->new OnboardingRow(r.getString("status"),r.getString("error_code"),r.getString("request_json"),
+                    r.getObject("created_at",OffsetDateTime.class),r.getObject("deadline_at",OffsetDateTime.class),r.getString("version_id"),
+                    r.getString("catalog_json"),r.getString("author_json"),r.getString("oracle_json"),r.getString("answers_json"),
+                    r.getObject("carrier_generation_id",UUID.class),r.getObject("followup_generation_id",UUID.class),
+                    r.getString("followup_status"),r.getString("followup_error"),r.getString("published_version_id"),r.getInt("repairs")))
+                .optional().orElseThrow(()->new AccountException(404,"규칙 등록 요청을 찾을 수 없어요."));
+        // All dependent reads start after the outer result set and connection have been released.
+        var checks=new TreeMap<String,String>();
+        if(row.carrier!=null)jdbc.sql("SELECT e.role,j.status,j.verdict FROM hybrid_execution_check e JOIN hybrid_branch b ON b.id=e.branch_id JOIN judge_job j ON j.submission_id=e.submission_id WHERE b.generation_id=?")
+                .param(row.carrier).query((r,n)->checks.put(r.getString(1),"FINISHED".equals(r.getString(2))?r.getString(3):r.getString(2))).list();
+        var req=JudgeJson.parse(row.request);String author=row.author;
+        if(row.oracle==null&&"REQUIREMENTS_NOT_MET".equals(row.error)) {
+            var rejected=jdbc.sql("SELECT receipt_json FROM hybrid_rule_codex_call WHERE onboarding_id=? AND repair_round=? AND stage='DESIGN' AND status='REJECTED' ORDER BY created_at DESC LIMIT 1")
+                    .param(id).param(row.repairs).query(String.class).optional();
+            if(rejected.isPresent())author=JudgeJson.canonical(JudgeJson.parse(rejected.get()).path("payload"));
+        }
+        var snapshot=codexAuthor(row.request)?stages.snapshot(id,row.repairs):null;
+        return new View(id,row.status,row.error,req.path("request").asText(),row.created,row.deadline,row.version,
+                row.catalog==null?null:JudgeJson.parse(row.catalog).path("label").asText(),spent(id),checks,failedCheck(row.answers),
+                req.path("difficulty").asText(null),req.path("style").asText(null),req.path("category").asText(null),req.has("target"),req.path("publish").asBoolean(false),
+                row.followup,row.followupStatus,row.followupError,row.published,row.repairs,requirementIssues(row.error,author,row.oracle),
+                snapshot==null?null:snapshot.next(),snapshot==null?List.of():snapshot.completed(),retryableAttempt(id,row.status));
     }
     private static List<String> requirementIssues(String error,String author,String oracle) {
         if(!"REQUIREMENTS_NOT_MET".equals(error)||author==null)return List.of();
