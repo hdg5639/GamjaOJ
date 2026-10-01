@@ -425,7 +425,7 @@ class GenerationIntegrationTest {
         assertThat(JudgeJson.parse(task.input()).path("kind").asText()).isEqualTo("THEME");
         var theme=JudgeJson.parse("{\"setting\":\"유성 관측 기록\",\"scenario\":\"관측 신호의 증가와 감소를 기록한다.\"}");
         var usage=JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":50}");
-        ai.finish(task,new dev.gamjaoj.ai.OpenAiResponses.Result(theme,usage,"theme-response","request","gpt-5.6-luna"),null);
+        ai.finish(task,new dev.gamjaoj.ai.OpenAiResponses.Result(theme,usage,"theme-response","request","gpt-6-luna"),null);
         assertThat(ai.budget().reservedUsd()).isZero();assertThat(ai.budget().spentUsd()).isPositive();
         assertThat(generation.claim().spec().path("theme")).isEqualTo(theme);
     }

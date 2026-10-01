@@ -27,15 +27,15 @@ public class Submissions {
     public record View(UUID id, String problemVersion, String sourceSha256, String source,
                        String status, String verdict, String compileMessage, OffsetDateTime createdAt,
                        OffsetDateTime finishedAt, String input, String stdout, String stderr, boolean outputTruncated, UUID sessionId, String runnerPolicy, boolean problemHeld, UUID diagnosticItemId, String language, LanguageProfiles.Option execution,
-                       List<TestResult> tests, int testCount) {}
+                       List<TestResult> tests, int testCount,Long wallMs,Long memoryPeakBytes) {}
     /** One judged test of a formal submission, in plan order: number and verdict only, never its input or output. */
-    public record TestResult(int number, String verdict, Integer wallMs) {}
+    public record TestResult(int number, String verdict, Integer wallMs,Long memoryPeakBytes) {}
     private static List<TestResult> testResults(String result) {
         var out = new java.util.ArrayList<TestResult>();
         if (result == null) return out;
         int number = 1;
         for (JsonNode t : JudgeJson.parse(result).path("tests"))
-            out.add(new TestResult(number++, t.path("verdict").asText(), t.has("wall_ms") ? t.path("wall_ms").asInt() : null));
+            out.add(new TestResult(number++, t.path("verdict").asText(), t.has("wall_ms") ? t.path("wall_ms").asInt() : null,t.hasNonNull("memory_peak_bytes")?t.path("memory_peak_bytes").asLong():null));
         return out;
     }
     /** A public example; explanation only for worked examples confirmed by the Runner (ExampleEnrichment). */
@@ -155,13 +155,15 @@ public class Submissions {
     }
 
     public List<View> history(String username) { return history(username,null,0); }
-    public List<View> history(String username,String problemVersion,int page) {
+    public List<View> history(String username,String problemVersion,int page) {return history(username,problemVersion,page,50);}
+    public List<View> history(String username,String problemVersion,int page,int size) {
+        if(size<1||size>50)throw new AccountException(400,"페이지 크기는 1~50개로 설정해 주세요.");
         if(page<0||page>100000)throw new AccountException(400,"잘못된 페이지예요.");
         UUID user=owner(username,false);
         String filter=problemVersion==null?"":" AND problem_version=?";
-        var query=jdbc.sql("SELECT id FROM submission WHERE generation_job_id IS NULL AND spec_draft_id IS NULL AND hybrid_branch_id IS NULL AND user_id=? AND run_input IS NULL"+filter+" ORDER BY created_at DESC,id DESC LIMIT 50 OFFSET ?").param(user);
+        var query=jdbc.sql("SELECT id FROM submission WHERE generation_job_id IS NULL AND spec_draft_id IS NULL AND hybrid_branch_id IS NULL AND user_id=? AND run_input IS NULL"+filter+" ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?").param(user);
         if(problemVersion!=null)query=query.param(problemVersion);
-        return query.param(page*50).query(UUID.class).list().stream().map(id->find(user,id,false)).toList();
+        return query.param(size).param(page*size).query(UUID.class).list().stream().map(id->find(user,id,false)).toList();
     }
     public List<View> runs(String username) { owner(username,false);return List.of(); }
     public View detail(String username, UUID id) { return detail(username, id, false); }
@@ -186,7 +188,9 @@ public class Submissions {
                             output.path("stdout").asText(""), output.path("stderr").asText(""), output.path("stdout_truncated").asBoolean(), row.getObject("training_session_id", UUID.class), row.getString("runner_policy"),row.getBoolean("review_hold"),row.getObject("diagnostic_item_id",UUID.class),row.getString("language"),
                             row.getString("execution_profile_json")==null?null:LanguageProfiles.option(JudgeJson.parse(row.getString("execution_profile_json"))),
                             includeSource && input == null ? testResults(result) : List.of(),
-                            includeSource && input == null && "FINISHED".equals(row.getString("status")) ? testCount(row.getString("plan_json")) : 0);
+                            includeSource && input == null && "FINISHED".equals(row.getString("status")) ? testCount(row.getString("plan_json")) : 0,
+                            result==null?null:ExecutionMetrics.maximum(JudgeJson.parse(result),"wall_ms"),
+                            result==null?null:ExecutionMetrics.maximum(JudgeJson.parse(result),"memory_peak_bytes"));
                 }).optional().orElseThrow(() -> new AccountException(404, "제출 기록을 찾을 수 없어요."));
     }
 }

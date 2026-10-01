@@ -134,7 +134,7 @@ class HybridExecutionIntegrationTest {
     @Test void admittedConfigurationIsPinnedAndDisablingAdmissionDoesNotRestartWork() {
         designed();overrides.put("AI_HYBRID_WRITER_MODEL","changed");overrides.put("HYBRID_ADMISSION_ENABLED","false");
         overrides.put("CODEX_GENERATION_MODEL","changed-core");
-        assertThat(execution.claimCodex().model()).isEqualTo("gpt-5.6-sol");
+        assertThat(execution.claimCodex().model()).isEqualTo("gpt-6.1-sol");
         var work=execution.claimApi();assertThat(work.request().settings().model()).isEqualTo("fixture-writer");
         assertThat(execution.claimApi()).isNull();assertThat(ledger.claim()).isNull();
         assertThatThrownBy(this::admit).isInstanceOf(AccountException.class);

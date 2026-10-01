@@ -17,6 +17,7 @@ import uuid
 import threading
 from contextlib import ExitStack
 from functools import lru_cache
+from runner.memory_peak import MemoryPeak
 from runner.telemetry import Timings, workspace
 from runner.docker_control import EngineControl
 from runner.scheduling import execution_lock
@@ -265,7 +266,9 @@ class Runner:
             args[1:1] = ["--label", "com.gamjaoj.attempt=" + self.attempt]
         phase = "compile" if compile_phase else "test"
         try:
-            self.timings.call(phase+".container_create", docker, *args)
+            container_id = self.timings.call(phase+".container_create", docker, *args)
+            meter = MemoryPeak("" if compile_phase else container_id.decode().strip())
+            meter.__enter__()
             result = self.timings.call(phase+".start_attach_wait", capture,["docker", "start", "--attach", "--interactive", name], stdin,
                              seconds,
                              BUILD_LIMIT if compile_phase else (output_limit or OUTPUT_LIMIT))
@@ -284,10 +287,16 @@ class Runner:
                 raise InfrastructureError("Docker attachment lost; exit status is not reliable")
             # Docker timestamps delimit container lifetime, not pure Java CPU time.
             self.timings.segments.append(dict(phase=phase+".container_lifetime", startedAt=state.get("StartedAt"), finishedAt=state.get("FinishedAt")))
+            meter.__exit__()
+            if meter.peak is not None:
+                result["memory_peak_bytes"] = meter.peak
+                result["memory_measurement"] = "cgroup-peak-observed"
             result["exit_code"] = state["ExitCode"]
             result["oom_killed"] = state["OOMKilled"]
             return result
         finally:
+            if 'meter' in locals():
+                meter.__exit__()
             # Exact per-attempt name only: never prune or touch another project's containers.
             self.timings.call(phase+".container_remove", docker, "rm", "--force", name)
 

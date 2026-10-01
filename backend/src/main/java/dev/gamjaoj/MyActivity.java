@@ -13,7 +13,7 @@ class MyActivity {
     record Problem(String version,String title,long attempts,long accepted,OffsetDateTime lastSubmitted,boolean held,boolean diagnostic) {}
     record Summary(long submitted,long attemptedProblems,long solvedProblems) {}
     record Page(List<Problem> items,long total) {}
-    private static final String FILTER="s.user_id=? AND s.run_input IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL";
+    private static final String FILTER="s.user_id=? AND s.run_input IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL";
     @GetMapping("/api/my/summary") Summary summary(Principal user){
         var owner=submissions.owner(user.getName(),false);
         return jdbc.sql("SELECT count(*) submitted,count(DISTINCT s.problem_version) attempted,count(DISTINCT CASE WHEN j.verdict='AC' AND p.review_hold=false THEN s.problem_version END) solved FROM submission s JOIN judge_job j ON j.submission_id=s.id JOIN problem_version p ON p.id=s.problem_version WHERE "+FILTER)

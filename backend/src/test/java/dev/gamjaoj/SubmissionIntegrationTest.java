@@ -103,6 +103,16 @@ class SubmissionIntegrationTest {
         assertThat(wide.claim(UUID.randomUUID()).orElseThrow().executionMode()).isEqualTo("EXCLUSIVE");
         assertThat(wide.claim(UUID.randomUUID())).isEmpty(); // exclusive runs alone
     }
+    @Test void memoryEvidenceIsValidatedStoredAndExposedWithoutPrivateTestData()throws Exception {
+        var saved=submit(alice,UUID.randomUUID());var task=queue.claim(UUID.randomUUID()).orElseThrow();var measured=report(task);
+        for(var test:measured.path("tests"))((ObjectNode)test).put("memory_peak_bytes",33554432).put("memory_measurement","cgroup-peak-observed");
+        ((ObjectNode)measured.path("tests").path(0)).put("memory_peak_bytes",-1);
+        assertThatThrownBy(()->queue.complete(saved.id(),task.token(),measured)).isInstanceOf(AccountException.class);
+        ((ObjectNode)measured.path("tests").path(0)).put("memory_peak_bytes",41943040);
+        queue.complete(saved.id(),task.token(),measured);var detail=submissions.detail(alice,saved.id());
+        assertThat(detail.memoryPeakBytes()).isEqualTo(41943040);assertThat(detail.tests().getFirst().memoryPeakBytes()).isEqualTo(41943040);
+        mvc.perform(get("/api/submissions/"+saved.id()).with(user(alice))).andExpect(jsonPath("$.memoryPeakBytes").value(41943040)).andExpect(jsonPath("$.tests[0].memoryPeakBytes").value(41943040)).andExpect(jsonPath("$.tests[0].input").doesNotExist());
+    }
     @Test void personalHistoryFiltersBeforePaginationAndExcludesCustomRuns() throws Exception {
         mvc.perform(get("/api/my/summary")).andExpect(status().isUnauthorized());
         var base=submit(alice,UUID.randomUUID());
@@ -117,6 +127,13 @@ class SubmissionIntegrationTest {
         assertThat(submissions.history(alice,null,0)).hasSize(50);
         assertThat(submissions.history(alice,null,1)).hasSize(2);
         assertThat(submissions.history(bob,null,0)).isEmpty();
+        var paged=new java.util.ArrayList<UUID>();for(int page=0;page<3;page++)paged.addAll(submissions.history(alice,null,page,20).stream().map(Submissions.View::id).toList());
+        assertThat(paged).hasSize(52).doesNotHaveDuplicates();
+        mvc.perform(get("/api/submissions?page=0&size=20").with(user(alice))).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(20));
+        mvc.perform(get("/api/submissions?page=1&size=20").with(user(alice))).andExpect(jsonPath("$.length()").value(20));
+        mvc.perform(get("/api/submissions?page=2&size=20").with(user(alice))).andExpect(jsonPath("$.length()").value(12));
+        mvc.perform(get("/api/submissions?size=0").with(user(alice))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/submissions?size=51").with(user(alice))).andExpect(status().isBadRequest());
         mvc.perform(get("/api/my/summary").with(user(alice))).andExpect(status().isOk()).andExpect(jsonPath("$.submitted").value(52)).andExpect(jsonPath("$.attemptedProblems").value(2)).andExpect(jsonPath("$.solvedProblems").value(1));
         mvc.perform(get("/api/my/problems").with(user(alice))).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(2)).andExpect(jsonPath("$.items.length()").value(2));
         mvc.perform(get("/api/my/summary").with(user(bob))).andExpect(jsonPath("$.submitted").value(0));

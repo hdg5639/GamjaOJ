@@ -138,16 +138,33 @@ export default function Home() {
         <p>막혔던 개념도, 스스로 풀어낸 순간도.<br/>각자의 속도로 연습하고 함께 성장해요.</p>
         <div className="intro-path" aria-label="학습 흐름"><span>01 <strong>탐색</strong></span><span>02 <strong>풀이</strong></span><span>03 <strong>다음 훈련</strong></span></div><p className="intro-detail">함께 만든 문제, 선택 진단, 나에게 맞는 연습.<br/>Java · C++ · Python으로 한 곳에서 이어가세요.</p>
       </section>
-      <section className="card" aria-label={user ? '내 계정' : '계정 시작하기'}>
+      <section className={user ? 'settings-container' : 'card'} aria-label={user ? '내 계정' : '계정 시작하기'}>
         {loading ? <p role="status">내 연습장을 불러오고 있어요…</p> : user ? <>
-          <h1 className="workspace-title">내 설정</h1>
-          <p className="muted">@{user.username} · 오늘은 어떤 개념을 연습할까요?</p>
+          <header className="settings-heading">
+            <div><h1 className="workspace-title">내 설정</h1><p className="muted">프로필과 연습 목표, 풀이를 기록할 곳을 관리해요.</p></div>
+            <span className="settings-username">@{user.username}</span>
+          </header>
+          {error && <p role="alert" className="notice error">{error}</p>}
+          {message && <p role="status" className="notice success">{message}</p>}
+          <div className="settings-layout">
+            <nav className="settings-navigation" aria-label="설정 항목">
+              <a href="#settings-profile">프로필과 연습 목표</a>
+              <a href="#integrations-heading">풀이 자동 저장</a>
+              <a href="#export-history-heading">최근 저장 내역</a>
+              <a href="#settings-account">계정 관리</a>
+            </nav>
+            <div className="settings-content">
+          <section className="settings-section settings-profile" aria-labelledby="settings-profile">
+            <div className="settings-section-heading"><h2 id="settings-profile" tabIndex={-1}>프로필과 연습 목표</h2><p className="muted">GamjaOJ에서 사용할 이름과 다음 연습 목표를 정해요.</p></div>
           <form key={user.id + user.nickname + user.trainingGoal} onSubmit={save}>
             <label>닉네임<input name="nickname" defaultValue={user.nickname} maxLength={24} required autoComplete="nickname" /></label>
             <label>연습하고 싶은 목표<textarea name="trainingGoal" defaultValue={user.trainingGoal} maxLength={120} rows={3} placeholder="예: DFS 방문 상태 복원, DP 점화식 세우기" /></label>
             <button className="primary" disabled={busy}>{busy ? '저장 중…' : '내 설정 저장'}</button>
           </form>
+          </section>
           {settings&&<IntegrationsPanel key={user.id} api={api}/>}
+          <section className="settings-section settings-account" aria-labelledby="settings-account">
+            <div className="settings-section-heading"><h2 id="settings-account" tabIndex={-1}>계정 관리</h2><p className="muted">계정 삭제 전 삭제되는 기록과 남는 자료를 확인해 주세요.</p></div>
           <details className="account-deletion">
             <summary>회원 탈퇴</summary>
             <p>탈퇴하면 계정과 개인 기록을 바로 삭제하며 되돌릴 수 없어요. 제출·실행 기록, 훈련, 진단과 평가, AI 요청, 생성 요청, 비공개 문제와 규칙이 모두 지워져요.</p>
@@ -158,7 +175,9 @@ export default function Home() {
               <button className="danger" disabled={busy}>{busy ? '처리 중…' : '계정 영구 삭제'}</button>
             </form>
           </details>
-
+          </section>
+            </div>
+          </div>
         </> : <>
           <div className="tabs" role="group" aria-label="로그인 또는 가입">
             <button aria-pressed={mode === 'login'} disabled={busy} className={mode === 'login' ? 'selected' : ''} onClick={() => { setMode('login'); setError(''); setMessage(''); }}>로그인</button>
@@ -175,8 +194,8 @@ export default function Home() {
           </form>
           <p className="help">계정에 문제가 생겼다면 운영자에게 알려주세요.</p>
         </>}
-        {error && <p role="alert" className="notice error">{error}</p>}
-        {message && <p role="status" className="notice success">{message}</p>}
+        {!user && error && <p role="alert" className="notice error">{error}</p>}
+        {!user && message && <p role="status" className="notice success">{message}</p>}
       </section>
     </main>
     {user && <main id={settings ? undefined : "main-content"} tabIndex={-1} className="app-main" hidden={settings}>

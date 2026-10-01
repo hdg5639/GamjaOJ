@@ -23,14 +23,14 @@ public class AiSettings {
                  String pricingVersion, int maxOutputTokens, String promptVersion, String schemaVersion) {}
     Model model(boolean strong) {
         String prefix=strong?"AI_STRONG_":"AI_DEFAULT_";
-        String model=value(prefix+"MODEL", strong?"gpt-5.6-terra":"gpt-5.6-luna");
+        String model=value(prefix+"MODEL", strong?"gpt-6.1-sol":"gpt-6-luna");
         String effort=value(prefix+"REASONING",strong?"medium":"low");
         if (!Set.of("none","low","medium","high","xhigh","max").contains(effort))
             throw new AccountException(503,"AI reasoning 설정을 확인해 주세요.");
         // Rates belong to the exact configured model, not the slot. Unknown models fail closed.
         String[] rates=switch(model) {
-            case "gpt-5.6-luna" -> new String[]{"0.20","0.02","1.20"};
-            case "gpt-5.6-terra" -> new String[]{"2.00","0.20","12.00"};
+            case "gpt-6-luna" -> new String[]{"0.10","0.01","0.50"};
+            case "gpt-6.1-sol" -> new String[]{"2.00","0.10","10.00"};
             default -> new String[]{"", "", ""};
         };
         try {
@@ -38,7 +38,7 @@ public class AiSettings {
             BigDecimal cached=new BigDecimal(value(prefix+"CACHED_USD_PER_M",rates[1]));
             BigDecimal output=new BigDecimal(value(prefix+"OUTPUT_USD_PER_M",rates[2]));
             if (input.signum()<=0 || output.signum()<=0 || cached.signum()<0 || cached.compareTo(input)>0) throw new IllegalArgumentException();
-            return new Model(model,effort,input,cached,output,value(prefix+"PRICING_VERSION","openai-standard-2026-09-23"),
+            return new Model(model,effort,input,cached,output,value(prefix+"PRICING_VERSION","openai-standard-2026-10-01"),
                     2048,"feedback-v1","feedback-v1");
         } catch (IllegalArgumentException e) { throw new AccountException(503,"선택 모델의 API 단가 설정이 필요해요. 다른 모델로 전환하지 않았어요."); }
     }

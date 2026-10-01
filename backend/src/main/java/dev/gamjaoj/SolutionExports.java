@@ -19,8 +19,8 @@ class SolutionExports {
     record ConnectionView(String provider,boolean available,boolean connected,String status,String account,JsonNode target,boolean autoEnabled,String installUrl) {}
     record Delivery(UUID id,String provider,String problemVersion,String language,UUID submissionId,String status,String error,String url,OffsetDateTime updatedAt) {}
     record Work(UUID id,UUID user,String provider,UUID lease,int revision,int attempts,JsonNode target,JsonNode payload,ObjectNode remote) {}
-    final JdbcClient jdbc;final ExportSettings settings;final ExportVault vault;final ExportRemote remote;final TransactionTemplate tx;
-    SolutionExports(JdbcClient jdbc,ExportSettings settings,ExportVault vault,ExportRemote remote,PlatformTransactionManager transactions){this.jdbc=jdbc;this.settings=settings;this.vault=vault;this.remote=remote;tx=new TransactionTemplate(transactions);}
+    final JdbcClient jdbc;final ExportSettings settings;final ExportVault vault;final ExportRemote remote;final NotionTableRegistry tables;final TransactionTemplate tx;
+    SolutionExports(JdbcClient jdbc,ExportSettings settings,ExportVault vault,ExportRemote remote,NotionTableRegistry tables,PlatformTransactionManager transactions){this.jdbc=jdbc;this.settings=settings;this.vault=vault;this.remote=remote;this.tables=tables;tx=new TransactionTemplate(transactions);}
     static OffsetDateTime now(){return OffsetDateTime.now(ZoneOffset.UTC);}
     UUID owner(String username){return jdbc.sql("SELECT id FROM app_user WHERE username=?").param(username).query(UUID.class).optional().orElseThrow(()->new AccountException(401,"다시 로그인해 주세요."));}
     Connection connection(UUID user,String provider){
@@ -100,14 +100,27 @@ class SolutionExports {
         if(!settings.ready(provider))throw new AccountException(503,"연동을 준비 중이에요.");
         var c=connection(owner(username),provider);return remote.targets(provider,access(c),search==null?"":search.substring(0,Math.min(100,search.length())));
     }
-    void save(String username,String provider,String target,String branch,String prefix,boolean auto){
+    void save(String username,String provider,String target,String branch,String prefix,boolean auto){save(username,provider,target,branch,prefix,auto,"legacy");}
+    void save(String username,String provider,String target,String branch,String prefix,boolean auto,String layout){
         if(!settings.ready(provider))throw new AccountException(503,"연동을 준비 중이에요.");
         var c=connection(owner(username),provider);var selected=remote.target(provider,access(c),target,branch,prefix);
+        if(provider.equals("GITHUB")){
+            String style=layout==null||layout.isBlank()?"problem-v1":layout;
+            if(!Set.of("legacy","problem-v1").contains(style))throw new AccountException(400,"저장 경로 형식을 확인해 주세요.");
+            selected=((ObjectNode)selected.deepCopy()).put("layout",style);
+        }
+        final JsonNode savedTarget=selected;
         tx.executeWithoutResult(s->{
-            if(jdbc.sql("UPDATE export_connection SET target_json=?,auto_enabled=? WHERE id=? AND status='CONNECTED'").param(JudgeJson.canonical(selected)).param(auto).param(c.id).update()!=1)throw new AccountException(409,"연결이 변경됐어요. 새로고침해 주세요.");
+            if(jdbc.sql("UPDATE export_connection SET target_json=?,auto_enabled=? WHERE id=? AND status='CONNECTED'").param(JudgeJson.canonical(savedTarget)).param(auto).param(c.id).update()!=1)throw new AccountException(409,"연결이 변경됐어요. 새로고침해 주세요.");
             jdbc.sql("UPDATE solution_export SET status='CANCELLED',lease_token=NULL,lease_until=NULL,error_code='TARGET_CHANGED' WHERE user_id=? AND provider=? AND target_sha256<>? AND status IN ('QUEUED','RETRY','RUNNING','FAILED')")
-                .param(c.owner).param(provider).param(targetHash(selected)).update();
+                .param(c.owner).param(provider).param(targetHash(savedTarget)).update();
         });
+    }
+    void automatic(String username,String provider,boolean enabled){
+        if(!settings.ready(provider))throw new AccountException(503,"연동을 준비 중이에요.");
+        UUID user=owner(username);
+        if(jdbc.sql("UPDATE export_connection SET auto_enabled=? WHERE user_id=? AND provider=? AND status='CONNECTED' AND target_json IS NOT NULL")
+                .param(enabled).param(user).param(provider).update()!=1)throw new AccountException(409,"연결과 저장 위치를 먼저 설정해 주세요.");
     }
     void disconnect(String username,String provider){UUID user=owner(username);tx.executeWithoutResult(s->{
         jdbc.sql("SELECT id FROM app_user WHERE id=? FOR UPDATE").param(user).query(UUID.class).single();
@@ -127,11 +140,17 @@ class SolutionExports {
     }
     UUID enqueue(UUID user,String provider,UUID submission,boolean manual){
         // Ownership and exportability are resolved in one query; internal/diagnostic/custom-run code is never exported.
-        var rows=jdbc.sql("SELECT s.*,j.finished_at,p.package_json,u.username FROM submission s JOIN judge_job j ON j.submission_id=s.id JOIN problem_version p ON p.id=s.problem_version JOIN app_user u ON u.id=s.user_id WHERE s.id=? AND s.user_id=? AND j.status='FINISHED' AND j.verdict='AC' AND s.run_input IS NULL AND s.diagnostic_item_id IS NULL AND s.hybrid_branch_id IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.example_check=false AND p.diagnostic_only=false AND p.review_hold=false")
+        var rows=jdbc.sql("SELECT s.*,j.finished_at,j.result_json AS judge_result_json,p.package_json,p.catalog_category,p.catalog_tags,p.catalog_difficulty,g.template_id,g.focus,d.spec_json,u.username FROM submission s JOIN judge_job j ON j.submission_id=s.id JOIN problem_version p ON p.id=s.problem_version JOIN app_user u ON u.id=s.user_id LEFT JOIN generation_job g ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) LEFT JOIN generation_spec_draft d ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE s.id=? AND s.user_id=? AND j.status='FINISHED' AND j.verdict='AC' AND s.run_input IS NULL AND s.diagnostic_item_id IS NULL AND s.hybrid_branch_id IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.example_check=false AND p.diagnostic_only=false AND p.review_hold=false")
             .param(submission).param(user).query((r,n)->{
                 var p=JudgeJson.parse(r.getString("package_json"));String language=r.getString("language");String version=r.getString("problem_version");
                 if(!version.matches("[A-Za-z0-9_.-]{1,80}")||version.equals(".")||version.equals(".."))throw new AccountException(409,"이 문제의 저장 경로를 만들 수 없어요.");
-                return ExportRemote.obj().put("username",r.getString("username")).put("problemVersion",version).put("language",language).put("title",p.path("title").asText(version))
+                var metadata=ProblemCatalogMetadata.read(r,version);
+                var result=ExportRemote.obj().put("difficulty",metadata.difficulty()).put("difficultySource",metadata.difficultySource()).put("category",metadata.category());
+                result.set("tags",JudgeJson.JSON.valueToTree(metadata.tags()));
+                var report=JudgeJson.parse(r.getString("judge_result_json"));
+                Long wall=ExecutionMetrics.maximum(report,"wall_ms"),memory=ExecutionMetrics.maximum(report,"memory_peak_bytes");
+                if(wall!=null)result.put("maxWallMs",wall);if(memory!=null)result.put("maxMemoryBytes",memory);
+                return result.put("username",r.getString("username")).put("problemVersion",version).put("language",language).put("title",p.path("title").asText(version))
                     .put("source",r.getString("source_code")).put("createdAt",r.getObject("created_at",OffsetDateTime.class).toString()).put("finishedAt",r.getObject("finished_at",OffsetDateTime.class).toString())
                     .put("problemUrl",settings.origin()+"/?problem="+ExportRemote.enc(version)+"#practice")
                     .put("filename",language.equals("JAVA")?(r.getString("callable_package")!=null||p.has("api")?"UserSolution.java":"Main.java"):language.equals("CPP")?"Main.cpp":"Main.py");
@@ -157,6 +176,8 @@ class SolutionExports {
     }
     static String targetHash(JsonNode target){
         var identity=ExportRemote.obj().put("id",target.path("id").asText());
+        if(target.path("layout").asText().equals("problem-v1"))identity.put("layout","problem-v1");
+        if(target.has("kind"))identity.put("kind",target.path("kind").asText());
         if(target.has("repo"))identity.put("branch",target.path("branch").asText()).put("prefix",target.path("prefix").asText());
         return JudgeJson.hash(JudgeJson.canonical(identity));
     }
@@ -193,7 +214,10 @@ class SolutionExports {
         try{
             if(!settings.ready(w.provider))throw new ExportRemote.Failure("SERVICE_UNAVAILABLE",false);
             var c=connection(w.user,w.provider);String token=access(c);fence(w);
-            String url=remote.publish(w.provider,token,w.target,w.payload,w.remote,state->checkpoint(w,state),()->fence(w));finish(w,url,null);
+            JsonNode target=w.target;
+            if(w.provider.equals("NOTION")&&target.path("kind").asText().equals("notion_table_parent"))
+                target=tables.resolve(w.user,token,target,remote,()->fence(w));
+            String url=remote.publish(w.provider,token,target,w.payload,w.remote,state->checkpoint(w,state),()->fence(w));finish(w,url,null);
         }catch(ExportRemote.Failure e){finish(w,null,e);}catch(AccountException e){finish(w,null,new ExportRemote.Failure("CONNECTION_CHANGED",false));}
         catch(RuntimeException e){finish(w,null,new ExportRemote.Failure("DELIVERY_ERROR",true));}
         return true;

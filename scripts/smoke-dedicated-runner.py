@@ -28,7 +28,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--catalog-only", action="store_true", help="Verify new catalog references and representative wrong answers on the persistent worker")
     mode.add_argument("--restart-worker", action="store_true", help="Pre-opening only: kill an active synthetic attempt and verify automatic recovery")
-    mode.add_argument("--memory-only", action="store_true", help="Verify real memory enforcement and untouched allocation behavior in all three languages")
+    mode.add_argument("--memory-only", action="store_true", help="Verify memory enforcement and measured runs/formal submissions in all three languages")
     args = parser.parse_args()
     # Only the invitation is needed locally; worker/DB credentials remain on their hosts.
     invitation = ssh(os.environ["GAMJAOJ_APP_SSH_TARGET"], "sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
@@ -181,6 +181,9 @@ def main():
                 if verdict == "RE" and not args.memory_only: assert "custom error" in done["stderr"]
                 if args.memory_only:
                     result=json.loads(sql(f"SELECT result_json FROM judge_job WHERE submission_id='{job}'"))
+                    assert done.get('memoryPeakBytes') and done['memoryPeakBytes']>0, done
+                    assert done['memoryPeakBytes']==max(t['memory_peak_bytes'] for t in result['tests'])
+                    assert all(t['memory_measurement']=='cgroup-peak-observed' for t in result['tests'])
                     profile=result['execution_profile']
                     assert profile['language']==language
                     assert profile['memoryMb']==(384 if language=='JAVA' else 256)
@@ -193,9 +196,36 @@ def main():
                 verify_environment(job)
                 print(f"PASS: custom {language} {verdict}, input/output preserved, one completion on the dedicated Runner host", flush=True)
             if args.memory_only:
+                formal_sources = {
+                    "JAVA": sources["AC"],
+                    "CPP": '#include <iostream>\nint main(){long long a,b;std::cin>>a>>b;std::cout<<a+b<<"\\n";}',
+                    "PYTHON": 'import sys\nprint(sum(map(int,sys.stdin.read().split())))',
+                }
+                for language, source in formal_sources.items():
+                    status, saved = call("/api/submissions", "POST", dict(problemVersion="sum-v1", source=source, language=language), str(uuid.uuid4()))
+                    assert status == 202, saved
+                    job = str(uuid.UUID(saved["id"]))
+                    deadline = time.monotonic() + 90
+                    while time.monotonic() < deadline:
+                        done = call("/api/submissions/" + job)[1]
+                        if done["status"] == "FINISHED": break
+                        time.sleep(1)
+                    else: raise AssertionError("Formal execution did not finish")
+                    assert done['verdict'] == 'AC', done
+                    result = json.loads(sql(f"SELECT result_json FROM judge_job WHERE submission_id='{job}'"))
+                    assert all(t.get('memory_peak_bytes', 0) > 0 and t['memory_measurement'] == 'cgroup-peak-observed' for t in result['tests'])
+                    assert done['memoryPeakBytes'] == max(t['memory_peak_bytes'] for t in result['tests'])
+                    assert done['wallMs'] == max(t['wall_ms'] for t in result['tests'])
+                    assert [t['memoryPeakBytes'] for t in done['tests']] == [t['memory_peak_bytes'] for t in result['tests']]
+                    assert all(not any(k in t for k in ('input', 'expected', 'stdout', 'stderr')) for t in done['tests'])
+                    assert sql(f"SELECT worker_id::text FROM judge_job WHERE submission_id='{job}'") in worker_ids
+                    assert sql(f"SELECT count(*) FROM judge_attempt WHERE submission_id='{job}' AND status='COMPLETED'") == "1"
+                    verify_environment(job)
+                    memory_evidence.append(dict(language=language,kind='SUBMISSION',expected='AC',public=done,result=result))
+                    print(f"PASS: formal {language} AC, {done['wallMs']} ms, {done['memoryPeakBytes']/1048576:.2f} MiB, public test maxima match saved report", flush=True)
                 Path('.state').mkdir(exist_ok=True)
                 Path('.state/memory-limits-live.json').write_text(json.dumps(memory_evidence,indent=2))
-            assert len(call("/api/submissions")[1]) == (0 if args.memory_only else 4)
+            assert len(call("/api/submissions")[1]) == (3 if args.memory_only else 4)
             assert call("/api/runs")[1] == []  # Custom-run history listing is intentionally not exposed.
         Path('.state').mkdir(exist_ok=True)
         Path('.state/runner-environment-live.json').write_text(json.dumps(environment_evidence,indent=2))

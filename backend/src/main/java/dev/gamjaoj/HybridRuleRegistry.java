@@ -23,7 +23,7 @@ class HybridRuleRegistry {
     record Version(String id,String familyId,String engine,String policy,String profileHash,String contractHash,
                    String status,JsonNode catalog,String packageJson,String visibility,UUID owner,boolean shared) {
         String label(){return catalog.path("label").asText();}
-        String category(){return catalog.path("category").asText();}
+        String category(){return ProblemCategories.display(catalog.path("category").asText());}
         String tags(){var out=new ArrayList<String>();catalog.path("tags").forEach(t->out.add(t.asText()));return String.join(",",out);}
     }
     record Reference(UUID id,JsonNode payload) {}

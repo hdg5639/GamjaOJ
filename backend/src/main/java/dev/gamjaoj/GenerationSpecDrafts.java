@@ -42,7 +42,7 @@ class GenerationSpecDrafts {
         if(HybridAdmission.active(jdbc,owner))throw new AccountException(409,"진행 중인 규칙 고정 출제를 먼저 마쳐 주세요.");
         if(active(owner)||jdbc.sql("SELECT count(*) FROM generation_job WHERE owner_id=? AND status IN ('QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING')").param(owner).query(Integer.class).single()>0)
             throw new AccountException(409,"진행 중인 출제 작업을 먼저 마쳐 주세요.");
-        String model=settings.value("CODEX_GENERATION_MODEL","gpt-5.6-sol"),effort=settings.value("CODEX_GENERATION_REASONING","medium");
+        String model=settings.value("CODEX_GENERATION_MODEL","gpt-6.1-sol"),effort=settings.value("CODEX_GENERATION_REASONING","medium");
         if(!List.of("low","medium","high","xhigh","max").contains(effort))throw new AccountException(503,"Codex reasoning 설정을 확인해 주세요.");
         jdbc.sql("INSERT INTO generation_spec_draft (id,owner_id,request_text,status,model,effort) VALUES (?,?,?,'QUEUED',?,?)")
                 .param(id).param(owner).param(request).param(model).param(effort).update();

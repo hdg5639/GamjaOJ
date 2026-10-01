@@ -121,7 +121,7 @@ class HybridRuleOnboardingIntegrationTest {
         for(String difficulty:List.of("HARD","EXPERT")) {
             UUID id=hard(difficulty);assertThat(onboarding.claimCall()).isNull();
             var work=onboarding.claimCodexAuthor();assertThat(work).isNotNull();
-            assertThat(work.path("model").asText()).isEqualTo("gpt-6-sol");
+            assertThat(work.path("model").asText()).isEqualTo("gpt-6.1-sol");
             assertThat(onboarding.claimCodexAuthor()).isNull();
             assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt").query(Integer.class).single()).isZero();
             onboarding.releaseInterruptedCalls(); // The external worker survives an application restart.

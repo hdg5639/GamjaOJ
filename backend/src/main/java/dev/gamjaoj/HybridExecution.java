@@ -76,7 +76,7 @@ class HybridExecution {
             throw new AccountException(429,"다른 회원의 출제가 진행 중이에요. 잠시 후 다시 요청해 주세요.");
         var job=jobs.start(user,id,request,shared);
         jdbc.sql("INSERT INTO hybrid_execution_policy(generation_id,codex_model,codex_effort) VALUES (?,?,?)")
-                .param(id).param(config.value("CODEX_GENERATION_MODEL","gpt-5.6-sol"))
+                .param(id).param(config.value("CODEX_GENERATION_MODEL","gpt-6.1-sol"))
                 .param(config.value("CODEX_GENERATION_REASONING","medium")).update();
         for(var role:models.keySet()) {
             var model=models.get(role);UUID attempt=UUID.randomUUID();

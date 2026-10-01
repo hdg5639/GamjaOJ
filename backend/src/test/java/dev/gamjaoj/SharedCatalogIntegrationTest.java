@@ -54,6 +54,16 @@ class SharedCatalogIntegrationTest {
         mvc.perform(put(endpoint).with(user(alice)).with(csrf()).contentType("application/json").content(settings(true))).andExpect(status().isNotFound());
         assertThatThrownBy(()->submissions.submit(bob,UUID.randomUUID(),request)).isInstanceOf(AccountException.class);
     }
+    @Test void legacyAndFutureCategoryWritesUseKoreanWithoutChangingProblemIdentity() throws Exception {
+        String name="k"+UUID.randomUUID().toString().substring(0,8);UUID owner=addUser(name);String version="shared-"+UUID.randomUUID();
+        jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id,catalog_category) SELECT ?,package_json,package_sha256,runtime_image,runner_policy,true,?,'basic-data-structures' FROM problem_version WHERE id='total-v1'").param(version).param(owner).update();
+        assertThat(submissions.problems(name).stream().filter(p->p.version().equals(version)).findFirst().orElseThrow().category()).isEqualTo("기초 자료구조");
+        String hash=jdbc.sql("SELECT package_sha256 FROM problem_version WHERE id=?").param(version).query(String.class).single();
+        mvc.perform(put("/api/problems/"+version+"/catalog-settings").with(user(name)).with(csrf()).contentType("application/json").content(settings(false).replace("자료구조","bfs"))).andExpect(status().isOk()).andExpect(jsonPath("$.category").value("너비 우선 탐색"));
+        assertThat(jdbc.sql("SELECT catalog_category FROM problem_version WHERE id=?").param(version).query(String.class).single()).isEqualTo("너비 우선 탐색");
+        mvc.perform(put("/api/problems/"+version+"/catalog-settings").with(user(name)).with(csrf()).contentType("application/json").content(settings(false).replace("자료구조","unknown-new-category"))).andExpect(status().isBadRequest());
+        assertThat(jdbc.sql("SELECT package_sha256 FROM problem_version WHERE id=?").param(version).query(String.class).single()).isEqualTo(hash);
+    }
     @Test void generationSharingIsExplicitAndPartOfReplayContract() {
         String name="g"+UUID.randomUUID().toString().substring(0,8);addUser(name);
         UUID key=UUID.randomUUID();var first=generation.create(name,key,"sequence-sum-v1","basics",null,true);

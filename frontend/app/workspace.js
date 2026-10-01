@@ -1,5 +1,7 @@
 'use client';
 
+import ExecutionMetrics from './execution-metrics';
+import ProblemId,{shortProblemId} from './problem-id';
 import EditorShortcutHelp,{EditorTools} from './editor-shortcut-help';
 
 import { useEffect, useRef, useState } from 'react';
@@ -322,7 +324,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       <div className="navigation-note"><img className="brand-symbol" src="/gamjaoj-favicon.svg" alt="" width="36" height="36"/><p>한 문제씩,<br/>내 것으로.</p><small>GamjaOJ · CODE & LEARN</small></div>
     </aside>
     <div className="workspace-heading"><div><span className="page-kicker">{['home','catalog'].includes(screen)?'PROBLEM LIBRARY':screen==='practice'?'WORKSPACE':'MY LEARNING'}</span><h1 className="workspace-title">{{home:'문제 탐색',catalog:'문제 탐색',practice:'문제 풀기',diagnostic:'선택 진단',generation:'내 문제 생성',training:'훈련 기록',mypage:'마이페이지'}[screen]}</h1></div>
-      {screen==='practice'&&<span className="muted">{currentSession ? `훈련 중 · ${currentSession.goal || '자유 연습'}` : activeSession ? `자유 풀이 · ${activeSession.problemVersion} 훈련은 유지 중` : `${lang.label} · ${lang.file}`}</span>}
+      {screen==='practice'&&<span className="muted">{currentSession ? `훈련 중 · ${currentSession.goal || '자유 연습'}` : activeSession ? `자유 풀이 · ${shortProblemId(activeSession.problemVersion)} 훈련은 유지 중` : `${lang.label} · ${lang.file}`}</span>}
       {['home','catalog'].includes(screen)&&<button className="primary" onClick={()=>setScreen('generation')}>+ 문제 만들기</button>}
     </div>
     {screen==='mypage'&&<div className="training-view"><MyPage api={api} user={user} problems={problems} onChoose={chooseProblem} onDiagnostic={()=>setScreen('diagnostic')}/></div>}
@@ -339,7 +341,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     <nav className="workspace-tools" aria-label="풀이 영역">
         {problems.length > 1 && <label className="solve-problem-choice"><span className="sr-only">풀이할 문제</span><select value={version} disabled={busy || !!pending} aria-describedby={busy || pending || activeSession ? "problem-selection-status" : undefined}
           onChange={event => { try{localStorage.setItem(selectionKey,event.target.value);}catch{} setVersion(event.target.value); restoreDraft(event.target.value);setInspected(null); }}>
-          {problems.map(item => <option key={item.version} value={item.version}>{item.problemHeld?'[검토 중] ':''}{item.title} · {item.version}</option>)}
+          {problems.map(item => <option key={item.version} value={item.version}>{item.problemHeld?'[검토 중] ':''}{item.title} · {shortProblemId(item.version)}</option>)}
         </select></label>}
 
       <button aria-pressed={!resultsOpen&&mobilePane==='problem'} onClick={()=>{panelRevision.current++;setResultsOpen(false);setMobilePane('problem');}}>문제 보기</button>
@@ -348,7 +350,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     </nav>
     {problem && <div className="practice-grid" data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
       <article className="problem-card">
-        <span className="version">문제 · {problem.version}</span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2>
+        <span className="version">문제 · <ProblemId version={problem.version}/></span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2>
         <LimitChips profile={inspected?inspected.execution:problem.languages?.find(l=>l.id===language)} label={inspected?recordLanguageLabel(inspected):(problem.languages?.find(l=>l.id===language)||languageInfo[language])?.label}/><p>{problem.statement}</p>
         {problem.api&&<section aria-label="구현할 API"><h3>{problem.api.api.mode==='MULTI_API'?'명령 처리 - 다중 API':'명령 처리 - 단일 함수'} · Java</h3><p>UserSolution의 메서드를 완성하세요. 입력과 출력은 제공된 구동 코드가 처리합니다. 한 케이스의 호출은 같은 객체를 사용하고, 다음 케이스에서는 새 객체를 만듭니다. 시간 제한은 입력에 포함된 모든 케이스와 호출 전체에 적용됩니다.</p>{problem.api.api.methods.map(m=><div key={m.name}><h4><code>{m.returns} {m.name}({m.parameters.map(p=>`${p.type} ${p.name}`).join(', ')})</code></h4><p>{m.description}</p></div>)}<details><summary>Main.java · 읽기 전용</summary><pre>{problem.api.driver}</pre></details></section>}
         <Examples examples={problem.examples?.length?problem.examples:[{input:problem.sampleInput,output:problem.sampleOutput}]}/>
@@ -362,7 +364,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {(busy || pending || activeSession) && <p id="problem-selection-status" className="draft-help">
           {busy ? '요청 처리 중에는 문제를 변경할 수 없어요.' : pending ? '이전 제출의 접수를 확인한 뒤 문제를 변경할 수 있어요.' : currentSession
             ? '이 문제의 제출은 진행 중인 훈련에 저장돼요. 다른 문제도 자유롭게 선택할 수 있어요.'
-            : `${activeSession.problemVersion} 훈련은 유지 중이에요. 현재 문제의 제출은 자유 풀이로 저장돼요.`}
+            : `${shortProblemId(activeSession.problemVersion)} 훈련은 유지 중이에요. 현재 문제의 제출은 자유 풀이로 저장돼요.`}
         </p>}
         <div className="code-heading"><div className="code-caption"><span className="code-filename">{inspected?(problems.find(p=>p.version===inspected.problemVersion)?.api?.sourceFile||languageInfo[recordLanguage(inspected)].file):lang.file}</span><span className="draft-status code-save-note" hidden={!!inspected} title={draftStatus} aria-live="polite">{draftStatus}</span></div>
           <span className="code-tools"><label className="language-choice"><span className="visually-hidden">언어</span><select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
@@ -374,7 +376,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
             <button type="button" className="secondary" onClick={downloadSource}>{lang.file} 내려받기</button>
             <span>초안은 계정·문제·언어별로 이 브라우저에만 남아요. 다른 기기로 옮길 때는 파일을 내려받아 주세요.</span></div></EditorTools>}
           {!inspected&&<ResetCode disabled={busy||!!pending} onReset={()=>{editSource(initialSource);setDraftStatus('기본 템플릿으로 초기화했어요. 편집기에서 Ctrl+Z(Mac은 Cmd+Z)로 되돌릴 수 있어요.');}}/>}</span></div>
-        {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{inspected.problemVersion} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
+        {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{shortProblemId(inspected.problemVersion)} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
         {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
         <SplitStack share={split} onChange={setSplit} top={<div className="editor-views"><div className="editor-view" hidden={!!inspected}>
@@ -411,7 +413,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
           <div className="record-heading"><h4 id="submission-heading" tabIndex={-1}>{label(selected)}</h4><small>{new Date(selected.createdAt).toLocaleString('ko-KR')}</small></div>
           {selected.verdict==='AC'&&<ExportSubmission key={selected.id} api={api} submission={selected}/>}
           {verdictHelp[selected.verdict]&&selected.verdict!=='IE'&&<p className="draft-help">{verdictHelp[selected.verdict]}</p>}
-          <p className="version">{selected.problemVersion} · {recordLanguageLabel(selected)}</p>
+          <ExecutionMetrics result={selected}/><p className="version">{shortProblemId(selected.problemVersion)} · {recordLanguageLabel(selected)}</p>
           {(selected.problemVersion!==version||selected.source!==source)&&<p className="notice">현재 편집 중인 코드와 다른 제출의 결과예요.</p>}
           <button type="button" className="secondary" onClick={()=>viewCode(selected)}>해당 제출 코드 보기</button>
           {tool==='history'&&<>
