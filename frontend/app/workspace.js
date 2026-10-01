@@ -23,6 +23,7 @@ import ProblemTeaching from './problem-teaching';
 import AiOperations, { AiBudget } from './ai-operations';
 import dynamic from 'next/dynamic';
 import {verdictText,verdictHelp} from './verdicts';
+import {ExportSubmission} from './integrations-panel';
 
 const CodeEditor = dynamic(() => import('./code-editor'), { ssr: false,
   loading: () => <div id="source" role="status">편집기를 불러오고 있어요…</div>,
@@ -98,7 +99,9 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       const current = training.find(item => item.status === 'ACTIVE');
       setSessions(training);
       let remembered='';try{remembered=localStorage.getItem(selectionKey)||'';}catch{/* Storage may be unavailable. */}
+      const linked=new URLSearchParams(window.location.search).get('problem');
       const initialVersion = items.some(item=>item.version===restoredPending?.problemVersion)?restoredPending.problemVersion:
+        items.some(item=>item.version===linked&&!item.problemHeld)?linked:
         items.some(item=>item.version===remembered&&!item.problemHeld)?remembered:
         current?.problemVersion || items.find(item=>!item.problemHeld)?.version || items[0]?.version || '';
       let preferred='JAVA';try{preferred=localStorage.getItem(languageKey)||'JAVA';}catch{}
@@ -107,7 +110,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       setLanguage(initialLanguage);
       setProblems(items); setVersion(initialVersion); setHistory(submissions);
       restoreDraft(initialVersion, restoredPending?.problemVersion === initialVersion ? restoredPending.source : (items.find(p=>p.version===initialVersion)?.api?.template||starters[initialLanguage]),initialLanguage);
-      if(restoredPending)setScreen('practice');
+      if(restoredPending||linked)setScreen('practice');
       setLoaded(true);
     }).catch(e => { if (live.current) setError(e.message); });
     return () => { live.current = false; };
@@ -380,7 +383,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
           onRun={() => {if(!busy&&!inspected&&problem.submissionsEnabled)setRunRequest(value=>value+1);}}
           onSubmit={() => document.getElementById('code-form')?.requestSubmit()} />
         </div>{inspected&&<div className="editor-view"><CodeEditor key={inspected.id} id="snapshot-source" label="기록 코드" language={recordLanguage(inspected)} value={inspected.source||''} disabled={true} onChange={()=>{}} onSubmit={()=>{}} onLimit={()=>{}} /></div>}</div>}
-        bottom={<RunConsole key={user.id} user={user} api={api} scope={version} disabled={!!inspected || !problem.submissionsEnabled}
+        bottom={<RunConsole exportEnabled key={user.id} user={user} api={api} scope={version} disabled={!!inspected || !problem.submissionsEnabled}
           body={{problemVersion:version,source,language,sessionId:currentSession?.id || null}} examples={problem.examples?.length?problem.examples:[{input:problem.sampleInput||'',output:problem.sampleOutput||''}]}
           runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount} onActivity={() => setActivity(value => value + 1)}
           submission={selected&&selected.id===justSubmitted&&selected.problemVersion===version?selected:null} onShowRecords={()=>showTool('history')}>
@@ -406,6 +409,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {selected&&selected.problemVersion===version&&<article className="submission-detail">
           {selected.problemHeld&&<p className="notice">문제 검토 중 · 이 기록은 학습 판단 근거에서 보류됩니다.</p>}
           <div className="record-heading"><h4 id="submission-heading" tabIndex={-1}>{label(selected)}</h4><small>{new Date(selected.createdAt).toLocaleString('ko-KR')}</small></div>
+          {selected.verdict==='AC'&&<ExportSubmission key={selected.id} api={api} submission={selected}/>}
           {verdictHelp[selected.verdict]&&selected.verdict!=='IE'&&<p className="draft-help">{verdictHelp[selected.verdict]}</p>}
           <p className="version">{selected.problemVersion} · {recordLanguageLabel(selected)}</p>
           {(selected.problemVersion!==version||selected.source!==source)&&<p className="notice">현재 편집 중인 코드와 다른 제출의 결과예요.</p>}

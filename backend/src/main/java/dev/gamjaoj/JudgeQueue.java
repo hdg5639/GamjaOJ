@@ -118,6 +118,7 @@ public class JudgeQueue {
                 .param(report.path("verdict").asText()).param(json).param(hash).param(now).param(id).update();
         jdbc.sql("UPDATE judge_attempt SET status='COMPLETED',result_json=?,finished_at=? WHERE submission_id=? AND token=?")
                 .param(json).param(now).param(id).param(token).update();
+        if (report.path("verdict").asText().equals("AC")) events.publishEvent(new SolutionExports.Accepted(id));
         if(jdbc.sql("SELECT count(*) FROM submission WHERE id=? AND hybrid_branch_id IS NOT NULL").param(id).query(Integer.class).single()>0)
             events.publishEvent(new HybridExecution.Wakeup());
     }

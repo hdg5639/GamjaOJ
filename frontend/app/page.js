@@ -5,6 +5,7 @@ import Workspace from './workspace';
 import AppHeader from './auto-header';
 import ThemeToggle from './theme-toggle';
 import SiteNotice from './site-notice';
+import IntegrationsPanel from './integrations-panel';
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers);
@@ -42,6 +43,14 @@ export default function Home() {
   }
 
   useEffect(() => {
+    const url=new URL(window.location.href);
+    if(url.searchParams.get('settings')==='integrations'){
+      setSettings(true);
+      if(url.searchParams.has('connected'))setMessage('계정을 연결했어요. 저장 위치를 선택하고 자동 저장을 켜 주세요.');
+      if(url.searchParams.has('connectionError'))setError('계정을 연결하지 못했어요. 연결을 다시 시작해 주세요.');
+      url.searchParams.delete('connected');url.searchParams.delete('connectionError');
+      window.history.replaceState(null,'',url);
+    }
     refresh();
     const sync = () => { setMessage(''); refresh(); };
     window.addEventListener('focus', sync);
@@ -138,6 +147,7 @@ export default function Home() {
             <label>연습하고 싶은 목표<textarea name="trainingGoal" defaultValue={user.trainingGoal} maxLength={120} rows={3} placeholder="예: DFS 방문 상태 복원, DP 점화식 세우기" /></label>
             <button className="primary" disabled={busy}>{busy ? '저장 중…' : '내 설정 저장'}</button>
           </form>
+          {settings&&<IntegrationsPanel key={user.id} api={api}/>}
           <details className="account-deletion">
             <summary>회원 탈퇴</summary>
             <p>탈퇴하면 계정과 개인 기록을 바로 삭제하며 되돌릴 수 없어요. 제출·실행 기록, 훈련, 진단과 평가, AI 요청, 생성 요청, 비공개 문제와 규칙이 모두 지워져요.</p>
