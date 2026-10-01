@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -61,6 +62,10 @@ def verify(directory):
     package = json.loads((directory / 'package.json').read_text())
     meta = json.loads((directory / 'metadata.json').read_text())
     validate_problem(package)
+    version = package['version']
+    if (not re.fullmatch(r'basic-pool-v1-[a-z0-9-]{1,60}', version)
+            or len(version) > 80 or meta.get('version') != version):
+        raise ValueError('Invalid ordinary version identity or metadata mismatch')
     limits = meta['timeLimits']
     qa_path = directory / 'qa' / 'checks.py'
     spec = importlib.util.spec_from_file_location('basic_pool_qa', qa_path)

@@ -27,10 +27,10 @@ class BasicPoolVerificationTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
         cases = [{'id': str(i), 'input': '1\n', 'output': '1\n'} for i in range(4)]
-        self.package = {'version': 'pool-test-v1', 'title': 'Test', 'statement': 'Print the input.',
+        self.package = {'version': 'basic-pool-v1-test-easy-01-v1', 'title': 'Test', 'statement': 'Print the input.',
                         'output_policy': 'TOKEN_EXACT', 'tests': cases,
                         'samples': [{'input': '1\n', 'output': '1\n'} for _ in range(3)]}
-        self.meta = {'timeLimits': {'JAVA': 5, 'CPP': 3, 'PYTHON': 8}}
+        self.meta = {'version': self.package['version'], 'timeLimits': {'JAVA': 5, 'CPP': 3, 'PYTHON': 8}}
         self.write('package.json', json.dumps(self.package))
         self.write('metadata.json', json.dumps(self.meta))
         self.write('qa/checks.py', 'def validate(t):\n assert t.strip()=="1"\ndef oracle(t):return "1\\n"\ndef random_cases(seed,count):return ["1\\n"]*count\n')
@@ -75,6 +75,14 @@ class BasicPoolVerificationTests(unittest.TestCase):
             self.write('verification-progress.json', json.dumps(progress))
             verify.verify(self.directory)
             self.assertEqual(set(verify.LANGUAGES), {language for language, _ in self.calls})
+
+    def test_invalid_version_identity_fails_before_runner_calls(self):
+        changed=dict(self.package,version='basic-pool-v2-test-easy-01-v2')
+        self.write('package.json',json.dumps(changed))
+        with patch.object(verify,'judge') as run:
+            with self.assertRaisesRegex(ValueError,'Invalid ordinary version identity'):
+                verify.verify(self.directory)
+            run.assert_not_called()
 
     def test_mid_verification_mutation_cannot_checkpoint_or_finish(self):
         def changed(*args):
