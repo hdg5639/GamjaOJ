@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { languageInfo, recordLanguageLabel, limitText } from './languages';
+import {ExportSubmission} from './integrations-panel';
 import { verdictText, verdictHelp, verdictNames } from './verdicts';
 
 const tokens = text => (text || '').trim().split(/\s+/).filter(Boolean);
@@ -24,7 +25,7 @@ function outcome(c) {
  * per-user limit of three unfinished jobs is never hit by the run itself) and compares each with its expected output.
  * Added cases are kept per problem in this browser. It fills the lower pane of the editor/console split.
  */
-export default function RunConsole({ user, api, body, examples, scope, disabled, runRequest, casesRequest, onCaseCount, onActivity, submission, onShowRecords, children }) {
+export default function RunConsole({ user, api, body, examples, scope, disabled, runRequest, casesRequest, onCaseCount, onActivity, submission, onShowRecords, exportEnabled=false, children }) {
   const casesKey = `gamjaoj-test-cases-${user.id}-${scope}`;
   const [cases, setCases] = useState([]), [editing, setEditing] = useState(false);
   const [runs, setRuns] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -111,6 +112,7 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
           {submission.status === 'FINISHED' && verdictHelp[submission.verdict] && <span> · {verdictHelp[submission.verdict]}</span>}</p>
         {submission.compileMessage && <pre className="compiler-message">{submission.compileMessage}</pre>}
         <SubmitTests submission={submission} />
+        {exportEnabled&&submission.verdict==='AC'&&<ExportSubmission key={submission.id} api={api} submission={submission}/>}
         {onShowRecords && <button type="button" className="secondary" onClick={onShowRecords}>제출 기록·피드백 보기</button>}
       </article>}
       {showing === 'runs' && !shown && <p className="muted">‘코드 실행’을 누르면 예제 {examples.length}개{cases.length ? `와 추가한 케이스 ${cases.length}개` : ''}를 차례로 실행하고 기댓값과 비교한 결과가 여기에 나와요. 실행은 제출 기록에 남지 않아요.</p>}
