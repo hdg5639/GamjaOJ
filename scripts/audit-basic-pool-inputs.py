@@ -41,8 +41,12 @@ def audit(directory):
               'executionContract':verify.contract(),'generated':[]}
     if not package.get('generated'):return evidence
     capture=InputAudit(qa.validate)
-    probe=dict(package,tests=package['tests'][:1])
-    source=(directory/'solutions/java/Main.java').read_bytes()
+    # Only fresh generator bytes are under audit; full solution/verdict/resource
+    # evidence comes from verify-basic-pool.py, avoiding redundant reference runs.
+    probe=dict(package,tests=[{'id':'input-audit-probe','input':'1\n','output':'VALID\n'}])
+    probe['generated']={'generator':package['generated']['generator'],
+                        'tests':[dict(case,expected='VALID') for case in package['generated']['tests']]}
+    source=b'public class Main {public static void main(String[] args){System.out.println("VALID");}}'
     with tempfile.TemporaryDirectory(prefix='gamja-basic-input-audit-') as state:
         runner=verify.Runner(verify.LANGUAGES['JAVA']['image'],state)
         runner.profile=verify.checked_profile(verify.LANGUAGES['JAVA']|{'testWallSeconds':meta['timeLimits']['JAVA']},'JAVA',runner.image)

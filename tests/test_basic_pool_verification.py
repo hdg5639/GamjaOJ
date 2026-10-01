@@ -104,3 +104,31 @@ class GeneratedInputAuditTests(unittest.TestCase):
         with self.assertRaises(UnicodeDecodeError):capture.put('same-key', {'input': b'\xff'})
         self.assertEqual(2, len(capture.records))
         self.assertIsNone(capture.get('same-key'))
+
+    def test_generator_probe_preserves_original_generator_and_seed(self):
+        with tempfile.TemporaryDirectory() as state:
+            directory=Path(state)
+            (directory/'qa').mkdir()
+            (directory/'qa/checks.py').write_text('def validate(t):\n assert int(t.strip()) in (1,2)\n')
+            package={'version':'audit-test-v1','output_policy':'TOKEN_EXACT',
+                     'tests':[{'id':'sample','input':'1\n','output':'1\n'}],
+                     'generated':{'generator':'public class Main {}','reference':'public class Main {}',
+                                  'tests':[{'id':'large-seed-11','seed':'11','expected':'REFERENCE'}]}}
+            (directory/'package.json').write_text(json.dumps(package))
+            (directory/'metadata.json').write_text(json.dumps({'id':'BP999','timeLimits':{'JAVA':5}}))
+            owner=self
+            class ProbeRunner:
+                def __init__(self,image,state):self.image=image
+                def judge(self,source,probe):
+                    audit.verify.validate_problem(probe)
+                    owner.assertIn(b'VALID',source)
+                    owner.assertEqual(package['generated']['generator'],probe['generated']['generator'])
+                    owner.assertNotIn('reference',probe['generated'])
+                    owner.assertEqual([{'id':'large-seed-11','seed':'11','expected':'VALID'}],probe['generated']['tests'])
+                    self.generated_cache.put(None,{'input':b'2\n'})
+                    return {'verdict':'AC','tests':[{'id':'large-seed-11','kind':'generated',
+                             'input_sha256':hashlib.sha256(b'2\n').hexdigest(),'input_bytes':2}]}
+            with patch.object(audit.verify,'Runner',ProbeRunner):result=audit.audit(directory)
+            self.assertEqual('PASS',result['status'])
+            self.assertEqual(audit.verify.digest(package),result['packageSha256'])
+            self.assertEqual([{'inputSha256':hashlib.sha256(b'2\n').hexdigest(),'inputBytes':2,'id':'large-seed-11'}],result['generated'])
