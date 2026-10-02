@@ -12,7 +12,7 @@ export const thinkingLayers=[
  ['새로 짜기','여러 통찰을 모아 풀이 구조를 새로 설계해요.'],
 ];
 export const thinkingLabel=p=>p?.thinking?`${p.thinking.layer}겹 · ${thinkingLayers[p.thinking.layer-1]?.[0]||p.thinking.name}`:'겹 미배정';
-export const thinkingSource=p=>p?.thinking?.source==='CURATED_ESTIMATE'?'검토 추정':'출제자 추정';
+export const thinkingSource=p=>p?.thinking?.source==='MODEL_ESTIMATE'?'AI 검토 추정':p?.thinking?.source==='CURATED_ESTIMATE'?'검토 추정':'출제자 추정';
 
 export default function ThinkingDifficulty({problem,compact=false}){
  const t=problem?.thinking;
@@ -26,5 +26,5 @@ export function ThinkingGuide(){return <details className="catalog-rating-note t
  <p>겹은 이 문제의 풀이를 처음 설계할 때 필요한 생각의 깊이예요. 같은 알고리즘도 규칙·제약·풀이 구조에 따라 겹이 달라져요. 세 축을 평균 내거나 이름에 나온 기법만으로 결정하지 않아요.</p>
  <ol>{thinkingLayers.map(([name,description],i)=><li key={name}><strong>{i+1}겹 · {name}</strong><span>{description}</span></li>)}</ol>
  <dl><div><dt>발상</dt><dd>풀이 방법을 발견하고 타당성을 설명하는 부담</dd></div><div><dt>구현</dt><dd>코드 구조·자료 관리·여러 규칙을 맞추는 부담</dd></div><div><dt>경계</dt><dd>동률·빈 상태·수 범위·특수 상황을 챙기는 부담</dd></div></dl>
- <p>각 축은 1(적음)~5(매우 큼)입니다. 검토 추정은 최종 풀이·제약을 검토한 배정, 출제자 추정은 작성자의 배정이에요. 풀이 통계로 보정한 확정 등급은 아니며 외부 사이트 등급과 대응하지 않아요. 미배정은 쉬운 문제가 아니라 아직 판단하지 않은 문제예요. 해결 상태는 내 전체 정식 제출의 AC 기준입니다.</p>
+ <p>각 축은 1(적음)~5(매우 큼)입니다. AI 검토 추정은 생성 파이프라인의 독립 검토 결과, 검토 추정은 최종 풀이·제약을 검토한 배정, 출제자 추정은 작성자의 배정이에요. 풀이 통계로 보정한 확정 등급은 아니며 외부 사이트 등급과 대응하지 않아요. 미배정은 쉬운 문제가 아니라 아직 판단하지 않은 문제예요. 해결 상태는 내 전체 정식 제출의 AC 기준입니다.</p>
  </details>;}

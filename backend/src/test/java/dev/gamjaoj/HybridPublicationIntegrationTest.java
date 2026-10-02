@@ -112,7 +112,7 @@ class HybridPublicationIntegrationTest {
     HybridExecution.Work review(){publication.advance();var work=execution.claimApi();assertThat(work).isNotNull();assertThat(work.request().assignment().role()).isEqualTo(CONTENT_REVIEW);return work;}
     com.fasterxml.jackson.databind.node.ObjectNode accepted(HybridExecution.Work work) {
         var p=JudgeJson.JSON.createObjectNode().put("schemaVersion","1").put("inputHash",work.request().assignment().inputHash())
-                .put("proseEquivalent",true).put("teachingCorrect",true).put("implementationAligned",true).put("reasoning","Fixture content review, not provider semantic evidence.");p.putArray("issues");if(work.request().assignment().input().has("requirements"))p.set("requirementsReview",GenerationRequirementsTest.accepted());return p;
+                .put("proseEquivalent",true).put("teachingCorrect",true).put("implementationAligned",true).put("reasoning","Fixture content review, not provider semantic evidence.");p.putArray("issues");if(work.request().assignment().input().has("requirements"))p.set("requirementsReview",GenerationRequirementsTest.accepted());if(work.request().assignment().input().has("thinkingRubric"))p.set("thinking",ThinkingDifficulty.template(GenerationType.SUM));return p;
     }
     @Test void originalRequestIsFrozenIntoReviewAndFidelityRejectionPreventsPublication() {
         UUID id=checked(false);var work=review();
@@ -199,6 +199,13 @@ class HybridPublicationIntegrationTest {
         assertThatThrownBy(()->admit(false)).isInstanceOf(AccountException.class);
         assertThat(jdbc.sql("SELECT count(*) FROM hybrid_generation").query(Integer.class).single()).isZero();
     }
+    @Test void missingThinkingReviewCannotPublishOrSpendAnotherCall() {
+        UUID id=checked(false);var work=review();var payload=accepted(work);payload.remove("thinking");
+        execution.finish(work.attemptId(),result(payload),null);publication.advance();
+        assertThat(published()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM problem_thinking_profile WHERE problem_version LIKE 'hybrid-check-%'").query(Integer.class).single()).isZero();
+        assertThat(execution.claimApi()).isNull();
+    }
     @ParameterizedTest @ValueSource(booleans={false,true}) void publishesFrozenPackageOnceWithOwnerVisibilityAndPinnedBudget(boolean shared) {
         UUID id=checked(shared);var deadline=jobs.view("owner",id).deadlineAt();
         overrides.put("AI_HYBRID_REVIEW_MODEL","changed");overrides.put("HYBRID_CONTENT_REVIEW_ENABLED","false");
@@ -208,6 +215,8 @@ class HybridPublicationIntegrationTest {
         publication.advance();checks.advance();execution.recover();
         assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");assertThat(published()).isEqualTo(1);assertThat(runner.jobs()).isEqualTo(15);
         String version=jobs.view("owner",id).publishedVersionId();assertThat(version).startsWith("hybrid-check-");
+        assertThat(jdbc.sql("SELECT count(*) FROM problem_thinking_profile t JOIN problem_version p ON p.id=t.problem_version AND p.package_sha256=t.package_sha256 WHERE p.id=? AND t.assessment_kind='MODEL'").param(version).query(Integer.class).single()).isOne();
+        publication.advance();assertThat(jdbc.sql("SELECT count(*) FROM problem_thinking_profile WHERE problem_version=?").param(version).query(Integer.class).single()).isOne();
         assertThat(jdbc.sql("SELECT shared FROM problem_version WHERE id=?").param(version).query(Boolean.class).single()).isEqualTo(shared);
         assertThat(jdbc.sql("SELECT count(*) FROM problem_version p JOIN hybrid_generation g ON p.owner_id=g.owner_id AND p.id=g.published_version_id WHERE g.id=?").param(id).query(Integer.class).single()).isEqualTo(1);
         assertThat(ledger.budget().spentUsd()).isEqualByComparingTo("0.0006");assertThat(ledger.budget().reservedUsd()).isZero();assertThat(execution.claimApi()).isNull();

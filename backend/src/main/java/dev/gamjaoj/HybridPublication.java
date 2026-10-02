@@ -25,7 +25,7 @@ class HybridPublication {
     }
     private static String hash(JsonNode n){return JudgeJson.hash(JudgeJson.canonical(n));}
     private record State(UUID id,UUID owner,int revision,boolean shared,String contract,String publicHash,UUID validation) {}
-    private JsonNode input(State s,boolean requirements) {
+    private JsonNode input(State s,boolean requirements,boolean thinking) {
         var data=checks.checkedPackage(s.validation);
         var contract=data.get("CONTRACT");var presentation=data.get("PRESENTATION");var core=data.get("CORE");
         var snapshot=HybridArtifacts.publicSnapshot(presentation);
@@ -81,6 +81,7 @@ class HybridPublication {
                     .put("scope","checked reference inputs on the pinned Runner; not a worst-case proof. Registered rules retain the budget used to requalify their slow witnesses; legacy rules retain five seconds.");
         }
         if(requirements&&qualifiedSeconds>0)((com.fasterxml.jackson.databind.node.ObjectNode)result.path("requirements").path("timeEvidence")).put("javaQualifiedSeconds",qualifiedSeconds);
+        if(thinking)result.put("thinkingRubric","v1");
         return HybridArtifacts.bounded(result);
     }
     @Transactional
@@ -102,7 +103,7 @@ class HybridPublication {
             if(review.isEmpty()&&jdbc.sql("SELECT count(*) FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id WHERE r.generation_id=? AND r.revision=? AND r.role='CONTENT_REVIEW' AND a.status='HYBRID_RESERVED'")
                     .param(id).param(s.revision).query(Integer.class).single()!=1)continue;
             try {
-                var input=input(s,fresh||JudgeJson.parse(review.get()[2]).has("requirements"));String raw=JudgeJson.canonical(input),hash=JudgeJson.hash(raw);
+                var input=input(s,fresh||JudgeJson.parse(review.get()[2]).has("requirements"),fresh||JudgeJson.parse(review.get()[2]).has("thinkingRubric"));String raw=JudgeJson.canonical(input),hash=JudgeJson.hash(raw);
                 if(fresh) {
                     jdbc.sql("INSERT INTO hybrid_branch(id,generation_id,revision,role,attempt,status,input_json,input_sha256,contract_sha256,public_sha256,created_at) VALUES (?,?,?,'CONTENT_REVIEW',?,'QUEUED',?,?,?,?,CURRENT_TIMESTAMP)")
                             .param(UUID.randomUUID()).param(id).param(s.revision).param(nextAttempt).param(raw).param(hash).param(s.contract).param(s.publicHash).update();
@@ -116,7 +117,7 @@ class HybridPublication {
                 var artifact=jdbc.sql("SELECT payload_json,payload_sha256 FROM hybrid_artifact WHERE branch_id=?").param(UUID.fromString(r[0]))
                         .query((row,n)->new String[]{row.getString(1),row.getString(2)}).single();
                 HybridArtifacts.require(JudgeJson.hash(artifact[0]).equals(artifact[1])&&artifact[1].equals(r[4]),"CONTENT_REVIEW_ARTIFACT_FENCE");
-                HybridArtifacts.contentReview(JudgeJson.parse(artifact[0]),hash,input.has("requirements"));
+                HybridArtifacts.contentReview(JudgeJson.parse(artifact[0]),hash,input.has("requirements"),input.has("thinkingRubric"));
                 String version="hybrid-check-"+s.validation;
                 // The budget/generation locks serialize cancellation, provider completion and publication.
                 HybridArtifacts.require(OffsetDateTime.now(ZoneOffset.UTC).isBefore(jdbc.sql("SELECT deadline_at FROM hybrid_generation WHERE id=?").param(id).query(OffsetDateTime.class).single()),"PUBLICATION_DEADLINE");
@@ -125,6 +126,7 @@ class HybridPublication {
                 int qualified=input.path("requirements").path("timeEvidence").path("javaQualifiedSeconds").asInt();
                 if(qualified>0)HybridArtifacts.require(JudgeJson.parse(limits).path("JAVA").asInt()==qualified,"TIME_LIMIT_QUALIFICATION_FENCE");
                 jdbc.sql("UPDATE problem_version SET ready=true,shared=?,time_limits_json=? WHERE id=? AND ready=false").param(s.shared).param(limits).param(version).update();
+                ThinkingDifficulty.publish(jdbc,version,JudgeJson.parse(artifact[0]).path("thinking"),"MODEL");
                 var ruleVersion=jdbc.sql("SELECT rule_version_id FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).optional();
                 if(ruleVersion.isPresent()) {
                     var profile=HybridProfiles.byPolicy(jdbc.sql("SELECT policy FROM hybrid_validation_profile WHERE branch_id=?").param(s.validation).query(String.class).single());
