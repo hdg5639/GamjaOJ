@@ -10,6 +10,8 @@ const tokens = text => (text || '').trim().split(/\s+/).filter(Boolean);
 const bytes = text => new TextEncoder().encode(text).length;
 const read = (key, fallback) => { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } };
 const write = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Kept in memory only. */ } };
+const FONT_KEY = 'gamjaoj-console-font-size';
+const DEFAULT_FONT_SIZE = 13, MIN_FONT_SIZE = 10, MAX_FONT_SIZE = 24;
 
 function outcome(c) {
   const r = c.result;
@@ -32,6 +34,15 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
   const [runs, setRuns] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const live = useRef(true), runRef = useRef(null), toasted = useRef(null);
   const [mode, setMode] = useState('runs'), [toast, setToast] = useState(null);
+  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
+  useEffect(() => {
+    const saved = read(FONT_KEY, DEFAULT_FONT_SIZE);
+    setFontSize(typeof saved === 'number' && Number.isFinite(saved)
+      ? Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, saved)) : DEFAULT_FONT_SIZE);
+  }, []);
+  function changeFontSize(next) {
+    setFontSize(next); write(FONT_KEY, next);
+  }
   // A fresh formal submission takes over the console and, once judged, pops a short summary.
   useEffect(() => { if (submission?.id) setMode('submission'); }, [submission?.id]);
   useEffect(() => {
@@ -82,14 +93,21 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
   const judged = results.filter(r => r[1] !== undefined);
   const first = shown?.cases.find(c => c.result)?.result;
   const showing = mode === 'submission' && submission ? 'submission' : 'runs';
-  return <section className="run-console" aria-label="실행 결과">
+  return <section className="run-console" aria-label="실행 결과" style={{ '--console-font-size': `${fontSize}px` }}>
     {toast && <div className="submit-toast" role="status" data-verdict={toast.verdict}>
       <span>제출 결과 〉 <strong>{verdictText(toast.verdict)}</strong>{toast.tests?.length ? ` · ${toast.tests.filter(t => t.verdict === 'AC').length} / ${toast.verdict === 'AC' ? toast.tests.length : Math.max(toast.testCount || 0, toast.tests.length)}개 통과` : ''}</span>
       <button type="button" aria-label="제출 결과 알림 닫기" onClick={() => setToast(null)}>×</button></div>}
     <div className="console-head"><h3>{submission ? <span className="console-tabs">
       <button type="button" aria-pressed={showing === 'runs'} onClick={() => setMode('runs')}>실행 결과</button>
       <button type="button" aria-pressed={showing === 'submission'} onClick={() => setMode('submission')}>제출 결과</button></span> : '실행 결과'}</h3>
-      <small>{finished && judged.length > 0 ? `${judged.filter(r => r[1]).length} / ${judged.length}개 통과` : first ? `${recordLanguageLabel(first)} · ${limitText(first.execution)}` : ''}</small></div>
+      <div className="console-tools">
+        <small>{finished && judged.length > 0 ? `${judged.filter(r => r[1]).length} / ${judged.length}개 통과` : first ? `${recordLanguageLabel(first)} · ${limitText(first.execution)}` : ''}</small>
+        <div className="console-font-controls" role="group" aria-label="터미널 글자 크기">
+          <button type="button" aria-label="터미널 글자 크기 줄이기" title="글자 크기 줄이기" disabled={fontSize <= MIN_FONT_SIZE} onClick={() => changeFontSize(Math.max(MIN_FONT_SIZE, fontSize - 1))}>A−</button>
+          <button type="button" aria-label="터미널 글자 크기 초기화" title="기본 크기로 초기화" onClick={() => changeFontSize(DEFAULT_FONT_SIZE)}>{fontSize}px</button>
+          <button type="button" aria-label="터미널 글자 크기 키우기" title="글자 크기 키우기" disabled={fontSize >= MAX_FONT_SIZE} onClick={() => changeFontSize(Math.min(MAX_FONT_SIZE, fontSize + 1))}>A+</button>
+        </div>
+      </div></div>
     <div className="console-body" aria-live="polite">
     {editing && <div className="case-editor" role="group" aria-label="테스트 케이스 추가">
       <p className="case-editor-help">예제와 함께 실행할 테스트 케이스를 추가하세요. 기댓값을 비우면 출력만 보여 줘요. 추가한 케이스는 이 문제에 한해 이 브라우저에 저장돼요.</p>

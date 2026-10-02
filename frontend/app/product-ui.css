@@ -388,10 +388,15 @@ button.danger:disabled { opacity:.6; }
 .catalog-level[data-level="EXPERT"] strong { color:#8a1c1c; }
 /* Coding-test style run console under the editor: always visible, dark output area, pass/fail colored. */
 .run-console { margin-top:10px; border:1px solid #1f2d2a; border-radius:10px; overflow:hidden; background:#16211f; color:#e6efec; }
-.run-console .console-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:8px 12px; background:#1f2d2a; }
+.run-console .console-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:8px 12px; background:#1f2d2a; }
+.console-tools { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-left:auto; }
+.console-font-controls { display:flex; align-items:center; gap:2px; }
+.console-font-controls button { min-height:28px; padding:2px 6px; border:1px solid #40544e; border-radius:5px; background:#16211f; color:#e6efec; font-size:12px; white-space:nowrap; }
+.console-font-controls button:disabled { opacity:.4; cursor:default; }
 .run-console .console-head h3 { margin:0; font-size:13px; font-weight:700; color:#e6efec; }
 .run-console .console-head small { color:#9fb2ad; font-size:12px; }
-.run-console .console-body { padding:10px 12px; max-height:22rem; overflow:auto; font-size:13px; }
+.run-console .console-body { padding:10px 12px; max-height:22rem; overflow:auto; font-size:var(--console-font-size,13px); }
+.run-console .console-body pre, .run-console .console-body textarea { font-size:var(--console-font-size,13px); }
 .run-console .console-body .muted { color:#9fb2ad; margin:0; }
 .run-console .console-input { padding:10px 12px; border-bottom:1px solid #2c3d39; display:grid; gap:6px; }
 .run-console .console-input label { font-size:12px; color:#9fb2ad; }

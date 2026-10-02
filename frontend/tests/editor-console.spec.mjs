@@ -28,6 +28,26 @@ for(const [width,height] of [[1440,900],[1024,650],[390,844]])test(`console stay
  await expect(page.getByLabel('추가 5 · 입력',{exact:true})).toBeVisible();expect(await body.evaluate(e=>e.scrollHeight>e.clientHeight)).toBe(true);
  await page.getByRole('button',{name:'완료',exact:true}).click();await page.getByRole('button',{name:'코드 실행',exact:true}).click();await expect(console.getByLabel('추가 5 출력')).toHaveText(/49$/);await expect(console).toBeInViewport({ratio:1});
 });
+test('console font size applies to output and inputs, persists and stays within limits',async({page})=>{
+ await workspace(page);
+ const console=page.getByRole('region',{name:'실행 결과',exact:true});
+ const increase=console.getByRole('button',{name:'터미널 글자 크기 키우기',exact:true});
+ const decrease=console.getByRole('button',{name:'터미널 글자 크기 줄이기',exact:true});
+ const reset=console.getByRole('button',{name:'터미널 글자 크기 초기화',exact:true});
+ await increase.click();await expect(reset).toHaveText('14px');
+ await page.getByRole('button',{name:'코드 실행',exact:true}).click();
+ await expect(console.getByLabel('테스트 1 출력')).toHaveCSS('font-size','14px');
+ await page.getByRole('button',{name:'테스트 케이스 추가',exact:true}).click();
+ await page.getByRole('button',{name:'+ 케이스 추가',exact:true}).click();
+ await expect(page.getByLabel('추가 1 · 입력',{exact:true})).toHaveCSS('font-size','14px');
+ await page.reload();await expect(reset).toHaveText('14px');
+ for(let i=0;i<10;i++)await increase.click();
+ await expect(reset).toHaveText('24px');await expect(increase).toBeDisabled();
+ for(let i=0;i<14;i++)await decrease.click();
+ await expect(reset).toHaveText('10px');await expect(decrease).toBeDisabled();
+ await reset.click();await expect(reset).toHaveText('13px');
+ await page.reload();await expect(reset).toHaveText('13px');
+});
 for(const language of ['JAVA','CPP','PYTHON'])test(`semantic members accept Tab with parentheses and retain indentation ${language}`,async({page})=>{
  await workspace(page,()=>({items:[{label:'nextValue()',filterText:'nextValue',kind:2,detail:'String',insertText:'nextValue'}]}));
  await page.getByLabel('풀이 언어',{exact:true}).selectOption(language);
