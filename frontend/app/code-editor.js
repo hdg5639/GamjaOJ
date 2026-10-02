@@ -69,41 +69,41 @@ const selectedText = ViewPlugin.fromClass(class {
 
 // Classic IntelliJ Darcula-inspired palette; Java semantic roles remain parser-based.
 const colors = HighlightStyle.define([
-  { tag: [tags.keyword, tags.bool, tags.null, tags.standard(tags.typeName)], color: '#cc7832' },
-  { tag: [tags.typeName, tags.className], color: '#a9b7c6' },
-  { tag: tags.function(tags.variableName), color: '#ffc66d' },
-  { tag: [tags.string, tags.character], color: '#6a8759' },
-  { tag: tags.number, color: '#6897bb' },
-  { tag: tags.comment, color: '#808080' },
-  { tag: [tags.operator, tags.punctuation], color: '#a9b7c6' },
-  { tag: tags.meta, color: '#bbb529' },
+  { tag: [tags.keyword, tags.bool, tags.null, tags.standard(tags.typeName)], color: 'var(--editor-keyword, #cc7832)' },
+  { tag: [tags.typeName, tags.className], color: 'var(--editor-type, #a9b7c6)' },
+  { tag: tags.function(tags.variableName), color: 'var(--editor-function, #ffc66d)' },
+  { tag: [tags.string, tags.character], color: 'var(--editor-string, #6a8759)' },
+  { tag: tags.number, color: 'var(--editor-number, #6897bb)' },
+  { tag: tags.comment, color: 'var(--editor-comment, #808080)' },
+  { tag: [tags.operator, tags.punctuation], color: 'var(--editor-ink, #a9b7c6)' },
+  { tag: tags.meta, color: 'var(--editor-meta, #bbb529)' },
 ]);
 const theme = EditorView.theme({
-  '&': { height: '100%', backgroundColor: '#2b2b2b', color: '#a9b7c6', fontSize: '14px' },
-  '.cm-scroller': { overflow: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace', lineHeight: '1.65' },
-  '.cm-content': { padding: '12px 0', caretColor: '#bbbbbb' },
+  '&': { height: '100%', backgroundColor: 'var(--editor-background, #2b2b2b)', color: 'var(--editor-ink, #a9b7c6)', fontSize: 'var(--editor-font-size, 14px)' },
+  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--editor-font-family, ui-monospace, SFMono-Regular, Consolas, monospace)', lineHeight: '1.65' },
+  '.cm-content': { padding: '12px 0', caretColor: 'var(--editor-caret, #bbbbbb)' },
   '.cm-line': { padding: '0 12px' },
-  '.java-parameter': { color: '#a9b7c6' },
-  '.java-method': { color: '#ffc66d' },
-  '.java-type': { color: '#a9b7c6' },
-  '.cm-cursor': { borderLeftColor: '#bbbbbb' },
-  '.cm-gutters': { backgroundColor: '#313335', color: '#909090', borderRight: '1px solid #3c3f41' },
-  '.cm-activeLineGutter': { backgroundColor: '#323232' },
-  '.cm-activeLine': { backgroundColor: '#ffffff08' },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: '#ffe08a !important' },
-  '.cm-selected-code, .cm-selected-code *': { color:'#18232d !important' },
-  '.cm-content ::selection': { backgroundColor:'#ffe08a', color:'#18232d' },
-  '.cm-matchingBracket': { backgroundColor: '#3b514d', outline: '1px solid #7f9c96' },
-  '.cm-panels': { backgroundColor: '#3c3f41', color: '#a9b7c6' },
-  '.cm-panel input, .cm-panel button': { color: '#a9b7c6', backgroundColor: '#2b2b2b' },
-  '.cm-tooltip-autocomplete': { backgroundColor:'#313335', color:'#d9e2dc', border:'1px solid #62756a' },
-  '.cm-tooltip-autocomplete > ul > li[aria-selected="true"]': { backgroundColor:'#ffe08a', color:'#18232d', outline:'1px solid #fff3cf', outlineOffset:'-1px' },
-  '.cm-tooltip-autocomplete > ul > li[aria-selected="true"] .cm-completionDetail': {color:'#33414a'},
-  '.cm-completionDetail': { color:'#bccac1', fontSize:'11px' },
-  '.cm-searchMatch': { backgroundColor: '#62533a', outline: '1px solid #987e46' },
-  '.cm-vim-panel': { backgroundColor: '#313335', color: '#bbbbbb', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace', fontSize: '12px', padding: '2px 10px' },
-  '.cm-fat-cursor': { backgroundColor: '#ffe08a99 !important', color: '#18232d !important' },
-  '&:not(.cm-focused) .cm-fat-cursor': { background: 'none !important', outline: '1px solid #ffe08a' },
+  '.java-parameter': { color: 'var(--editor-ink, #a9b7c6)' },
+  '.java-method': { color: 'var(--editor-function, #ffc66d)' },
+  '.java-type': { color: 'var(--editor-type, #a9b7c6)' },
+  '.cm-cursor': { borderLeftColor: 'var(--editor-caret, #bbbbbb)' },
+  '.cm-gutters': { backgroundColor: 'var(--editor-gutter, #313335)', color: 'var(--editor-gutter-ink, #909090)', borderRight: '1px solid var(--editor-border, #3c3f41)' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--editor-active-line, #323232)' },
+  '.cm-activeLine': { backgroundColor: 'var(--editor-active-line, #323232)' },
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: 'var(--editor-selection, #ffe08a) !important' },
+  '.cm-selected-code, .cm-selected-code *': { color:'var(--editor-selection-ink, #18232d) !important' },
+  '.cm-content ::selection': { backgroundColor:'var(--editor-selection, #ffe08a)', color:'var(--editor-selection-ink, #18232d)' },
+  '.cm-matchingBracket': { backgroundColor: 'var(--editor-bracket, #3b514d)', outline: '1px solid var(--editor-bracket-line, #7f9c96)' },
+  '.cm-panels': { backgroundColor: 'var(--editor-gutter, #3c3f41)', color: 'var(--editor-ink, #a9b7c6)' },
+  '.cm-panel input, .cm-panel button': { color: 'var(--editor-ink, #a9b7c6)', backgroundColor: 'var(--editor-background, #2b2b2b)' },
+  '.cm-tooltip-autocomplete': { backgroundColor:'var(--editor-gutter, #313335)', color:'var(--editor-ink, #d9e2dc)', border:'1px solid var(--editor-border, #62756a)' },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected="true"]': { backgroundColor:'var(--editor-selection, #ffe08a)', color:'var(--editor-selection-ink, #18232d)', outline:'1px solid var(--editor-selection, #fff3cf)', outlineOffset:'-1px' },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected="true"] .cm-completionDetail': {color:'var(--editor-selection-ink, #33414a)'},
+  '.cm-completionDetail': { color:'var(--editor-gutter-ink, #bccac1)', fontSize:'11px' },
+  '.cm-searchMatch': { backgroundColor: 'var(--editor-search, #62533a)', outline: '1px solid var(--editor-search-line, #987e46)' },
+  '.cm-vim-panel': { backgroundColor: 'var(--editor-gutter, #313335)', color: 'var(--editor-caret, #bbbbbb)', fontFamily: 'var(--editor-font-family, ui-monospace, SFMono-Regular, Consolas, monospace)', fontSize: '12px', padding: '2px 10px' },
+  '.cm-fat-cursor': { backgroundColor: 'color-mix(in srgb, var(--editor-selection, #ffe08a) 60%, transparent) !important', color: 'var(--editor-selection-ink, #18232d) !important' },
+  '&:not(.cm-focused) .cm-fat-cursor': { background: 'none !important', outline: '1px solid var(--editor-selection, #ffe08a)' },
 }, { dark: true });
 
 export default function CodeEditor({ id = 'source', label = 'Main.java', language = 'JAVA', value, disabled, onChange, onSubmit, onRun, onLimit, vim = false }) {
@@ -182,6 +182,11 @@ export default function CodeEditor({ id = 'source', label = 'Main.java', languag
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value }, annotations: externalChange.of(true) });
     }
   }, [value]);
+  useEffect(() => {
+    const measure=()=>editor.current?.requestMeasure();
+    window.addEventListener('gamjaoj-appearance',measure);
+    return ()=>window.removeEventListener('gamjaoj-appearance',measure);
+  }, []);
   useEffect(() => {
     editor.current?.dispatch({ effects: keys.current.reconfigure(vim ? vimMode({ status: true }) : []) });
   }, [vim]);

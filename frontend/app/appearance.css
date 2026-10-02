@@ -1,0 +1,47 @@
+:root { --sidebar-background:#143e34; --sidebar-ink:#c7ded3; --sidebar-active:#e3f4b1; --sidebar-active-ink:#183f2e; --button-ink:#ffffff; --success:#26744b; --danger:#a1271b; }
+:root[data-theme="dark"] { --sidebar-background:#0f2b24; --success:#7fd3a3; --danger:#ff9a86; }
+.appearance-toggle { display:inline-grid; place-items:center; padding:6px 9px; min-width:36px; }
+.anonymous-theme { display:flex; gap:4px; }
+.appearance-settings { display:grid; gap:16px; }
+.appearance-settings .muted { margin:0; }
+.appearance-presets, .appearance-tabs, .appearance-mode { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.appearance-tabs button[aria-pressed="true"], .appearance-mode button[aria-pressed="true"] { background:var(--subtle); border-color:var(--green); }
+.appearance-colors { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px 20px; }
+.appearance-color { display:grid; grid-template-columns:minmax(0,1fr) 86px; align-items:end; gap:8px; }
+.appearance-color label { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:36px; font-size:12px; }
+.appearance-color input[type="color"] { width:34px; height:30px; padding:2px; flex-shrink:0; cursor:pointer; }
+.appearance-color > input { padding:6px; font-family:ui-monospace,monospace; font-size:12px; }
+.appearance-color > input[aria-invalid="true"] { border-color:var(--danger,#a1271b); }
+.appearance-fonts { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; padding:12px; border:1px solid var(--line); border-radius:8px; }
+.appearance-fonts small { grid-column:1 / -1; color:var(--muted); }
+.appearance-fonts input[type="range"] { padding:0; accent-color:var(--green); }
+.appearance-settings > button { justify-self:start; }
+
+/* User colors override fixed light/dark surfaces, while editor and terminal keep their own palettes. */
+:root[data-custom-colors="true"] :is(.header-slot,.secondary,.card,.catalog-list,.catalog-edit,.catalog-empty,.diagnostic-panel,.followup-panel,.session-panel,.ai-operations,.tool-pop > summary,.tool-pop-panel,dialog.modal,.catalog-toolbar input,.catalog-filters,.catalog-welcome,.rule-card,.onboard-card,.generation-main,.generation-side,.spec-draft-editor,.problem-review,.diagnostic-profile,.diagnostic-plan,.diagnostic-result-tools,.state-badge) { background:var(--surface); color:var(--ink); border-color:var(--line); }
+:root[data-custom-colors="true"] :is(input,textarea,select) { background:var(--surface); color:var(--ink); border-color:var(--line); }
+:root[data-custom-colors="true"] :focus-visible { outline-color:var(--green); }
+:root[data-custom-colors="true"] .code-editor .cm-panel :is(input,button) { background:var(--editor-background,#2b2b2b); color:var(--editor-ink,#a9b7c6); }
+:root[data-custom-colors="true"] :is(.primary,.catalog-entry .primary) { background:var(--green); color:var(--button-ink,#fff); }
+:root[data-custom-colors="true"] :is(.generation-modes,.catalog-tags span,.catalog-level,.notice,.intro-path span,.limit-chip,.limit-chip b,.onboard-chips span,.side-tabs,.catalog-list li:hover) { background:var(--subtle); color:var(--ink); border-color:var(--line); }
+:root[data-custom-colors="true"] .app-navigation { background:var(--sidebar-background); color:var(--sidebar-ink); }
+:root[data-custom-colors="true"] :is(.workspace-nav button,.nav-section-label,.navigation-note p,.navigation-note small,.sidebar-heading,.sidebar-toggle) { color:var(--sidebar-ink); }
+:root[data-custom-colors="true"] .workspace-nav button.active { background:var(--sidebar-active); color:var(--sidebar-active-ink); }
+:root[data-custom-colors="true"] :is(.page-kicker,.eyebrow,.brand-accent,.catalog-name) { color:var(--green); }
+:root[data-custom-colors="true"] :is(.notice.success,.state-badge[data-state="active"],.state-badge[data-state="done"]) { color:var(--success,#26744b); }
+:root[data-custom-colors="true"] :is(.notice.error,.state-badge[data-state="failed"],.onboard-reason,.catalog-held) { color:var(--danger,#a1271b); }
+
+/* These tokens also work without customizing the app shell. */
+.run-console { background:var(--console-background,#16211f); color:var(--console-ink,#e6efec); border-color:var(--console-line,#2c3d39); }
+:root[data-theme] .run-console { border-color:var(--console-line,#2c3d39); }
+.run-console .console-head { background:var(--console-header,#1f2d2a); }
+.run-console .console-head h3, .run-console .console-case pre, .run-console .console-case dt:first-child { color:var(--console-ink,#e6efec); }
+.run-console .console-head small, .run-console .console-body .muted, .run-console .console-case dt, .run-console .case-row label, .run-console .version { color:var(--console-muted,#9fb2ad); }
+.run-console .console-tabs button { color:var(--console-muted,#9fb2ad); }
+.run-console .console-tabs button[aria-pressed="true"] { background:var(--console-line,#2c3d39); color:var(--console-ink,#e6efec); }
+.run-console .console-font-controls button { background:var(--console-background,#16211f); color:var(--console-ink,#e6efec); border-color:var(--console-line,#2c3d39); }
+:root[data-theme] .run-console :is(textarea,.compiler-message,h4 + pre) { background:var(--console-input,#0f1716); color:var(--console-ink,#e6efec); border-color:var(--console-line,#2c3d39); }
+.run-console .compiler-message, .run-console h4 + pre, .run-console .run-detail[data-passed="false"] .console-outcome { color:var(--console-error,#ff8f86); }
+:root[data-theme] .run-console :is(.compiler-message,h4 + pre) { color:var(--console-error,#ff8f86); }
+.run-console .run-detail[data-passed="true"] .console-outcome { color:var(--console-success,#7ee2a8); }
+.run-console .run-detail + .run-detail { border-color:var(--console-line,#2c3d39); }
