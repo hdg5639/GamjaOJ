@@ -184,19 +184,20 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
 
       {session.status==='COMPLETED'&&!held&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} learningBlocked={sessions.some(saved=>saved.status!=='COMPLETED')} />}
       {session.status==='COMPLETED'&&!held&&<div className="diagnostic-result-tools"><button className="secondary" onClick={()=>setSheet('records')}>문항별 진행과 제출 기록</button></div>}
-      <Modal open={sheet==='records'} title="진단 기록" onClose={()=>setSheet(null)} wide><h4>문항별 진행과 제출 기록</h4>{recordsView}{session.status!=='COMPLETED'&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} learningBlocked={sessions.some(saved=>saved.status!=='COMPLETED')} />}</Modal>
+      <Modal open={sheet==='records'} title="진단 기록" className="diagnostic-dialog" onClose={()=>setSheet(null)} wide><div className="diagnostic-dialog-content"><h4>문항별 진행과 제출 기록</h4>{recordsView}{session.status!=='COMPLETED'&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} learningBlocked={sessions.some(saved=>saved.status!=='COMPLETED')} />}</div></Modal>
       {session.status==='COMPLETED'&&!held&&<DiagnosticReassessment key={`reassessment-${session.id}`} api={api} session={session} busy={busy||!!request} onStart={mutate}/> }
 
     </>}
-    <Modal open={sheet==='skip'} title="건너뛰는 이유" onClose={()=>{if(!busy&&!request)setSheet(null);}}>
-      <p>지금 풀지 않는 이유를 남겨 주세요. 채점 결과와 별도로 저장하고, 다음 연습을 제안할 때 참고해요.</p>
+    <Modal open={sheet==='skip'} title="건너뛰는 이유" className="diagnostic-dialog" onClose={()=>{if(!busy&&!request)setSheet(null);}}>
+      <div className="diagnostic-dialog-content"><p>지금 풀지 않는 이유를 남겨 주세요. 채점 결과와 별도로 저장하고, 다음 연습을 제안할 때 참고해요.</p>
       <div className="diagnostic-skip-options">{['NOT_SURE','NO_TIME','OTHER'].map(reason=><button className="secondary" key={reason} disabled={disabled||!!item?.pending} onClick={async()=>{await mutate(`/api/diagnostics/${session.id}/items/${current.itemId}/skip`,{reason},true);setSheet(null);}}>{skipReasons[reason]}</button>)}</div>
-      <p className="muted">접근 어려움은 본인이 보고한 보완 후보예요. 건너뛰기만으로 약점을 확정하지 않습니다.</p>
+      <p className="muted">접근 어려움은 본인이 보고한 보완 후보예요. 건너뛰기만으로 약점을 확정하지 않습니다.</p></div>
     </Modal>
-    <Modal open={sheet==='history'} title="지난 진단" onClose={()=>setSheet(null)} wide>
+    <Modal open={sheet==='history'} title="지난 진단" className="diagnostic-dialog diagnostic-history-dialog" onClose={()=>setSheet(null)} wide>
+      <div className="diagnostic-dialog-content">
       <p className="muted">최근 {sessions.length}개의 진단이에요. 이전 결과를 열어도 진행 중인 진단은 유지됩니다.</p>
       <ul className="diagnostic-session-list">{sessions.slice((historyPage-1)*10,historyPage*10).map(saved=><li key={saved.id}><button aria-label={`${saved.items.length}문항 · ${saved.status==='COMPLETED'?'완료':'이어서 보기'}`} onClick={()=>selectHistory(saved)}><span><strong>{bankTitle(saved.bankId||'')}</strong><small>{[...new Set(saved.items.map(i=>categories[i.category]||i.category))].join(' · ')}</small><small>{saved.createdAt?new Date(saved.createdAt).toLocaleString('ko-KR'):`기록 ${saved.id.slice(0,8)}`}</small></span><span>{saved.items.length}문항 · {saved.status==='COMPLETED'?'완료':'이어서 보기'}<small>통과 {saved.items.filter(i=>i.status==='PASSED').length} · 건너뜀 {saved.items.filter(i=>i.status==='SKIPPED').length}</small></span></button></li>)}</ul>
-      <ListPagination page={historyPage} pages={Math.max(1,Math.ceil(sessions.length/10))} onChange={setHistoryPage} label="지난 진단 페이지"/>
+      <ListPagination page={historyPage} pages={Math.max(1,Math.ceil(sessions.length/10))} onChange={setHistoryPage} label="지난 진단 페이지"/></div>
     </Modal>
   </section>;
 }

@@ -902,12 +902,26 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
 .diagnostic-session-list button:hover { background:var(--subtle); }
 .diagnostic-session-list button > span { display:flex; flex-direction:column; gap:6px; font-size:13px; }
 .diagnostic-session-list small { color:var(--muted); font-size:11px; line-height:1.6; }
+dialog.modal.diagnostic-dialog { width:min(760px,calc(100vw - 48px)); max-height:calc(100dvh - 64px); background:var(--surface); color:var(--ink); }
+dialog.modal.wide.diagnostic-dialog { width:min(1180px,calc(100vw - 48px)); }
+.diagnostic-dialog .modal-body { padding:0; }
+.diagnostic-dialog .modal-head { padding:24px 32px; margin:0; border-bottom:1px solid var(--line); background:var(--surface); top:0; z-index:2; }
+.diagnostic-dialog .modal-head h3 { font-size:20px; }
+.diagnostic-dialog-content { padding:28px 32px 32px; }
+.diagnostic-dialog-content > p:first-child { margin-top:0; line-height:1.8; }
+.diagnostic-history-dialog .diagnostic-dialog-content { min-height:min(600px,70dvh); }
+.diagnostic-dialog .diagnostic-session-list { margin:24px 0; }
+.diagnostic-dialog .diagnostic-session-list button { padding:22px 12px; }
 @media(max-width:800px) {
  .diagnostic-report { padding:22px 20px; }
  .diagnostic-profile-list .diagnostic-profile-card { grid-template-columns:minmax(0,1fr); }
  .diagnostic-profile-card > :not(h4) { grid-column:1; }
 }
 @media(max-width:500px) {
+ dialog.modal.diagnostic-dialog,dialog.modal.wide.diagnostic-dialog { width:calc(100vw - 24px); max-height:calc(100dvh - 32px); }
+ .diagnostic-dialog .modal-head { padding:20px; }
+ .diagnostic-dialog-content { padding:22px 20px 24px; }
+ .diagnostic-dialog .diagnostic-session-list button { padding:20px 8px; }
  .diagnostic-report { padding:20px 16px; }
  .diagnostic-report .diagnostic-report-heading h2 { font-size:23px; }
  .diagnostic-report-index { gap:6px 18px; }
