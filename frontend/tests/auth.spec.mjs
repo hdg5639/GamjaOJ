@@ -226,6 +226,7 @@ r=subprocess.run(['docker','exec','-i','gamjaoj-postgres-1','psql','-U','gamjaoj
 print(r.stdout.strip())
 `);
   expect(linked.trim()).toBe('1|2|ENDED');
+  await page.getByRole('dialog', { name: '훈련 상세 기록' }).getByRole('button', { name: '닫기', exact: true }).click();
   await page.getByRole('button', { name: '선택 진단', exact: true }).click();
   await expect(page.getByRole('heading', {name:'선택 진단',exact:true})).toBeVisible();
   const diagnosticBanks=await page.request.get(base+'/api/diagnostics/banks');
