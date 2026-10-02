@@ -55,6 +55,7 @@ def runtime_policies(image):
     raise ValueError("Unapproved runtime image")
 SOURCE_LIMIT = PROFILE['sourceLimit']
 OUTPUT_LIMIT = PROFILE['outputLimit']
+INPUT_LIMIT = PROFILE['inputLimit']
 BUILD_LIMIT = PROFILE['buildLimit']
 COMPILE_COMMAND = PROFILE['compileCommand']
 
@@ -557,7 +558,7 @@ def validate_problem(problem):
             raise ValueError("Test ids must be unique strings")
         identifiers.add(test["id"])
         for key in ("input", "output"):
-            if not isinstance(test.get(key), str) or len(test[key].encode()) > OUTPUT_LIMIT:
+            if not isinstance(test.get(key), str) or len(test[key].encode()) > (INPUT_LIMIT if key == "input" else OUTPUT_LIMIT):
                 raise ValueError("Test input/output exceeds contract")
 
 

@@ -17,6 +17,18 @@ final class ProblemCategories {
         Map.entry("implementation","구현"),Map.entry("simulation","시뮬레이션"),Map.entry("bruteforce","완전 탐색"),
         Map.entry("backtracking","백트래킹"),Map.entry("prefixsum","누적 합"),Map.entry("twopointers","두 포인터"),
         Map.entry("stack","스택"),Map.entry("queue","큐"),Map.entry("heap","힙"),Map.entry("unionfind","서로소 집합"),
+        Map.entry("mst","최소 신장 트리"),Map.entry("deque","덱"),Map.entry("recursion","재귀"),
+        Map.entry("divideandconquer","분할 정복"),Map.entry("slidingwindow","슬라이딩 윈도우"),
+        Map.entry("linkedlist","연결 리스트"),Map.entry("segmenttree","세그먼트 트리"),
+        Map.entry("networkflow","네트워크 유량"),Map.entry("orderstatistics","순서 통계"),
+        Map.entry("combination","조합"),Map.entry("combinations","조합"),Map.entry("permutation","순열"),
+        Map.entry("permutations","순열"),Map.entry("subset","부분집합"),Map.entry("subsets","부분집합"),
+        Map.entry("최단경로","최단 경로"),Map.entry("이진탐색","이분 탐색"),Map.entry("분할정복","분할 정복"),
+        Map.entry("슬라이딩윈도우","슬라이딩 윈도우"),Map.entry("투포인터","두 포인터"),
+        Map.entry("연결리스트","연결 리스트"),Map.entry("서로소집합","서로소 집합"),
+        Map.entry("위상정렬","위상 정렬"),Map.entry("세그먼트트리","세그먼트 트리"),
+        Map.entry("중복조합","중복 조합"),Map.entry("중복순열","중복 순열"),Map.entry("그리디","탐욕법"),
+        Map.entry("네트워크유량","네트워크 유량"),Map.entry("순서통계","순서 통계"),Map.entry("계산기하","기하"),
         Map.entry("unrated","미분류"),Map.entry("uncategorized","미분류"));
     private static final Pattern LATIN=Pattern.compile("[A-Za-z]");
     static String display(String raw){

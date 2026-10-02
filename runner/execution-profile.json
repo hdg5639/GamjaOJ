@@ -61,5 +61,6 @@
   "testKillTimeout": "8s",
   "entrypoint": "/usr/bin/timeout",
   "timeoutSignal": "--signal=KILL",
-  "workdir": "/work"
+  "workdir": "/work",
+  "inputLimit": 6291456
 }
