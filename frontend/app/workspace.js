@@ -338,8 +338,12 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     <div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{opened('diagnostic') && <DiagnosticPanel visible={screen==='diagnostic'} user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onRuleDraft={draft=>{setRuleDraft({...(typeof draft==='string'?{text:draft}:draft),key:crypto.randomUUID()});setGenerationMode('hybrid');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>
     <div className="catalog-view" hidden={!['home','catalog'].includes(screen)}><ProblemCatalog home={['home','catalog'].includes(screen)} onNavigate={setScreen} api={api} onChanged={value=>{setProblems(items=>items.map(p=>p.version===value.version?value:p));window.dispatchEvent(new Event('gamjaoj-problems-changed'));}} problems={problems} loaded={loaded} error={error}
       selectedVersion={version} locked={busy || !!pending} onChoose={chooseProblem} /></div>
-    <div className="training-view" hidden={screen !== 'training'}>{opened('training') && <AiBudget visible={screen==='training'} api={api} />}{loaded&&<FollowupPanel api={api} onOpen={openTraining} onGeneration={()=>setScreen('generation')} locked={busy||!!pending}/>}
-    {loaded && <SessionPanel user={user} problem={problem} sessions={sessions} onChange={updateSessions} activity={activity} api={api} />}</div>
+    <div className="training-view training-hub-view" hidden={screen !== 'training'}><div className="training-hub">
+      {!loaded&&<p role="status">훈련 기록을 불러오는 중…</p>}
+      {loaded && <SessionPanel user={user} problem={problem} problems={problems} sessions={sessions} onChange={updateSessions} activity={activity} api={api} onOpen={openTraining} onDiagnostic={()=>setScreen('diagnostic')} locked={busy||!!pending} />}
+      {loaded&&<FollowupPanel api={api} onOpen={openTraining} onGeneration={()=>setScreen('generation')} locked={busy||!!pending}/>}
+      {opened('training')&&<AiBudget visible={screen==='training'} api={api} collapsible/>}
+    </div></div>
     <div className="training-view" hidden={screen !== 'generation'}>{opened('generation') && <AiOperations visible={screen==='generation'} api={api} userId={user.id} initialMode={generationMode} ruleDraft={ruleDraft} onOpen={async generatedVersion => {
       if (busy || pending) throw new Error('진행 중인 제출을 먼저 마쳐 주세요.');
       const items=await api('/api/problems');setProblems(items);chooseProblem(generatedVersion);

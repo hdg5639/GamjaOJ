@@ -163,7 +163,7 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
   </section>;
 }
 
-export function AiBudget({api,visible=true}) {
+export function AiBudget({api,visible=true,collapsible=false}) {
   const [budget,setBudget]=useState(null),[error,setError]=useState('');
   useEffect(()=>{
     if(!visible)return;let stopped=false;
@@ -177,11 +177,12 @@ export function AiBudget({api,visible=true}) {
     return()=>{stopped=true;clearInterval(timer);};
   },[visible]);
   if(!budget)return null;
-  return <section className="ai-operations" aria-label="API 예산">
+  const content=<section className="ai-operations" aria-label="API 예산">
     <h3>API 예산</h3>
     <p>사용액 ${Number(budget.spentUsd).toFixed(4)} · 미정산 예약 ${Number(budget.reservedUsd).toFixed(4)} / 월 ${budget.limitUsd}</p>
     <p className="draft-help">전체 사용자 합산 · {budget.enabled&&budget.keyConfigured?'호출 활성':'호출 비활성'} · Codex 생성의 ChatGPT 구독료 제외</p>
     {budget.warning&&<p className="notice" role="alert">예산의 80% 이상을 사용하거나 예약했습니다.</p>}
     {error&&<p className="notice error" role="alert">{error}</p>}
   </section>;
+  return collapsible?<details className="training-ai-budget"><summary>AI 분석 예산·사용량</summary>{content}</details>:content;
 }

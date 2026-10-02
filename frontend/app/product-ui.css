@@ -928,6 +928,66 @@ dialog.modal.wide.diagnostic-dialog { width:min(1180px,calc(100vw - 48px)); }
 .diagnostic-dialog .modal-head { padding:24px 32px; margin:0; border-bottom:1px solid var(--line); background:var(--surface); top:0; z-index:2; }
 .diagnostic-dialog .modal-head h3 { font-size:20px; }
 .diagnostic-dialog-content { padding:28px 32px 32px; }
+
+.training-hub { max-width:1280px; margin-inline:auto; display:grid; gap:24px; }
+.training-hub .training-panel,.training-hub .followup-panel { width:100%; max-width:none; margin:0; padding:32px 40px; background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:12px; }
+.training-hub .training-panel { gap:28px; }
+.training-section-heading { border:0; min-height:0; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px 24px; }
+.training-hub h2 { font-size:20px; margin:0; line-height:1.5; }
+.training-hub h3 { font-size:16px; margin:0; line-height:1.5; }
+.training-hub .training-section-heading p { margin-top:8px; line-height:1.8; }
+.training-section-heading > button { flex-shrink:0; }
+.training-current { border-block:1px solid var(--line); padding:24px 0; display:grid; gap:16px; }
+.training-problem-title { font-size:17px; font-weight:600; line-height:1.6; overflow-wrap:anywhere; }
+.training-goal { line-height:1.8; overflow-wrap:anywhere; }
+.training-start-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; }
+.training-hub label { display:grid; gap:8px; font-size:13px; min-width:0; }
+.training-hub select,.training-hub input,.training-hub textarea { width:100%; min-width:0; }
+.training-current > button { justify-self:start; }
+.training-finish { display:grid; gap:12px; max-width:760px; }
+.training-finish > button { justify-self:start; }
+.training-history { min-width:0; }
+.training-record-filters { display:flex; gap:12px; margin:20px 0; align-items:center; }
+.training-record-filters > label:first-child { flex:1; }
+.training-record-filters > label:nth-child(2) { width:140px; }
+.training-record-filters > button { flex-shrink:0; }
+.training-record-list { list-style:none; padding:0; margin:0; }
+.training-record-list li { border-top:1px solid var(--line); }
+.training-record-list li:last-child { border-bottom:1px solid var(--line); }
+.training-record-row { width:100%; display:flex; justify-content:space-between; align-items:center; gap:20px; padding:20px 12px; border:0; border-radius:0; text-align:left; background:transparent; color:var(--ink); }
+.training-record-row:hover,.training-record-row[aria-current="true"] { background:var(--subtle); }
+.training-record-main,.training-record-meta { display:flex; flex-direction:column; gap:8px; min-width:0; line-height:1.6; }
+.training-record-main { flex:1; }
+.training-record-main strong { font-size:15px; }
+.training-record-main > span { font-size:13px; overflow-wrap:anywhere; }
+.training-record-main small,.training-record-meta { color:var(--muted); font-size:12px; }
+.training-record-meta { flex-shrink:0; text-align:right; }
+.training-record-meta strong { color:var(--ink); font-weight:500; }
+.training-empty { padding:24px 0; line-height:1.8; color:var(--muted); }
+.training-hub .training-detail { padding-top:28px; scroll-margin-top:24px; }
+.training-hub .training-detail > .training-problem-title { margin-top:20px; }
+.training-hub .training-detail pre { overflow:auto; overflow-wrap:anywhere; white-space:pre-wrap; }
+.training-hub .followup-panel > p { line-height:1.8; }
+.training-hub .followup-record { border-top:1px solid var(--line); padding:20px 0; margin:0; }
+.training-hub .followup-record > summary { line-height:1.8; font-weight:600; overflow-wrap:anywhere; }
+.training-hub .followup-candidate { gap:20px; padding:16px 0; }
+.training-ai-budget { border-top:1px solid var(--line); padding:20px 0; }
+.training-ai-budget > summary { color:var(--muted); cursor:pointer; font-size:13px; }
+@media(max-width:850px) {
+ .training-hub .training-panel,.training-hub .followup-panel { padding:24px; }
+ .training-start-fields { grid-template-columns:1fr; gap:16px; }
+}
+@media(max-width:500px) {
+ .training-hub { gap:20px; }
+ .training-hub .training-panel,.training-hub .followup-panel { padding:24px 16px; }
+ .training-record-filters { flex-wrap:wrap; gap:10px; }
+ .training-record-filters > label:first-child { flex-basis:100%; }
+ .training-record-filters > label:nth-child(2) { flex:1; }
+ .training-record-row { flex-direction:column; align-items:stretch; padding:20px 4px; gap:12px; }
+ .training-record-meta { flex-direction:row; flex-wrap:wrap; gap:6px 16px; text-align:left; }
+ .training-record-main small { overflow-wrap:anywhere; }
+ .training-hub .followup-candidate { flex-wrap:wrap; }
+}
 .diagnostic-dialog-content > p:first-child { margin-top:0; line-height:1.8; }
 .diagnostic-history-dialog .diagnostic-dialog-content { min-height:min(600px,70dvh); }
 .diagnostic-dialog .diagnostic-session-list { margin:24px 0; }
