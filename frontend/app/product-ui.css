@@ -807,6 +807,55 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
 .my-record-toolbar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin:16px 0; }
 .my-record-toolbar .muted { margin:0; scroll-margin-top:16px; }
 .my-record-toolbar .list-pagination { padding:0; }
+
+/* Personal activity: one calendar, a readable distribution, and concrete next problems. */
+.learning-activity { margin:24px 0 30px; min-width:0; }
+.activity-calendar,.learning-balance,.learning-revisit { padding:22px 0; border-top:1px solid var(--line); }
+.learning-section-heading { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.learning-section-heading h3,.learning-section-heading p { margin:0; }
+.activity-summary { display:flex; flex-wrap:wrap; gap:8px 24px; font-size:13px; }
+.activity-calendar-scroll { overflow-x:auto; padding:5px 4px 10px; }
+.activity-calendar-board { width:max-content; padding-right:14px; }
+.activity-months { display:grid; grid-template-columns:repeat(var(--weeks),14px); gap:3px; height:24px; color:var(--muted); font-size:10px; }
+.activity-months span { white-space:nowrap; }
+.activity-calendar-grid { display:grid; grid-template-rows:repeat(7,14px); grid-auto-flow:column; grid-auto-columns:14px; gap:3px; }
+.activity-day { display:block; width:14px; height:14px; min-height:0; padding:0; border:1px solid color-mix(in srgb,var(--ink) 9%,transparent); border-radius:3px; background:var(--subtle); }
+.activity-day.level-1 { background:color-mix(in srgb,var(--green) 25%,var(--surface)); }
+.activity-day.level-2 { background:color-mix(in srgb,var(--green) 45%,var(--surface)); }
+.activity-day.level-3 { background:color-mix(in srgb,var(--green) 70%,var(--surface)); }
+.activity-day.level-4 { background:var(--green); }
+.activity-day[aria-pressed=true] { outline:2px solid var(--ink); outline-offset:1px; }
+.activity-calendar-footer { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin:7px 0; font-size:12px; }
+.activity-calendar-footer p { margin:0; }
+.activity-legend { display:flex; align-items:center; gap:4px; color:var(--muted); }
+.activity-legend .activity-day { width:11px; height:11px; }
+.learning-balance-layout { display:grid; grid-template-columns:minmax(220px,.85fr) minmax(0,1.15fr); gap:32px; }
+.category-distribution { display:flex; flex-direction:column; gap:9px; }
+.category-distribution > div { display:grid; grid-template-columns:minmax(100px,1fr) minmax(40px,1fr) auto; gap:10px; align-items:center; font-size:12px; }
+.category-distribution small { color:var(--muted); white-space:nowrap; }
+.category-bar { background:var(--subtle); height:6px; overflow:hidden; border-radius:2px; }
+.category-bar i { display:block; height:100%; background:var(--green); }
+.learning-next h4 { margin:0 0 8px; }
+.learning-next ul,.learning-revisit ul { list-style:none; margin:0; padding:0; }
+.learning-next li,.learning-revisit li { display:flex; justify-content:space-between; gap:14px; padding:10px 0; border-bottom:1px solid var(--line); align-items:center; }
+.learning-next li > div,.learning-revisit li > div { min-width:0; }
+.learning-next strong,.learning-revisit strong { display:block; font-size:13px; }
+.learning-next small,.learning-revisit small { display:block; color:var(--muted); margin-top:3px; }
+.learning-next li p { color:var(--muted); font-size:12px; margin:4px 0 0; }
+.learning-next button,.learning-revisit button { flex-shrink:0; }
+.problem-reflection { margin-bottom:22px; }
+.problem-reflection h4 { margin-top:0; }
+.confidence-options { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.confidence-options button[aria-pressed=true] { border-color:var(--green); background:color-mix(in srgb,var(--green) 10%,var(--surface)); }
+.problem-reflection label { display:block; margin:12px 0 8px; }
+.problem-reflection textarea { display:block; width:100%; margin-top:6px; }
+.record-confidence { color:var(--green); font-size:12px; }
+.record-reflection-note { max-width:55ch; margin:0; font-size:12px; color:var(--muted); white-space:pre-wrap; }
+@media(max-width:800px) {
+ .learning-balance-layout { grid-template-columns:1fr; gap:20px; }
+ .activity-summary { gap:6px 16px; }
+ .my-record-actions { flex-wrap:wrap; }
+}
 .execution-metrics { display:flex; flex-wrap:wrap; gap:8px 24px; margin:12px 0; font-size:12px; color:var(--muted); }
 .execution-metrics span { display:flex; gap:8px; }
 .execution-metrics strong { color:var(--ink); font-variant-numeric:tabular-nums; }
