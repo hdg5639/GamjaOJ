@@ -857,7 +857,27 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
  .my-record-actions { flex-wrap:wrap; }
 }
 .execution-metrics { display:flex; flex-wrap:wrap; gap:8px 24px; margin:12px 0; font-size:12px; color:var(--muted); }
-.diagnostic-panel:not([data-solving="true"]) { max-width:1100px; margin-inline:auto; border:0; background:transparent; padding:0; }
+.diagnostic-panel:not([data-solving="true"]) { max-width:1280px; width:100%; margin-inline:auto; border:1px solid var(--line); background:var(--surface); padding:32px 40px; }
+.diagnostic-panel:not([data-solving="true"]) > .diagnostic-heading { gap:20px 28px; margin-bottom:24px; }
+.diagnostic-panel:not([data-solving="true"]) .diagnostic-session-actions { gap:8px; }
+.diagnostic-panel:not([data-solving="true"]) .diagnostic-session-actions button { margin:0; }
+.diagnostic-panel:not([data-solving="true"]) > p { max-width:85ch; line-height:1.8; }
+.diagnostic-panel:not([data-solving="true"]) fieldset { min-width:0; padding:24px 28px; margin:28px 0 0; background:var(--subtle); }
+:root[data-theme="dark"] .diagnostic-panel:not([data-solving="true"]) fieldset { background:var(--subtle); }
+.diagnostic-panel:not([data-solving="true"]) fieldset > p { max-width:85ch; line-height:1.8; margin:8px 0 20px; }
+.diagnostic-category-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 24px; margin:16px 0 24px; }
+.diagnostic-panel .diagnostic-category-options label { min-height:44px; line-height:1.5; cursor:pointer; }
+.diagnostic-panel .diagnostic-category-options input { flex-shrink:0; }
+.diagnostic-panel:not([data-solving="true"]) > .diagnostic-report { padding:24px 0 0; border:0; border-top:1px solid var(--line); margin:28px 0; }
+@media(max-width:850px) {
+ .diagnostic-panel:not([data-solving="true"]) { padding:24px; }
+ .diagnostic-panel:not([data-solving="true"]) fieldset { padding:20px; }
+}
+@media(max-width:500px) {
+ .diagnostic-panel:not([data-solving="true"]) { padding:24px 16px; }
+ .diagnostic-panel:not([data-solving="true"]) fieldset { padding:18px 14px; }
+ .diagnostic-category-options { grid-template-columns:1fr; gap:4px; }
+}
 .diagnostic-panel .secondary { background:var(--surface); color:var(--ink); }
 .diagnostic-report { background:var(--surface); border:1px solid var(--line); padding:32px 38px; margin-block:24px; }
 .report-kicker { color:var(--muted); font-size:10px; letter-spacing:1.2px; margin-bottom:10px!important; }
