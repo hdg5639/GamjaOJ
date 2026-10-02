@@ -13,18 +13,19 @@ public class LearningCurricula {
     private final Submissions submissions;
     private final DiagnosticEvaluations evaluations;
     private final DiagnosticPlans plans;
-    LearningCurricula(JdbcClient jdbc,Submissions submissions,DiagnosticEvaluations evaluations,DiagnosticPlans plans) {
-        this.jdbc=jdbc;this.submissions=submissions;this.evaluations=evaluations;this.plans=plans;
+    private final LearningProblemPreparation preparation;
+    LearningCurricula(JdbcClient jdbc,Submissions submissions,DiagnosticEvaluations evaluations,DiagnosticPlans plans,LearningProblemPreparation preparation) {
+        this.jdbc=jdbc;this.submissions=submissions;this.evaluations=evaluations;this.plans=plans;this.preparation=preparation;
     }
     private static final Map<String,String> CATEGORIES=Map.ofEntries(
         Map.entry("implementation","구현"),Map.entry("arrays-strings","배열·문자열"),Map.entry("basic-data-structures","기초 자료구조"),Map.entry("basic-search","기초 탐색"),
         Map.entry("bfs","너비 우선 탐색"),Map.entry("dfs","깊이 우선 탐색"),Map.entry("backtracking","백트래킹"),Map.entry("dp","동적 계획법"),
         Map.entry("binary-search","이분 탐색"),Map.entry("greedy","탐욕법"),Map.entry("graph","그래프·최단 경로"),Map.entry("mst","최소 신장 트리"));
-    static String categoryLabel(String category){return CATEGORIES.getOrDefault(category,"기초 개념");}
+    static String categoryLabel(String category){return category==null?"기초 개념":CATEGORIES.getOrDefault(category,"기초 개념");}
     public record Created(UUID evaluationId,List<DiagnosticPlans.Plan> plans,int manualReviewCount) {}
     public record Candidate(String version,String title,String category,String difficulty) {}
     public record Progress(int submissions,int accepted,int pending,String latestVerdict) {}
-    public record Step(DiagnosticPlans.Plan plan,String category,String basis,String problemTitle,Candidate candidate,Progress progress) {}
+    public record Step(DiagnosticPlans.Plan plan,String category,String basis,String problemTitle,Candidate candidate,Progress progress,LearningProblemPreparation.State preparation) {}
     public record Track(UUID evaluationId,UUID diagnosticSessionId,String bankId,OffsetDateTime createdAt,List<Step> steps,int manualReviewCount) {}
 
     @Transactional
@@ -37,6 +38,7 @@ public class LearningCurricula {
             if(!owner.equals(saved[0])||!evaluationId.equals(saved[1]))throw new AccountException(409,"같은 요청 키로 다른 계획을 만들 수 없어요.");
             var result=JudgeJson.parse((String)saved[2]);
             var ids=new ArrayList<DiagnosticPlans.Plan>();for(var id:result.path("planIds"))ids.add(plans.view(username,owner,UUID.fromString(id.asText())));
+            ids.forEach(p->preparation.enroll(p.id()));
             return new Created(evaluationId,List.copyOf(ids),result.path("manualReviewCount").asInt());
         }
         var evaluation=evaluations.detail(username,evaluationId);
@@ -66,6 +68,7 @@ public class LearningCurricula {
         var result=JudgeJson.JSON.createObjectNode().put("manualReviewCount",manual);var ids=result.putArray("planIds");created.forEach(p->ids.add(p.id().toString()));
         jdbc.sql("INSERT INTO learning_curriculum_request(id,user_id,evaluation_id,result_json) VALUES (?,?,?,?)")
             .param(key).param(owner).param(evaluationId).param(JudgeJson.canonical(result)).update();
+        created.forEach(p->preparation.enroll(p.id()));
         return new Created(evaluationId,List.copyOf(created),manual);
     }
     private DiagnosticPlans.Plan confirmDefault(String username,UUID evaluation,int index,String kind,List<DiagnosticPlans.Plan> saved) {
@@ -99,11 +102,14 @@ public class LearningCurricula {
                     var options=plans.options(username,evaluationId,plan.observationIndex(),plan.sourceKind());category=options.category();
                     if(plan.problemVersion()!=null){final String version=plan.problemVersion();title=problems.stream().filter(p->version.equals(p.version())).map(Submissions.Problem::title).findFirst().orElse("목록에 없는 문제");}
                     if(plan.generatedVersion()!=null){final String generated=plan.generatedVersion();candidate=problems.stream().filter(p->generated.equals(p.version())&&!p.problemHeld()&&p.submissionsEnabled()).map(p->new Candidate(p.version(),p.title(),p.category(),p.difficulty())).findFirst().orElse(null);}
-                    if(candidate==null&&"READY".equals(plan.status())&&plan.generationId()==null&&category!=null) {
-                        final String name=CATEGORIES.get(category);final boolean basic="SELF_REPORT".equals(plan.sourceKind());
-                        candidate=problems.stream().filter(p->name!=null&&name.equals(p.category())&&!p.problemHeld()&&p.submissionsEnabled()&&(!basic||"EASY".equals(p.difficulty())))
-                            .sorted(Comparator.comparingInt((Submissions.Problem p)->"SOLVED".equals(p.solveStatus())?1:0).thenComparingInt(p->"EASY".equals(p.difficulty())?0:1).thenComparing(Submissions.Problem::version))
-                            .map(p->new Candidate(p.version(),p.title(),p.category(),p.difficulty())).findFirst().orElse(null);
+                    var mapping=preparation.state(plan.id());
+                    if(candidate==null&&"READY".equals(plan.status())&&mapping!=null&&mapping.problemVersion()!=null) {
+                        final String version=mapping.problemVersion();candidate=problems.stream().filter(p->version.equals(p.version())&&!p.problemHeld()&&p.submissionsEnabled()).map(p->new Candidate(p.version(),p.title(),p.category(),p.difficulty())).findFirst().orElse(null);
+                    }
+                    // Unenrolled manual plans retain a catalog preview without scheduling model work.
+                    if(candidate==null&&"READY".equals(plan.status())&&mapping==null&&plan.generationId()==null) {
+                        var matched=LearningProblemPreparation.match(plan,options,problems,Set.of());
+                        if(matched!=null)candidate=new Candidate(matched.version(),matched.title(),matched.category(),matched.difficulty());
                     }
                     if(plan.sessionId()!=null) {
                         var session=jdbc.sql("SELECT (SELECT count(*) FROM submission WHERE training_session_id=t.id AND run_input IS NULL) AS submissions,(SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=t.id AND s.run_input IS NULL AND j.verdict='AC') AS accepted,(SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=t.id AND j.status<>'FINISHED') AS pending FROM training_session t WHERE t.id=? AND t.user_id=?")
@@ -113,7 +119,7 @@ public class LearningCurricula {
                         progress=new Progress(session[0],session[1],session[2],verdict);
                     }
                 }
-                steps.add(new Step(plan,category,plan.sourceKind(),title,candidate,progress));
+                steps.add(new Step(plan,category,plan.sourceKind(),title,candidate,progress,preparation.state(plan.id())));
             }
             var correctedGoals=new HashSet<Integer>();
             if("COMPLETED".equals(evaluation.status())&&evaluation.interpretation()!=null)for(var correction:evaluation.corrections()) {

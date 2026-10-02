@@ -31,7 +31,7 @@ export default function DiagnosticPlan({api,row,index,onOpen,onGeneration,source
       {options.corrections.length>0&&<><p>이 관찰에는 정정 의견이 있습니다. 아래 설명을 함께 확인하고 본인의 목표를 정해 주세요.</p><ul>{options.corrections.map(c=><li key={c.id}>{c.note}</li>)}</ul></>}
       {options.observation.nextAction==='ASSESS'?<p>이 제안은 부족함을 확정한 연습 처방이 아니라 추가 확인입니다. 다른 진단 보기에서 원하는 분야를 선택해 주세요.</p>:<>
         <form onSubmit={confirm}><label>내가 확인한 연습 목표<input required maxLength={120} value={goal} disabled={busy||!!pending.current} onChange={e=>setGoal(e.target.value)}/></label>
-          <p className="muted">제안과 정정 의견을 검토한 뒤 목표를 수정할 수 있어요. 저장만으로 문제를 생성하거나 AI를 호출하지 않습니다.</p>
+          <p className="muted">제안과 정정 의견을 검토한 뒤 목표를 수정하고, 여기서 문제나 생성 규칙을 직접 고를 수 있어요. 학습 계획 화면으로 돌아가면 적합한 문제 연결과 필요한 AI 생성·검증이 자동으로 진행돼요.</p>
           <button className="secondary" disabled={busy||!goal.trim()||alreadySaved}>{alreadySaved?'목표 저장됨':pending.current?'같은 목표 저장 다시 확인':'이 목표를 내 학습 계획에 저장'}</button></form>
         {plans.map(plan=><div key={plan.id}><h4>{plan.roundNumber||1}회차 · {plan.goal||'확인할 수 없는 학습 계획'}</h4>
           {plan.status==='READY'&&<div>
