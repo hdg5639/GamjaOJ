@@ -5,7 +5,7 @@ set -euo pipefail
 [[ $# -eq 3 ]] || { echo 'usage: apply-basic-pool.sh <release-id> <artifact.tar.gz> <sql>' >&2; exit 2; }
 : "${GAMJAOJ_APP_SSH_TARGET:?source .env.ops first}"
 release=$1
-[[ $release =~ ^basic-pool-v1-[a-z0-9-]+$ ]] || { echo 'invalid release identity' >&2; exit 2; }
+[[ $release =~ ^(basic-pool-v1|iamywl-problemset-v1)-[a-z0-9-]+$ ]] || { echo 'invalid release identity' >&2; exit 2; }
 [[ -f $2 && -f $3 ]] || { echo 'missing private release files' >&2; exit 2; }
 dir="gamjaoj/web/problem-releases/$release"
 ssh "$GAMJAOJ_APP_SSH_TARGET" "mkdir -p ~/$dir && chmod 700 ~/$dir"
