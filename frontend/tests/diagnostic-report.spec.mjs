@@ -38,6 +38,7 @@ for(const width of [390,768,1440])test(`diagnostic report history and evidence a
   await expect(page.getByRole('dialog',{name:'진단 기록'})).toBeVisible();await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog',{name:'진단 기록'})).toBeHidden();
   await page.evaluate(()=>document.documentElement.dataset.theme='dark');
+  await expect.poll(()=>page.getByRole('button',{name:'다른 진단 보기',exact:true}).evaluate(el=>getComputedStyle(el).backgroundColor===getComputedStyle(document.querySelector('.diagnostic-report')).backgroundColor)).toBe(true);
   await page.getByRole('heading',{name:'진단 결과',exact:true}).scrollIntoViewIfNeeded();
   await page.screenshot({path:`/tmp/gamjaoj-diagnostic-report-dark-${width}.png`,fullPage:true});
 });
