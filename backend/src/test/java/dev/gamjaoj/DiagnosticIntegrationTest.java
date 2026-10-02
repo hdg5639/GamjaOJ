@@ -45,6 +45,7 @@ class DiagnosticIntegrationTest {
     @Autowired GenerationJobs generation;
     @Autowired ContentDeletion deletion;
     @Autowired LearningPreparationWorker preparationWorker;
+    @Autowired LearningProblemSwitch switching;
     @Autowired org.springframework.core.env.ConfigurableEnvironment environment;
     @org.springframework.test.context.bean.override.mockito.MockitoBean AiProvider provider;
     @Autowired MockMvc mvc;
@@ -184,6 +185,44 @@ class DiagnosticIntegrationTest {
         assertThat(preparation.state(next.id()).problemVersion()).isNull();
         assertThat(curricula.overview(user).getFirst().steps().getFirst().candidate()).isNull();
         assertThat(preparation.prepare(user,next.id(),false).status()).isEqualTo("GENERATING");
+    }
+    @Test void problemSwitchIsAtomicFencedAndExactReplayKeepsAllPreviousCode() throws Exception {
+        var first=basicPlan("dp");
+        String version=catalogProblem("switch-",user,false,false,false,"동적 계획법","EASY");
+        var options=plans.options(user,first.evaluationId(),first.observationIndex(),first.sourceKind());
+        var second=plans.confirm(user,UUID.randomUUID(),first.evaluationId(),first.observationIndex(),options.reviewHash(),"다른 목표로 연습",first.sourceKind());
+        var current=plans.start(user,first.id(),version);
+        var submission=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(version,SOURCE,current.sessionId()));finish("AC");
+        UUID key=UUID.randomUUID();
+        mvc.perform(post("/api/learning-curricula/switch").with(user(user)).header("Idempotency-Key",key).contentType("application/json").content("{\"planId\":\""+second.id()+"\",\"problemVersion\":\""+version+"\",\"activeSessionId\":\""+current.sessionId()+"\",\"note\":\"다음 문제로 전환\"}"))
+            .andExpect(status().isForbidden());
+        assertThatThrownBy(()->switching.switchProblem(other,key,second.id(),version,current.sessionId(),"전환")).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->switching.switchProblem(user,key,second.id(),version,UUID.randomUUID(),"전환")).isInstanceOf(AccountException.class);
+        assertThat(training.detail(user,current.sessionId()).session().status()).isEqualTo("ACTIVE");
+        var changed=switching.switchProblem(user,key,second.id(),version,current.sessionId(),"다음 문제로 전환");
+        assertThat(changed.status()).isEqualTo("ACTIVE");assertThat(changed.id()).isEqualTo(second.id());
+        assertThat(training.detail(user,current.sessionId()).session().note()).isEqualTo("다음 문제로 전환");
+        assertThat(submissions.detail(user,submission.id()).source()).isEqualTo(SOURCE);
+        assertThat(switching.switchProblem(user,key,second.id(),version,current.sessionId(),"다음 문제로 전환").sessionId()).isEqualTo(changed.sessionId());
+        assertThatThrownBy(()->switching.switchProblem(user,key,second.id(),version,current.sessionId(),"다른 메모")).isInstanceOf(AccountException.class);
+        assertThat(jdbc.sql("SELECT count(*) FROM training_session WHERE user_id=? AND status='ACTIVE'").param(submissions.owner(user,false)).query(Integer.class).single()).isEqualTo(1);
+        // Going back uses a new round, preserving the ended round and its accepted submission.
+        var back=switching.switchProblem(user,UUID.randomUUID(),first.id(),version,changed.sessionId(),"이전 문제 다시 연습");
+        assertThat(back.roundNumber()).isEqualTo(2);assertThat(back.previousPlanId()).isEqualTo(first.id());
+        assertThat(back.sessionId()).isNotEqualTo(current.sessionId());
+    }
+    @Test void switchFailureRollsBackEndingAndDoesNotCreateRoundOrRequest() {
+        var first=basicPlan("dp");String version=catalogProblem("switch-",user,false,false,false,"동적 계획법","EASY");
+        var options=plans.options(user,first.evaluationId(),first.observationIndex(),first.sourceKind());
+        var second=plans.confirm(user,UUID.randomUUID(),first.evaluationId(),first.observationIndex(),options.reviewHash(),"돌아갈 목표",first.sourceKind());
+        var prior=plans.start(user,second.id(),version);
+        submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(version,SOURCE,prior.sessionId()));
+        training.end(user,prior.sessionId(),"채점 중 종료");
+        var current=plans.start(user,first.id(),version);
+        assertThatThrownBy(()->switching.switchProblem(user,UUID.randomUUID(),second.id(),version,current.sessionId(),"전환 실패")).isInstanceOf(AccountException.class);
+        assertThat(training.detail(user,current.sessionId()).session().status()).isEqualTo("ACTIVE");
+        assertThat(jdbc.sql("SELECT count(*) FROM learning_problem_switch").query(Integer.class).single()).isZero();
+        assertThat(plans.list(user,first.evaluationId())).hasSize(2);
     }
     @Test void codeGoalNeedsFocusedTopicEvidenceRatherThanJustTheSameCategory() {
         jdbc.sql("UPDATE diagnostic_bank_item SET category='arrays-strings' WHERE bank_id=?").param(bank).update();

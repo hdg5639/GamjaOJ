@@ -6,9 +6,10 @@ import AiFeedback from './ai-feedback';
 import {verdictText} from './verdicts';
 import ProblemId from './problem-id';
 import Modal from './modal';
+import {createPortal} from 'react-dom';
 
 const summary = item => `정식 제출 ${item.submissions}회 · 정답 ${item.accepted}회 · 처리 중 ${item.pending}개`;
-export default function SessionPanel({ user, problem, sessions, onChange, activity, api, problems=[], onOpen, onDiagnostic, locked=false, view="records", onRecords=()=>{} }) {
+export default function SessionPanel({ user, problem, sessions, onChange, activity, api, problems=[], onOpen, onDiagnostic, locked=false, view="records", onRecords=()=>{}, controlsHost=null }) {
   const active = sessions.find(item => item.status === 'ACTIVE');
   const [goal, setGoal] = useState(user.trainingGoal || '');
   const [note, setNote] = useState('');
@@ -93,8 +94,8 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
   }
   const filtered=sessions.filter(item=>(filter==='ALL'||item.status===filter)&&`${title(item.problemVersion)} ${item.goal||''} ${item.problemVersion}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const sessionPaging=usePage(filtered,10),entryPaging=usePage(detail?.entries||[],10);
-  return <section className={view==='records'?"training-panel editor-card":"training-session-tools"} aria-label="훈련 세션">
-    <header className="training-section-heading"><div><h2>{view==='records'?'내 훈련 기록':active?'진행 중인 훈련':'직접 정한 목표로 연습'}</h2><p className="muted">{view==='records'?'지난 실행이 아니라, 목표별로 묶은 정식 제출과 마무리 기록이에요.':active?`${title(active.problemVersion)} · ${active.goal||'자유 연습'}`:'진단 계획 외에도 문제와 목표를 직접 선택할 수 있어요.'}</p></div>
+  const panel=<section className={view==='records'?"training-panel editor-card":"training-session-tools"} aria-label="훈련 세션">
+    <header className="training-section-heading">{!controlsHost&&<div><h2>{view==='records'?'내 훈련 기록':active?'진행 중인 훈련':'직접 정한 목표로 연습'}</h2><p className="muted">{view==='records'?'지난 실행이 아니라, 목표별로 묶은 정식 제출과 마무리 기록이에요.':active?`${title(active.problemVersion)} · ${active.goal||'자유 연습'}`:'진단 계획 외에도 문제와 목표를 직접 선택할 수 있어요.'}</p></div>}
       <div className="training-tool-actions">{active&&<button className="primary" disabled={locked||busy||!!pending||active.problemHeld} onClick={async()=>{try{await onOpen(active.problemVersion);}catch(e){setError(e.message);}}}>훈련 이어 풀기</button>}<button className="secondary" onClick={()=>setControlsOpen(true)}>{active?'훈련 마무리':'직접 훈련 시작'}</button></div></header>
     {!controlsOpen&&pending&&<button className="secondary" disabled={busy} onClick={()=>execute(pending)}>같은 훈련 요청 다시 확인</button>}
     {!controlsOpen&&error&&<p role="alert" className="notice error">{error}</p>}
@@ -164,4 +165,5 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
     </article>}
     </div></Modal>
   </section>;
+  return controlsHost?createPortal(panel,controlsHost):panel;
 }

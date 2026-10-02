@@ -1173,3 +1173,49 @@ dialog.modal.my-record-dialog { max-width:1180px; width:calc(100vw - 48px); }
  .learning-manual-plan { margin-left:0; }
  .quick-curriculum > div { flex-basis:100%; }
 }
+
+/* Plan / current problem above a compact, selectable sequence. */
+.training-hub .learning-workspace-top { display:grid; grid-template-columns:minmax(0,0.9fr) minmax(0,1.1fr); border-bottom:1px solid var(--line); }
+.training-hub .learning-plan-overview { padding:4px 32px 28px 0; display:grid; align-content:start; gap:24px; min-width:0; }
+.training-hub .learning-current-problem { padding:4px 0 28px 32px; border-left:1px solid var(--line); min-width:0; }
+.learning-current-problem > h3 { margin:10px 0; font-size:20px; }
+.learning-current-goal,.learning-selected-goal { color:var(--muted); font-size:13px; line-height:1.8; overflow-wrap:anywhere; }
+.learning-flow { display:flex; gap:12px; flex-wrap:wrap; list-style:none; padding:0; margin:0; color:var(--muted); font-size:12px; }
+.learning-flow li { padding-bottom:8px; border-bottom:2px solid var(--line); }
+.learning-flow li[aria-current="step"] { color:var(--ink); border-color:var(--green); font-weight:600; }
+.learning-plan-overview > p { font-size:13px; line-height:1.8; margin:0; }
+.training-hub .learning-session-actions .training-section-heading { margin:16px 0 0; }
+.training-hub .learning-session-actions .training-tool-actions { justify-content:flex-start; }
+.training-hub .learning-next-step { padding:20px 0 0; margin-top:20px; border-top:1px solid var(--line); border-bottom:0; }
+.learning-next-step h3:focus { outline:none; }
+.learning-selected-state { color:var(--muted); font-size:12px; }
+.learning-selected-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start; }
+.learning-selected-actions > .learning-generation-state { flex-basis:100%; }
+.learning-generation-state p { margin:0 0 10px; font-size:13px; line-height:1.8; }
+.training-hub .learning-selected-actions button,.training-hub .training-tool-actions button,.training-hub .learning-generation-state button { align-self:flex-start; flex:0 0 auto; width:auto; min-height:38px; height:auto; padding:9px 14px; line-height:1.4; }
+.learning-problem-list { padding-top:24px; }
+.learning-problem-list > .training-section-heading { margin-bottom:14px; }
+.learning-problem-list > .training-section-heading > span { font-size:12px; }
+.training-hub .learning-plan-steps > li { padding:0; border-bottom:1px solid var(--line); }
+:root .training-hub button.learning-problem-row { display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:16px; align-items:center; width:100%; margin:0; padding:18px 12px; border:0; border-radius:0; text-align:left; background:transparent; color:var(--ink); font-weight:400; }
+:root .training-hub button.learning-problem-row:hover,:root .training-hub button.learning-problem-row[aria-current="step"] { background:var(--subtle); }
+.learning-problem-row[aria-current="step"] { box-shadow:inset 3px 0 var(--green); }
+.learning-problem-row .learning-goal-number { width:26px; height:26px; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; font-variant-numeric:tabular-nums; }
+.learning-plan-steps > li[data-status="SELF_REPORTED_UNASSISTED_AC"] .learning-goal-number,.learning-plan-steps > li[data-status="AC_WITH_HELP"] .learning-goal-number { color:var(--green); border-color:var(--green); }
+.learning-problem-copy { display:grid; gap:5px; min-width:0; }
+.learning-problem-copy strong { font-size:14px; line-height:1.6; overflow-wrap:anywhere; }
+.learning-problem-copy > span,.learning-problem-state { font-size:12px; color:var(--muted); line-height:1.7; }
+.learning-problem-state { display:grid; gap:4px; text-align:right; }
+.learning-problem-state small { font-size:11px; color:var(--green); }
+.training-hub .learning-manual-plan { margin:0; padding:0; border:0; }
+.training-hub .learning-session-actions .training-session-tools { padding:0; }
+@media(max-width:900px) {
+ .training-hub .learning-workspace-top { grid-template-columns:1fr; }
+ .training-hub .learning-plan-overview { padding:0 0 24px; }
+ .training-hub .learning-current-problem { padding:24px 0; border-left:0; border-top:1px solid var(--line); }
+}
+@media(max-width:520px) {
+ :root .training-hub button.learning-problem-row { grid-template-columns:24px minmax(0,1fr); gap:10px; padding:16px 8px; }
+ .learning-problem-state { grid-column:2; display:flex; justify-content:space-between; text-align:left; }
+ .learning-problem-list > .training-section-heading { align-items:flex-start; flex-direction:column; gap:6px; }
+}
