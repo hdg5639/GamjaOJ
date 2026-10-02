@@ -39,7 +39,7 @@ public class AiSettings {
             BigDecimal output=new BigDecimal(value(prefix+"OUTPUT_USD_PER_M",rates[2]));
             if (input.signum()<=0 || output.signum()<=0 || cached.signum()<0 || cached.compareTo(input)>0) throw new IllegalArgumentException();
             return new Model(model,effort,input,cached,output,value(prefix+"PRICING_VERSION","openai-standard-2026-10-01"),
-                    2048,"feedback-v1","feedback-v1");
+                    2048,"feedback-v2","feedback-v1");
         } catch (IllegalArgumentException e) { throw new AccountException(503,"선택 모델의 API 단가 설정이 필요해요. 다른 모델로 전환하지 않았어요."); }
     }
 }
