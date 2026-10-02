@@ -143,7 +143,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
       <button className="secondary" onClick={onPractice}>일반 연습으로</button>
       <button className="secondary" disabled={busy} onClick={()=>refresh().catch(e=>setError(e.message))}>목록 새로고침</button></div>
       {session&&session.status!=='COMPLETED'&&finishing&&<div className="notice" role="group" aria-label="진단 끝내기 확인">
-        <p>남은 {session.items.filter(i=>i.status==='OPEN').length}문항은 건너뜀으로 기록하고 이 진단을 끝냅니다. 남은 문항은 종료로 미완료로 남고, 끝낸 뒤에는 이 진단을 다시 이어서 풀 수 없어요. 푼 문항의 기록과 평가 요청은 그대로 사용할 수 있어요.</p>
+        <p>남은 {session.items.filter(i=>i.status==='OPEN').length}문항은 건너뜀으로 기록하고 이 진단을 끝냅니다. 남은 문항은 ‘종료로 미완료’로 남으며, 끝낸 뒤에는 이 진단을 다시 이어서 풀 수 없어요. 푼 문항의 기록과 평가 요청은 그대로 사용할 수 있어요.</p>
         <button className="primary" disabled={busy||!!request} onClick={async()=>{await mutate(`/api/diagnostics/${session.id}/finish`,{});setFinishing(false);}}>남은 문항 건너뛰고 끝내기</button>
         <button className="secondary" disabled={busy} onClick={()=>setFinishing(false)}>계속 풀기</button></div>}
     </div>
