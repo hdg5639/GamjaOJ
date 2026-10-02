@@ -47,7 +47,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
   const [split,setSplit]=useSplit(user.id,'practice');
   const [layout,setLayout]=useSolvingLayout(user.id);
   const [columnSplit,setColumnSplit]=useSplit(user.id,'practice-columns');
-  const [paneOrder,setPaneOrder]=usePaneOrder(user.id);
+  const [paneOrder,setPaneOrder,mirrored,setMirrored]=usePaneOrder(user.id,layout);
   const [firstColumn,setFirstColumn]=useSplit(user.id,'practice-first-column',33);
   const [problems, setProblems] = useState([]);
   const [screen, updateScreen] = useState('home');
@@ -349,12 +349,12 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         </select></label>}
 
       <div className="layout-toolbar"><button aria-pressed={!resultsOpen&&mobilePane==='problem'} onClick={()=>{panelRevision.current++;setResultsOpen(false);setMobilePane('problem');}}>문제 보기</button>
-      <SolvingLayoutChoice value={layout} onChange={setLayout} order={paneOrder} onOrderChange={setPaneOrder}/>
+      <SolvingLayoutChoice value={layout} onChange={setLayout} order={paneOrder} onOrderChange={setPaneOrder} mirrored={mirrored} onMirrorChange={setMirrored}/>
       <button className="code-pane-switch" aria-pressed={mobilePane==='code'} onClick={()=>setMobilePane('code')}>코드 작성</button>
       </div>
       <div className="tool-buttons">{[['history','제출 기록'],['feedback','피드백']].map(([key,name])=><button id={'tool-'+key} key={key} aria-expanded={resultsOpen&&tool===key} aria-controls="workspace-results" className={resultsOpen&&tool===key?'active':''} onClick={()=>showTool(key)}>{name}</button>)}</div>
     </nav>
-    {problem && <div className="practice-grid" data-layout={layout} data-pane-order={paneOrder} data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{...columnLayoutStyle(paneOrder,firstColumn,columnSplit),'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
+    {problem && <div className="practice-grid" data-layout={layout} data-pane-order={paneOrder} data-mirrored={mirrored} data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{...columnLayoutStyle(paneOrder,firstColumn,columnSplit,mirrored,size.ratio,split),'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
       <article className="problem-card">
         <span className="version">문제 · <ProblemId version={problem.version}/></span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2>
         <LimitChips profile={inspected?inspected.execution:problem.languages?.find(l=>l.id===language)} label={inspected?recordLanguageLabel(inspected):(problem.languages?.find(l=>l.id===language)||languageInfo[language])?.label}/><p>{problem.statement}</p>
@@ -364,7 +364,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {!problem.problemHeld&&<ProblemTeaching key={version} version={version} api={api} />}
         <p className="muted">{language==='JAVA'?`클래스 이름은 ${callable?'UserSolution':'Main'}으로 작성해 주세요. `:''}제출한 코드는 기록에서 다시 확인할 수 있어요.</p>
       </article>
-      <ResizeHandle className="problem-resizer" label={layout==='columns'&&!resultsOpen?'첫 번째와 두 번째 패널 비율':'문제와 편집기 비율'} value={layout==='columns'&&!resultsOpen?firstColumn:size.ratio} min={20} max={70} step={2} scale={layout==='columns'&&!resultsOpen?columnScale:splitScale} onChange={ratio=>layout==='columns'&&!resultsOpen?setFirstColumn(ratio):changeSize({ratio})}/>
+      <ResizeHandle className="problem-resizer" label={layout==='columns'&&!resultsOpen?'첫 번째와 두 번째 패널 비율':'문제와 편집기 비율'} value={layout==='columns'&&!resultsOpen?firstColumn:mirrored&&!resultsOpen?100-size.ratio:size.ratio} min={mirrored&&layout==='default'&&!resultsOpen?30:20} max={mirrored&&layout==='default'&&!resultsOpen?80:70} step={2} scale={!resultsOpen?columnScale:splitScale} onChange={ratio=>layout==='columns'&&!resultsOpen?setFirstColumn(ratio):changeSize({ratio:mirrored&&!resultsOpen?100-ratio:ratio})}/>
       <div className="editor-column">
       <form id="code-form" className="editor-card" onSubmit={submit}>
         <div className="code-top-controls">
