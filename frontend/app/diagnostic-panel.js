@@ -156,7 +156,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
       {banks.map(bank=><fieldset key={bank.id} disabled={busy||!!request}><legend>{bankTitle(bank.id)} · {bank.questionCount}문항</legend>
         {bank.id.startsWith('core-a-')&&<p>구현·배열/문자열·기초 자료구조·기초 탐색을 확인하는 시범 진단입니다. 하·중 난이도는 잠정 분류이며, 완료 시간과 학습 효과는 아직 실측 검증되지 않았습니다. 전체 분야의 숙련도를 판정하지 않습니다.</p>}
         {bank.id.startsWith('algo-mix-a-')&&<p>배열·문자열부터 BFS·DFS·백트래킹·DP·이분 탐색·그리디·최단 경로·최소 신장 트리까지 분야별 하·중 문항으로 풀이 과정과 코드 습관을 관찰합니다. 원하는 분야만 골라 시작할 수 있어요. 전체를 한 언어로 푸는 데 약 100~120분을 예상하지만 실측 전 추정이며, 숙련도 점수를 매기지 않습니다.</p>}
-        {bank.categories.map(c=><label key={c}><input type="checkbox" checked={(scope[bank.id]||bank.categories).includes(c)} onChange={e=>setScope({...scope,[bank.id]:e.target.checked?[...(scope[bank.id]||bank.categories),c]:(scope[bank.id]||bank.categories).filter(x=>x!==c)})}/>{categories[c]||c} · 하·중 2문항</label>)}
+        <div className="diagnostic-category-options">{bank.categories.map(c=><label key={c}><input type="checkbox" checked={(scope[bank.id]||bank.categories).includes(c)} onChange={e=>setScope({...scope,[bank.id]:e.target.checked?[...(scope[bank.id]||bank.categories),c]:(scope[bank.id]||bank.categories).filter(x=>x!==c)})}/>{categories[c]||c} · 하·중 2문항</label>)}</div>
         <button className="primary" disabled={!(scope[bank.id]||bank.categories).length} onClick={()=>mutate('/api/diagnostics',{bankId:bank.id,categories:scope[bank.id]||bank.categories},true)}>선택한 {(scope[bank.id]||bank.categories).length*2}문항 시작</button>
       </fieldset>)}
     </>}
