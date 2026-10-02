@@ -71,6 +71,39 @@ class DiagnosticIntegrationTest {
         return observation;
     }
     Diagnostics.View start() { return diagnostics.start(user,UUID.randomUUID(),bank); }
+    @Test void skipReasonSurvivesRestartAndReplayWithoutChangingNextItem() throws Exception {
+        var d=start();var first=d.current().itemId();
+        String path="/api/diagnostics/"+d.id()+"/items/"+first+"/skip";
+        mvc.perform(post(path).with(user(user)).contentType("application/json").content("{\"reason\":\"NOT_SURE\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path).with(user(other)).with(csrf()).contentType("application/json").content("{\"reason\":\"NOT_SURE\"}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(post(path).with(user(user)).with(csrf()).contentType("application/json").content("{\"reason\":\"NOT_SURE\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].skipReason").value("NOT_SURE"));
+        var saved=new Diagnostics(jdbc).detail(user,d.id());
+        assertThat(saved.current().itemId()).isNotEqualTo(first);
+        assertThat(diagnostics.skip(user,d.id(),first,"NOT_SURE")).isEqualTo(saved);
+        assertThatThrownBy(()->diagnostics.skip(user,d.id(),first,"NO_TIME")).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->diagnostics.skip(user,d.id(),saved.current().itemId(),"INVALID")).isInstanceOf(AccountException.class);
+        assertThat(diagnostics.detail(user,d.id()).items().get(1).status()).isEqualTo("OPEN");
+        var done=diagnostics.skip(user,d.id(),saved.current().itemId(),"NO_TIME");
+        var evaluation=evaluations.request(user,d.id());
+        assertThat(evaluation.facts().path("items").get(0).path("skipReason").asText()).isEqualTo("NOT_SURE");
+        assertThat(evaluation.facts().path("items").get(1).path("skipReason").asText()).isEqualTo("NO_TIME");
+        assertThat(evaluation.interpretation()).isNull(); // No submitted code: no invented observations or model task.
+        assertThat(evaluation.status()).isEqualTo("FACTS_ONLY");
+        assertThat(evaluations.request(user,done.id()).id()).isEqualTo(evaluation.id());
+    }
+    @Test void legacySkipsRemainUnknownAndFinishingDoesNotClaimConceptDifficulty() {
+        var d=start();var skipped=diagnostics.skip(user,d.id(),d.current().itemId());
+        assertThat(skipped.items().get(0).skipReason()).isEqualTo("UNSPECIFIED");
+        jdbc.sql("UPDATE diagnostic_item SET skip_reason=NULL WHERE id=?").param(d.current().itemId()).update();
+        var done=diagnostics.finish(user,d.id());
+        assertThat(done.items()).extracting(Diagnostics.Item::skipReason).containsExactly(null,"SESSION_ENDED");
+        var report=evaluations.request(user,d.id());
+        assertThat(report.facts().path("items").get(0).has("skipReason")).isFalse();
+        assertThat(report.facts().path("items").get(1).path("skipReason").asText()).isEqualTo("SESSION_ENDED");
+    }
     @Test void diagnosticFreezesLimitsAtStartIncludingPublicDisplayAndLaterSubmission() {
         jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id=?").param(ProblemTimeLimitsTest.limits(2,1,4)).param(bank+"-0").update();
         var diagnostic=start();var q=diagnostic.current();

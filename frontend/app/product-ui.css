@@ -857,6 +857,62 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
  .my-record-actions { flex-wrap:wrap; }
 }
 .execution-metrics { display:flex; flex-wrap:wrap; gap:8px 24px; margin:12px 0; font-size:12px; color:var(--muted); }
+.diagnostic-panel:not([data-solving="true"]) { max-width:1100px; margin-inline:auto; border:0; background:transparent; padding:0; }
+.diagnostic-report { background:var(--surface); border:1px solid var(--line); padding:32px 38px; margin-block:24px; }
+.report-kicker { color:var(--muted); font-size:10px; letter-spacing:1.2px; margin-bottom:10px!important; }
+.diagnostic-report .diagnostic-report-heading h2 { font-size:28px; }
+.diagnostic-report-index { display:flex; flex-wrap:wrap; gap:8px 24px; padding:16px 0; margin-top:20px; border-block:1px solid var(--line); font-size:12px; }
+.diagnostic-report-index button { color:var(--muted); border:0; background:transparent; padding:4px 0; font-size:12px; }
+.diagnostic-report-index button:hover { color:var(--green); }
+.report-section-number { color:var(--green); font-size:12px; font-weight:600; margin-right:12px; font-variant-numeric:tabular-nums; }
+.diagnostic-report-content > section,.diagnostic-report-content > div[id] { scroll-margin-top:24px; }
+.diagnostic-roadmap { margin:28px 0; border-top:1px solid var(--line); padding-top:24px; }
+.diagnostic-roadmap > header { display:flex; align-items:baseline; }
+.diagnostic-roadmap h3 { margin:0; font-size:17px; }
+.diagnostic-roadmap header p { font-size:12px; margin:8px 0 0; }
+.diagnostic-roadmap-steps { counter-reset:roadmap; list-style:none; padding:0; margin:20px 0 0; }
+.diagnostic-roadmap-steps > li { position:relative; padding:18px 0 18px 42px; border-bottom:1px solid var(--line); counter-increment:roadmap; }
+.diagnostic-roadmap-steps > li::before { content:counter(roadmap,decimal-leading-zero); position:absolute; left:0; top:20px; font-size:12px; color:var(--muted); }
+.roadmap-kind { font-size:11px; color:var(--green); }
+.diagnostic-roadmap-steps h4 { margin:6px 0; font-size:15px; line-height:1.6; }
+.diagnostic-roadmap-steps p { font-size:13px; line-height:1.8; margin:8px 0 12px; max-width:80ch; }
+.diagnostic-roadmap-steps button { font-size:12px; margin:0 8px 8px 0; }
+.diagnostic-roadmap-steps small { display:block; color:var(--muted); font-size:11px; line-height:1.7; }
+.diagnostic-saved-curriculum { padding:18px 0; }
+.diagnostic-saved-curriculum h3 { font-size:15px; margin:0 0 8px; }
+.diagnostic-saved-curriculum p { font-size:12px; }
+.diagnostic-saved-curriculum ol { padding-left:22px; }
+.diagnostic-saved-curriculum li { padding:10px 0; line-height:2.5; font-size:13px; }
+.diagnostic-saved-curriculum button { font-size:12px; margin:0 4px; }
+.diagnostic-profile-list .diagnostic-profile-card { display:grid; grid-template-columns:170px minmax(0,1fr); gap:8px 24px; }
+.diagnostic-profile-card > :not(h4) { grid-column:2; }
+.diagnostic-profile-list .diagnostic-habit { padding-top:0; }
+.diagnostic-profile-card .diagnostic-habit p:first-child { margin-top:0; }
+.diagnostic-report .diagnostic-observation h4 { font-size:15px; }
+.diagnostic-observation-detail { margin-top:16px; }
+.diagnostic-observation-detail > summary { color:var(--green); font-size:12px; cursor:pointer; padding:8px 0; }
+.diagnostic-observation-detail pre { max-height:260px; overflow:auto; font-size:12px; }
+.diagnostic-observation-detail .diagnostic-plan { border-top:1px solid var(--line); padding-top:18px; }
+.diagnostic-skip-options { display:flex; flex-direction:column; gap:10px; margin:22px 0; }
+.diagnostic-skip-options button { min-height:44px; text-align:left; }
+.diagnostic-session-list { list-style:none; margin:20px 0; padding:0; }
+.diagnostic-session-list li { border-top:1px solid var(--line); }
+.diagnostic-session-list button { width:100%; display:flex; align-items:center; justify-content:space-between; gap:20px; text-align:left; padding:18px 0; border:0; background:transparent; color:var(--ink); }
+.diagnostic-session-list button:hover { background:var(--subtle); }
+.diagnostic-session-list button > span { display:flex; flex-direction:column; gap:6px; font-size:13px; }
+.diagnostic-session-list small { color:var(--muted); font-size:11px; line-height:1.6; }
+@media(max-width:800px) {
+ .diagnostic-report { padding:22px 20px; }
+ .diagnostic-profile-list .diagnostic-profile-card { grid-template-columns:minmax(0,1fr); }
+ .diagnostic-profile-card > :not(h4) { grid-column:1; }
+}
+@media(max-width:500px) {
+ .diagnostic-report { padding:20px 16px; }
+ .diagnostic-report .diagnostic-report-heading h2 { font-size:23px; }
+ .diagnostic-report-index { gap:6px 18px; }
+ .diagnostic-roadmap-steps > li { padding-left:30px; }
+ .diagnostic-session-list button { flex-direction:column; align-items:flex-start; gap:10px; }
+}
 .my-record-section { container:records / inline-size; margin-top:20px; }
 .my-record-section .my-tabs { gap:24px; }
 .my-record-section .my-tabs button { display:flex; align-items:center; gap:8px; font-weight:650; padding:14px 0; }

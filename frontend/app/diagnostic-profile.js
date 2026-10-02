@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import {diagnosticOutcome} from './diagnostic-outcomes';
 import {categoryLabels} from './diagnostic-categories';
 const tones={STRENGTH:'강점',WATCH:'주의',RISK:'위험'};
 const outcomes={OPEN:'미완료',PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀'};
@@ -16,15 +17,15 @@ export default function DiagnosticProfile({api,sessionId,row,onObservation,onRul
   const all=profile.categories.flatMap(c=>c.observations);
   const count=tone=>all.filter(o=>o.tone===tone).length;
   const ruleName=id=>profile.rules.find(r=>r.id===id)?.label||id;
-  return <section className="diagnostic-profile" aria-label="분야별 진단 요약">
-    <h3>분야별 결과</h3>
+  return <section id={`diagnostic-profile-${row.id}`} className="diagnostic-profile" aria-label="분야별 진단 요약">
+    <h3><span className="report-section-number">03</span> 분야별 결과</h3>
     {all.some(o=>o.tone)?<p>코드 근거가 있는 관찰: 강점 {count('STRENGTH')} · 주의 {count('WATCH')} · 위험 {count('RISK')}{all.some(o=>o.repeated)?` · 다른 분야에서도 보인 습관 ${all.filter(o=>o.repeated).length}`:''}</p>:
       <p className="muted">{row.interpretation?'이 평가는 습관·위험 구분이 추가되기 전에 만들어졌어요. 새로 평가를 요청하면 분야별 습관이 표시됩니다.':'AI 해석이 준비되면 분야별 코드 습관과 위험이 표시됩니다. 아래는 판정 기록입니다.'}</p>}
-    <p className="muted">습관은 이번 진단 제출 코드에서 보인 패턴이며 성향이나 실력 등급이 아닙니다. 선택하지 않았거나 건너뛴 분야는 약점이 아니라 미평가입니다.</p>
+    <p className="muted">습관은 이번 진단 제출 코드에서 보인 패턴이며 성향이나 실력 등급이 아닙니다. 접근 어려움은 본인 보고이며, 그 외 건너뛴 문항과 선택하지 않은 분야는 미확인입니다.</p>
     <div className="diagnostic-profile-list">{profile.categories.filter(category=>category.selected).map(category=><article key={category.id} className="diagnostic-profile-card" data-selected={category.selected}>
       <h4>{categoryLabels[category.id]||category.id}</h4>
       {!category.selected?<p className="muted">선택하지 않음 · 미평가</p>:<ul className="diagnostic-profile-items">{category.items.map(item=><li key={item.itemId}>
-        {difficulty[item.difficulty]||item.difficulty} · {item.externallySeen?'본 적 있음 · 근거 제외':outcomes[item.status]||item.status} · 제출 {item.attempts}회</li>)}</ul>}
+        {difficulty[item.difficulty]||item.difficulty} · {diagnosticOutcome(item)} · 제출 {item.attempts}회</li>)}</ul>}
       {category.observations.map(o=><div key={o.index} className="diagnostic-habit" data-tone={o.tone||'NONE'}>
         <p>{o.tone&&<span className="diagnostic-tone">{tones[o.tone]}</span>}{o.repeated&&<span className="diagnostic-tone" data-kind="repeated">다른 분야에서도 보임</span>}</p>
         <p><strong>{o.pattern||'코드 관찰'}</strong></p>

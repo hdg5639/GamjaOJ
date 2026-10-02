@@ -39,8 +39,9 @@ public class DiagnosticEvaluations {
         var coverage=facts.putArray("items");
         int submissionsCount=0;
         for(var item:saved.items()) {
-            coverage.addObject().put("itemId",item.id().toString()).put("category",item.category()).put("difficulty",item.difficulty())
+            var fact=coverage.addObject().put("itemId",item.id().toString()).put("category",item.category()).put("difficulty",item.difficulty())
                     .put("status",item.status()).put("attempts",item.attempts()).put("externallySeen",item.externallySeen());
+            if(item.skipReason()!=null&&!item.skipReason().equals("UNSPECIFIED"))fact.put("skipReason",item.skipReason());
             if(item.status().equals("OPEN"))continue; // Never send open-question source, statement or rubric for interpretation.
             var data=jdbc.sql("SELECT package_sha256,package_json,rubric_json,runtime_image,runner_policy FROM diagnostic_item WHERE id=?")
                     .param(item.id()).query((r,n)-> {
@@ -51,6 +52,7 @@ public class DiagnosticEvaluations {
                         node.set("rubric",JudgeJson.parse(r.getString(3)));return node;
                     }).single();
             data.put("externallySeen",item.externallySeen());
+            if(item.skipReason()!=null&&!item.skipReason().equals("UNSPECIFIED"))data.put("skipReason",item.skipReason());
             var attempts=data.putArray("submissions");
             if(!item.externallySeen())jdbc.sql("SELECT s.id,s.source_code,s.source_sha256,j.verdict,j.result_sha256,s.language,s.execution_profile_json,s.runtime_image,s.runner_policy FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.diagnostic_item_id=? AND s.run_input IS NULL AND j.status='FINISHED' AND j.verdict<>'IE' ORDER BY s.created_at,s.id")
                     .param(item.id()).query((r,n)-> {
