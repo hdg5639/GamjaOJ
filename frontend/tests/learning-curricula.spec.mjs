@@ -65,7 +65,7 @@ for(const width of [390,820,1710])test(`one click curriculum, learning progress 
  await page.reload();await learning.getByRole('button',{name:'같은 학습 요청 다시 확인'}).click();
  await expect(page.getByLabel('풀이할 문제')).toHaveValue('two');await expect.poll(()=>startBodies.length).toBe(2);expect(startBodies).toEqual([{problemVersion:'two'},{problemVersion:'two'}]);
  await page.getByRole('button',{name:'훈련 기록',exact:true}).click();
- await expect(next.getByRole('button',{name:'이어서 학습하기'})).toBeVisible();
+ await expect(next.getByRole('button',{name:'훈련 이어 풀기'})).toBeVisible();
  await page.getByRole('button',{name:'훈련 마무리',exact:true}).click();
  const finish=page.getByRole('dialog',{name:'훈련 마무리'});await finish.getByLabel('마무리 메모').fill('다른 입력에서도 확인했어요.');await finish.getByRole('button',{name:'훈련 마치기'}).click();
  await next.getByRole('button',{name:'혼자 해결했어요'}).click();
@@ -77,12 +77,12 @@ for(const width of [390,820,1710])test(`one click curriculum, learning progress 
  await page.getByLabel('훈련 기록 검색').fill('동적 계획법');await expect(page.locator('.training-record-row')).toHaveCount(1);
  await page.locator('.training-record-row').first().click();const detail=page.getByRole('dialog',{name:'훈련 상세 기록'});await expect(detail.getByLabel('저장된 마무리 메모')).toHaveText('다른 입력에서도 확인했어요.');await detail.getByRole('button',{name:'닫기',exact:true}).click();
  await page.getByRole('navigation',{name:'훈련 화면'}).getByRole('button',{name:'학습 계획',exact:true}).click();
- await learning.locator('.learning-plan-steps > li').nth(1).getByRole('button',{name:'수동 설정·근거 확인'}).click();
+ await learning.locator('.learning-plan-steps > li').nth(1).getByRole('button').click();await learning.getByRole('region',{name:'선택한 문제'}).getByRole('button',{name:'수동 설정·근거 확인'}).click();
  await learning.getByRole('button',{name:'이 제안으로 학습 계획 준비'}).click();
  await expect(learning.getByLabel('내가 확인한 연습 목표')).toHaveValue('누적값의 범위를 먼저 확인하기');await learning.getByLabel('직접 고를 연습 문제').selectOption('one');
  await expect(learning.getByRole('button',{name:'선택한 문제로 훈련 시작'})).toBeEnabled();
  expect(paidPosts).toBe(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
- await learning.getByRole('button',{name:'진단·수동 계획 만들기'}).click();await expect(page.getByRole('heading',{name:'진단 결과',exact:true})).toBeVisible();
+ await page.getByRole('dialog',{name:'수동 설정·근거 확인',exact:true}).getByRole('button',{name:'닫기',exact:true}).click();await learning.getByRole('button',{name:'진단·수동 계획 만들기'}).click();await expect(page.getByRole('heading',{name:'진단 결과',exact:true})).toBeVisible();
 });
 test('next goal opens the correct page; generation and held goals keep their gates',async({page})=>{
  await page.setViewportSize({width:820,height:1000});
@@ -106,9 +106,9 @@ test('next goal opens the correct page; generation and held goals keep their gat
  await expect(learning.getByRole('navigation',{name:'학습 목표 페이지'})).toContainText('2 / 3');
  await learning.getByRole('button',{name:'이 제안으로 학습 계획 준비'}).click();
  await expect(learning.getByLabel('내가 확인한 연습 목표')).toHaveValue('순서대로 확인할 목표 8');
- await expect(learning.locator('.learning-plan-steps > li').filter({hasText:'순서대로 확인할 목표 9'}).getByRole('button',{name:'생성·검증 상세 보기'})).toBeVisible();
+ await page.getByRole('dialog',{name:'수동 설정·근거 확인',exact:true}).getByRole('button',{name:'닫기',exact:true}).click();await learning.locator('[data-plan-id="p-9"] button').click();await expect(learning.getByRole('region',{name:'선택한 문제'}).getByRole('button',{name:'생성·검증 상세 보기'})).toBeVisible();
  await learning.getByRole('navigation',{name:'학습 목표 페이지'}).getByRole('button',{name:'다음',exact:true}).click();
- await expect(learning.locator('.learning-plan-steps > li').filter({hasText:'순서대로 확인할 목표 10'}).getByRole('button',{name:'수동 설정·근거 확인'})).toBeDisabled();
+ await learning.locator('[data-plan-id="p-10"] button').click();await expect(learning.getByRole('region',{name:'선택한 문제'}).getByRole('button',{name:'수동 설정·근거 확인'})).toBeDisabled();
  expect(paid).toBe(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 for(const width of [390,1710])test(`automatic preparation stays in learning and becomes playable at ${width}`,async({page})=>{
