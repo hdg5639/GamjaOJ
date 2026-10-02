@@ -570,6 +570,13 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
 .split-bottom .console-head, .split-bottom .submit-toast { flex-shrink:0; }
 .split-handle.editor-resize-handle.horizontal { height:12px; background:transparent; }
 .split-handle.editor-resize-handle.horizontal:hover, .split-handle.editor-resize-handle.horizontal:focus-visible { background:var(--subtle); }
+.split-handle.editor-resize-handle.vertical { width:12px; background:transparent; }
+.split-handle.editor-resize-handle.vertical:hover, .split-handle.editor-resize-handle.vertical:focus-visible { background:var(--subtle); }
+.solving-layout-choice { min-width:0; max-width:100%; }
+.solving-layout-choice select { width:auto; max-width:100%; padding:6px 8px; font-size:12px; }
+.split-stack[data-layout="columns"] .console-case { grid-template-columns:minmax(0,1fr); }
+.split-stack[data-layout="columns"] .console-case dt { white-space:normal; }
+.split-stack[data-layout="columns"] .case-row { grid-template-columns:minmax(0,1fr); }
 .editor-column > form.editor-card { overflow:hidden; }
 .diagnostic-split { height:clamp(420px, calc(100dvh - 250px), 1600px); }
 

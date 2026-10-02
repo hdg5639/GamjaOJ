@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
 import RunConsole, { SubmitTests, Examples } from './run-console';
 import LimitChips from './limit-chips';
-import SplitStack,{useSplit} from './split-stack';
+import SplitStack,{useSplit,useSolvingLayout,SolvingLayoutChoice} from './split-stack';
 import {useVimMode} from './editor-settings';
 import {scheduleServerDraft,loadServerDraft,readLocalDraft,writeLocalDraft,newer} from './server-drafts';
 import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
@@ -45,6 +45,8 @@ const label = item => item.verdict ? verdictText(item.verdict) : item.status ===
 export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar }) {
   const [size,changeSize]=useEditorSizing(user.id,'practice');
   const [split,setSplit]=useSplit(user.id,'practice');
+  const [layout,setLayout]=useSolvingLayout(user.id);
+  const [columnSplit,setColumnSplit]=useSplit(user.id,'practice-columns');
   const [problems, setProblems] = useState([]);
   const [screen, updateScreen] = useState('home');
   function setScreen(next) { updateScreen(next); window.history.pushState(null,'','#'+next); if(next==='home')requestAnimationFrame(()=>document.querySelector('.catalog-view')?.scrollTo(0,0)); }
@@ -339,6 +341,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     }} />}</div>
     <div className="practice-view" hidden={screen !== 'practice'}>
     <nav className="workspace-tools" aria-label="풀이 영역">
+      <SolvingLayoutChoice value={layout} onChange={setLayout}/>
         {problems.length > 1 && <label className="solve-problem-choice"><span className="sr-only">풀이할 문제</span><select value={version} disabled={busy || !!pending} aria-describedby={busy || pending || activeSession ? "problem-selection-status" : undefined}
           onChange={event => { try{localStorage.setItem(selectionKey,event.target.value);}catch{} setVersion(event.target.value); restoreDraft(event.target.value);setInspected(null); }}>
           {problems.map(item => <option key={item.version} value={item.version}>{item.problemHeld?'[검토 중] ':''}{item.title} · {shortProblemId(item.version)}</option>)}
@@ -379,7 +382,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{shortProblemId(inspected.problemVersion)} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
         {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
-        <SplitStack share={split} onChange={setSplit} top={<div className="editor-views"><div className="editor-view" hidden={!!inspected}>
+        <SplitStack layout={layout} share={layout==='columns'?columnSplit:split} onChange={layout==='columns'?setColumnSplit:setSplit} top={<div className="editor-views"><div className="editor-view" hidden={!!inspected}>
         <CodeEditor key={`${user.id}:${version}:${language}`} language={language} label={lang.file} value={source} disabled={busy} onChange={editSource} vim={vim}
           onLimit={() => setError('너무 긴 코드는 입력할 수 없어요. 기존 내용을 유지했어요. 제출 코드는 UTF-8 기준 64 KiB 이내여야 해요.')}
           onRun={() => {if(!busy&&!inspected&&problem.submissionsEnabled)setRunRequest(value=>value+1);}}
