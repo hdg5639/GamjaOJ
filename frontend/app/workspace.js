@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
 import RunConsole, { SubmitTests, Examples } from './run-console';
 import LimitChips from './limit-chips';
-import SplitStack,{useSplit,useSolvingLayout,SolvingLayoutChoice} from './split-stack';
+import SplitStack,{useSplit,useSolvingLayout,usePaneOrder,columnLayoutStyle,columnScale,SolvingLayoutChoice} from './split-stack';
 import {useVimMode} from './editor-settings';
 import {scheduleServerDraft,loadServerDraft,readLocalDraft,writeLocalDraft,newer} from './server-drafts';
 import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
@@ -47,6 +47,8 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
   const [split,setSplit]=useSplit(user.id,'practice');
   const [layout,setLayout]=useSolvingLayout(user.id);
   const [columnSplit,setColumnSplit]=useSplit(user.id,'practice-columns');
+  const [paneOrder,setPaneOrder]=usePaneOrder(user.id);
+  const [firstColumn,setFirstColumn]=useSplit(user.id,'practice-first-column',33);
   const [problems, setProblems] = useState([]);
   const [screen, updateScreen] = useState('home');
   function setScreen(next) { updateScreen(next); window.history.pushState(null,'','#'+next); if(next==='home')requestAnimationFrame(()=>document.querySelector('.catalog-view')?.scrollTo(0,0)); }
@@ -341,17 +343,18 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     }} />}</div>
     <div className="practice-view" hidden={screen !== 'practice'}>
     <nav className="workspace-tools" aria-label="풀이 영역">
-      <SolvingLayoutChoice value={layout} onChange={setLayout}/>
         {problems.length > 1 && <label className="solve-problem-choice"><span className="sr-only">풀이할 문제</span><select value={version} disabled={busy || !!pending} aria-describedby={busy || pending || activeSession ? "problem-selection-status" : undefined}
           onChange={event => { try{localStorage.setItem(selectionKey,event.target.value);}catch{} setVersion(event.target.value); restoreDraft(event.target.value);setInspected(null); }}>
           {problems.map(item => <option key={item.version} value={item.version}>{item.problemHeld?'[검토 중] ':''}{item.title} · {shortProblemId(item.version)}</option>)}
         </select></label>}
 
-      <button aria-pressed={!resultsOpen&&mobilePane==='problem'} onClick={()=>{panelRevision.current++;setResultsOpen(false);setMobilePane('problem');}}>문제 보기</button>
+      <div className="layout-toolbar"><button aria-pressed={!resultsOpen&&mobilePane==='problem'} onClick={()=>{panelRevision.current++;setResultsOpen(false);setMobilePane('problem');}}>문제 보기</button>
+      <SolvingLayoutChoice value={layout} onChange={setLayout} order={paneOrder} onOrderChange={setPaneOrder}/>
       <button className="code-pane-switch" aria-pressed={mobilePane==='code'} onClick={()=>setMobilePane('code')}>코드 작성</button>
+      </div>
       <div className="tool-buttons">{[['history','제출 기록'],['feedback','피드백']].map(([key,name])=><button id={'tool-'+key} key={key} aria-expanded={resultsOpen&&tool===key} aria-controls="workspace-results" className={resultsOpen&&tool===key?'active':''} onClick={()=>showTool(key)}>{name}</button>)}</div>
     </nav>
-    {problem && <div className="practice-grid" data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
+    {problem && <div className="practice-grid" data-layout={layout} data-pane-order={paneOrder} data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{...columnLayoutStyle(paneOrder,firstColumn,columnSplit),'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
       <article className="problem-card">
         <span className="version">문제 · <ProblemId version={problem.version}/></span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2>
         <LimitChips profile={inspected?inspected.execution:problem.languages?.find(l=>l.id===language)} label={inspected?recordLanguageLabel(inspected):(problem.languages?.find(l=>l.id===language)||languageInfo[language])?.label}/><p>{problem.statement}</p>
@@ -361,9 +364,10 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {!problem.problemHeld&&<ProblemTeaching key={version} version={version} api={api} />}
         <p className="muted">{language==='JAVA'?`클래스 이름은 ${callable?'UserSolution':'Main'}으로 작성해 주세요. `:''}제출한 코드는 기록에서 다시 확인할 수 있어요.</p>
       </article>
-      <ResizeHandle className="problem-resizer" label="문제와 편집기 비율" value={size.ratio} min={20} max={70} step={2} scale={splitScale} onChange={ratio=>changeSize({ratio})}/>
+      <ResizeHandle className="problem-resizer" label={layout==='columns'&&!resultsOpen?'첫 번째와 두 번째 패널 비율':'문제와 편집기 비율'} value={layout==='columns'&&!resultsOpen?firstColumn:size.ratio} min={20} max={70} step={2} scale={layout==='columns'&&!resultsOpen?columnScale:splitScale} onChange={ratio=>layout==='columns'&&!resultsOpen?setFirstColumn(ratio):changeSize({ratio})}/>
       <div className="editor-column">
       <form id="code-form" className="editor-card" onSubmit={submit}>
+        <div className="code-top-controls">
         {(busy || pending || activeSession) && <p id="problem-selection-status" className="draft-help">
           {busy ? '요청 처리 중에는 문제를 변경할 수 없어요.' : pending ? '이전 제출의 접수를 확인한 뒤 문제를 변경할 수 있어요.' : currentSession
             ? '이 문제의 제출은 진행 중인 훈련에 저장돼요. 다른 문제도 자유롭게 선택할 수 있어요.'
@@ -382,7 +386,8 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {inspected&&<div className="snapshot-tabs"><button type="button" className="secondary" onClick={()=>setInspected(null)}>작성 중인 코드로 돌아가기</button><span id="snapshot-heading" tabIndex={-1}>기록 코드 · 읽기 전용<br/><small>{shortProblemId(inspected.problemVersion)} · {new Date(inspected.createdAt).toLocaleString('ko-KR')}</small></span></div>}
         {!problem.submissionsEnabled && !problem.problemHeld && <p className="notice">코드 채점을 준비하고 있어요. 지금은 문제를 읽고 풀이를 작성할 수 있어요.</p>}
         {pending && <p className="notice">이전 제출의 접수 여부를 다시 확인합니다. 그때 보낸 코드로 확인해요.</p>}
-        <SplitStack layout={layout} share={layout==='columns'?columnSplit:split} onChange={layout==='columns'?setColumnSplit:setSplit} top={<div className="editor-views"><div className="editor-view" hidden={!!inspected}>
+        </div>
+        <SplitStack layout={resultsOpen?'default':layout} share={layout==='columns'&&!resultsOpen?columnSplit:split} onChange={layout==='columns'&&!resultsOpen?setColumnSplit:setSplit} top={<div className="editor-views"><div className="editor-view" hidden={!!inspected}>
         <CodeEditor key={`${user.id}:${version}:${language}`} language={language} label={lang.file} value={source} disabled={busy} onChange={editSource} vim={vim}
           onLimit={() => setError('너무 긴 코드는 입력할 수 없어요. 기존 내용을 유지했어요. 제출 코드는 UTF-8 기준 64 KiB 이내여야 해요.')}
           onRun={() => {if(!busy&&!inspected&&problem.submissionsEnabled)setRunRequest(value=>value+1);}}
@@ -395,6 +400,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
           {problem.problemHeld&&<p className="notice">문제 검토 중 · 새 실행은 보류돼요.</p>}
         </RunConsole>}/>
       </form>
+      <div className="code-bottom-controls">
         <div className="editor-actions">
           <button type="button" className="secondary" disabled={!!inspected} onClick={() => setCasesRequest(value=>value+1)}>테스트 케이스 추가{caseCount?` (${caseCount})`:''}</button>
           <button type="button" className="secondary" disabled={!!inspected || busy || (!problem.submissionsEnabled)} onClick={() => setRunRequest(value=>value+1)}>코드 실행</button>
@@ -402,6 +408,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
           {busy ? '제출 확인 중…' : pending ? '같은 제출 다시 확인' : '제출 후 채점하기'}</button></div>
     {error && <p role="alert" className="notice error">{error}</p>}
     {notice && <p role="status" className="notice success">{notice}</p>}
+    </div>
     </div>
     <div className="panel-resizer" role="separator" tabIndex={resultsOpen?0:-1} hidden={!resultsOpen} aria-label="결과 패널 너비" aria-orientation="vertical" aria-valuemin={300} aria-valuemax={520} aria-valuenow={resultSize}
       onPointerDown={resizePanel} onPointerMove={dragPanel} onPointerUp={event=>event.currentTarget.releasePointerCapture(event.pointerId)}

@@ -42,6 +42,32 @@ for(const diagnostic of [false,true])for(const width of [1024,1440])test(`indepe
  expect(await page.evaluate(()=>document.documentElement.scrollHeight<=innerHeight)).toBe(true);
  await page.screenshot({path:`/tmp/gamjaoj-solving-${diagnostic?'diagnostic':'practice'}-${width}.png`});
 });
+
+for(const diagnostic of [false,true])test(`all six pane orders preserve the live editor and undo ${diagnostic?'diagnostic':'practice'}`,async({page})=>{
+ await page.setViewportSize({width:1440,height:900});await open(page,diagnostic);
+ const editor=page.getByLabel(diagnostic?'진단 Java 코드':'Main.java',{exact:true});
+ await editor.fill('// before');await editor.press('Control+End');await editor.pressSequentially(' after');
+ await page.getByRole('button',{name:'세로 3분할',exact:true}).click();
+ const grid=page.locator(diagnostic?'.diagnostic-workspace':'.practice-grid');
+ const panes={problem:grid.locator(':scope > article'),code:grid.locator('.split-top'),console:grid.locator('.split-bottom')};
+ for(const order of ['code-console-problem','console-problem-code','problem-console-code','console-code-problem','code-problem-console','problem-code-console']){
+  const labels={problem:'문제',code:'코드',console:'터미널'};
+  await page.locator('summary[aria-label="패널 순서 변경"]:visible').click();
+  await page.getByRole('button',{name:order.split('-').map(p=>labels[p]).join(' → '),exact:true}).click();
+  await expect(grid).toHaveAttribute('data-pane-order',order);
+  const boxes=await Promise.all(order.split('-').map(p=>panes[p].boundingBox()));
+  expect(boxes[0].x+boxes[0].width).toBeLessThanOrEqual(boxes[1].x);
+  expect(boxes[1].x+boxes[1].width).toBeLessThanOrEqual(boxes[2].x);
+  await expect(editor).toContainText('// before after');
+ }
+ await editor.focus();await editor.press('Control+z');await expect(editor).toContainText('// before');await expect(editor).not.toContainText(' after');
+ await page.locator('summary[aria-label="패널 순서 변경"]:visible').click();await page.getByRole('button',{name:'터미널 → 코드 → 문제',exact:true}).click();
+ await page.reload();await expect(grid).toHaveAttribute('data-pane-order','console-code-problem');
+ const handle=grid.getByRole('separator',{name:'첫 번째와 두 번째 패널 비율',exact:true});
+ const before=await panes.console.boundingBox();await handle.focus();await handle.press('ArrowRight');
+ expect((await panes.console.boundingBox()).width).toBeGreaterThan(before.width);
+ await page.screenshot({path:`/tmp/gamjaoj-reordered-${diagnostic?'diagnostic':'practice'}.png`});
+});
 test('mobile examples stay equal and pane switching preserves the draft',async({page})=>{
  await page.setViewportSize({width:390,height:844});await open(page,false);
  const editor=page.getByLabel('Main.java',{exact:true});await editor.fill('// draft');
@@ -56,23 +82,23 @@ test('mobile examples stay equal and pane switching preserves the draft',async({
 
 for(const diagnostic of [false,true])for(const width of [1024,1440])test(`three vertical panes preserve drafts and resize independently ${diagnostic?'diagnostic':'practice'} ${width}`,async({page})=>{
  await page.setViewportSize({width,height:800});await open(page,diagnostic);
- const choice=page.getByRole('combobox',{name:'풀이 레이아웃',exact:true});
+ const choice=page.getByRole('button',{name:'세로 3분할',exact:true});
  const editor=page.getByLabel(diagnostic?'진단 Java 코드':'Main.java',{exact:true});
  const split=page.locator(diagnostic?'.diagnostic-split':'.practice-view .split-stack');
  const problem=page.locator(diagnostic?'.diagnostic-workspace > article':'.problem-card');
  const console=split.locator('.run-console');
- await expect(choice).toHaveValue('default');await editor.fill('// layout draft');
- await choice.selectOption('columns');await expect(split).toHaveAttribute('data-layout','columns');
+ await expect(choice).toHaveAttribute('aria-pressed','false');await editor.fill('// layout draft');
+ await choice.click();await expect(split).toHaveAttribute('data-layout','columns');
  await expect(editor).toContainText('// layout draft');
  const boxes=await Promise.all([problem.boundingBox(),split.locator('.split-top').boundingBox(),console.boundingBox()]);
  expect(boxes[0].x+boxes[0].width).toBeLessThanOrEqual(boxes[1].x);
  expect(boxes[1].x+boxes[1].width).toBeLessThanOrEqual(boxes[2].x);
- expect(Math.abs(boxes[1].y-boxes[2].y)).toBeLessThan(1);
- expect(Math.abs(boxes[1].height-boxes[2].height)).toBeLessThan(1);
+ expect(Math.abs(boxes[0].y-(boxes[2].y-8))).toBeLessThan(2);
+ expect(boxes[1].height).toBeGreaterThan(100);
  const handle=split.getByRole('separator');await expect(handle).toHaveAttribute('aria-orientation','vertical');
  await handle.focus();await handle.press('ArrowLeft');await expect(handle).toHaveAttribute('aria-valuenow','63');
  const resized=await split.locator('.split-top').boundingBox();expect(resized.width).toBeLessThan(boxes[1].width);
- await page.reload();await expect(choice).toHaveValue('columns');await expect(handle).toHaveAttribute('aria-valuenow','63');
+ await page.reload();await expect(choice).toHaveAttribute('aria-pressed','true');await expect(handle).toHaveAttribute('aria-valuenow','63');
  await expect(editor).toContainText('// layout draft');
  await expect(console).toBeInViewport({ratio:1});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -81,6 +107,6 @@ for(const diagnostic of [false,true])for(const width of [1024,1440])test(`three 
  await expect(editor).toContainText('// layout draft');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.setViewportSize({width,height:800});await expect(split).toHaveAttribute('data-layout','columns');
- await choice.selectOption('default');await expect(handle).toHaveAttribute('aria-orientation','horizontal');
+ await page.getByRole('button',{name:'기본 배치',exact:true}).click();await expect(handle).toHaveAttribute('aria-orientation','horizontal');
  await expect(editor).toContainText('// layout draft');
 });
