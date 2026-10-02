@@ -21,7 +21,7 @@ for(const width of [390,768,1440])test(`diagnostic report history and evidence a
   await page.getByText('지난 진단',{exact:true}).click();await page.getByRole('button',{name:'4문항 · 완료'}).click();
   await expect(page.getByRole('heading',{name:'진단 결과',exact:true})).toBeVisible();
   await expect(page.getByText(reports[0].interpretation.summary)).toBeVisible();
-  await page.getByText('이 해석에 의견 남기기',{exact:true}).click();
+  await page.getByText('코드 근거·정정·학습 계획',{exact:true}).click();await page.getByText('이 해석에 의견 남기기',{exact:true}).click();
   await page.getByLabel('관찰 1 정정 설명').fill('다음 평가에서도 확인하고 싶은 부분입니다.');
   await page.getByLabel('평가 기록',{exact:true}).selectOption('partial');
   await expect(page.getByRole('table')).toBeVisible();await expect(page.getByText(reports[0].interpretation.summary)).toBeHidden();

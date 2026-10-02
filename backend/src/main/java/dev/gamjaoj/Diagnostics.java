@@ -12,7 +12,7 @@ public class Diagnostics {
     private final JdbcClient jdbc;
     public Diagnostics(JdbcClient jdbc) { this.jdbc=jdbc; }
     public record Item(UUID id,int position,String category,String difficulty,String problemVersion,
-                       String status,int attempts,int pending,boolean externallySeen) {}
+                       String status,int attempts,int pending,boolean externallySeen,String skipReason) {}
     public record Example(String input,String output) {}
     public record Question(UUID itemId,String problemVersion,String title,String statement,String sampleInput,String sampleOutput,List<Example> examples,List<LanguageProfiles.Option> languages) {}
     /** The first test and the EX-prefixed tests right after it are public examples; every later test stays hidden. */
@@ -22,7 +22,7 @@ public class Diagnostics {
             out.add(new Example(tests.get(i).path("input").asText(),tests.get(i).path("output").asText()));
         return out;
     }
-    public record View(UUID id,String bankId,String status,List<Item> items,Question current,UUID sourceSessionId) {}
+    public record View(UUID id,String bankId,String status,List<Item> items,Question current,UUID sourceSessionId,java.time.OffsetDateTime createdAt) {}
     record Snapshot(String json,String hash,String image,String policy,String limits) {}
 
     public record Bank(String id,List<String> categories,int questionCount) {}
@@ -187,17 +187,26 @@ public class Diagnostics {
         UUID user=owner(name); View saved=view(user,session);
         if(saved.status().equals("COMPLETED"))return saved; // Replay after completion is a no-op.
         if(saved.items().stream().anyMatch(i->i.pending()>0))throw new AccountException(409,"진행 중인 정식 채점이 끝난 뒤 진단을 끝내 주세요.");
-        jdbc.sql("UPDATE diagnostic_item SET status='SKIPPED' WHERE session_id=? AND status='OPEN'").param(session).update();
+        jdbc.sql("UPDATE diagnostic_item SET status='SKIPPED',skip_reason='SESSION_ENDED' WHERE session_id=? AND status='OPEN'").param(session).update();
         return view(user,session);
     }
     @Transactional
     public View skip(String name,UUID session,UUID item) {
+        return skip(name,session,item,null);
+    }
+    @Transactional
+    public View skip(String name,UUID session,UUID item,String reason) {
+        if(reason!=null&&!List.of("NOT_SURE","NO_TIME","OTHER","UNSPECIFIED").contains(reason))
+            throw new AccountException(400,"건너뛰는 이유를 확인해 주세요.");
         UUID user=owner(name); View saved=view(user,session);
         var chosen=saved.items().stream().filter(i->i.id().equals(item)).findFirst().orElseThrow(()->new AccountException(404,"진단 문항을 찾을 수 없어요."));
-        if(chosen.status().equals("SKIPPED"))return saved; // Retrying skip never skips the next item.
+        if(chosen.status().equals("SKIPPED")) {
+            if(reason!=null&&!reason.equals(chosen.skipReason()))throw new AccountException(409,"이미 저장된 건너뛰기 이유와 달라요.");
+            return saved; // Retrying skip never skips the next item or overwrites its reason.
+        }
         if(!saved.status().equals("ACTIVE")||saved.current()==null||!saved.current().itemId().equals(item)||chosen.pending()>0)
             throw new AccountException(409,"현재 문항과 진행 중인 채점을 확인해 주세요.");
-        jdbc.sql("UPDATE diagnostic_item SET status='SKIPPED' WHERE id=?").param(item).update();
+        jdbc.sql("UPDATE diagnostic_item SET status='SKIPPED',skip_reason=? WHERE id=?").param(reason==null?"UNSPECIFIED":reason).param(item).update();
         return view(user,session);
     }
     // Caller owns app_user lock, shared with ordinary submission admission. No judge->owner lock inversion.
@@ -223,7 +232,7 @@ public class Diagnostics {
         jdbc.sql("UPDATE diagnostic_item SET status='PASSED' WHERE session_id=? AND status='OPEN' AND EXISTS (SELECT 1 FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.diagnostic_item_id=diagnostic_item.id AND s.run_input IS NULL AND j.status='FINISHED' AND j.verdict='AC')").param(id).update();
         jdbc.sql("UPDATE diagnostic_item SET status='EXHAUSTED' WHERE session_id=? AND status='OPEN' AND (SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.diagnostic_item_id=diagnostic_item.id AND s.run_input IS NULL AND j.status='FINISHED' AND j.verdict<>'IE')>=5").param(id).update();
         var items=jdbc.sql("SELECT i.*, (SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.diagnostic_item_id=i.id AND s.run_input IS NULL AND j.status='FINISHED' AND j.verdict<>'IE') AS attempts, (SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.diagnostic_item_id=i.id AND s.run_input IS NULL AND j.status<>'FINISHED') AS pending FROM diagnostic_item i WHERE session_id=? ORDER BY position")
-                .param(id).query((r,n)->new Item(r.getObject("id",UUID.class),r.getInt("position"),r.getString("category"),r.getString("difficulty"),r.getString("problem_version"),r.getString("status"),r.getInt("attempts"),r.getInt("pending"),r.getBoolean("externally_seen"))).list();
+                .param(id).query((r,n)->new Item(r.getObject("id",UUID.class),r.getInt("position"),r.getString("category"),r.getString("difficulty"),r.getString("problem_version"),r.getString("status"),r.getInt("attempts"),r.getInt("pending"),r.getBoolean("externally_seen"),r.getString("skip_reason"))).list();
         var current=items.stream().filter(i->i.status().equals("OPEN")).findFirst();
         String status=session[1];
         if(current.isEmpty()) {
@@ -235,6 +244,7 @@ public class Diagnostics {
         }).orElse(null);
         UUID source=jdbc.sql("SELECT source_session_id FROM diagnostic_session WHERE id=?").param(id)
                 .query((r,n)->new UUID[]{r.getObject(1,UUID.class)}).single()[0];
-        return new View(id,session[0],status,items,question,source);
+        var created=jdbc.sql("SELECT created_at FROM diagnostic_session WHERE id=?").param(id).query(java.time.OffsetDateTime.class).single();
+        return new View(id,session[0],status,items,question,source,created);
     }
 }

@@ -13,6 +13,9 @@ final class DiagnosticEvaluationContract {
         medium success is not mastery. Attempts are observations, not penalties. Related questions
         are not independent evidence of a habit. Never infer personality or a stable trait: a habit
         here is a coding pattern visible in these submissions only.
+        skipReason NOT_SURE is a self-reported difficulty choosing an approach, not a measured weakness.
+        Suggest a basic review or a follow-up check in the summary; never invent a code observation for it.
+        NO_TIME, OTHER, SESSION_ENDED and missing reasons leave ability unassessed, not deficient.
         Cite an exact nonempty code excerpt from the named submission for every observation. State
         uncertainty and distinguish supported code observations from hypotheses. Recommendations use
         ASSESS when more evidence is needed, PRACTICE for supported narrow skills. Do not claim a wrong

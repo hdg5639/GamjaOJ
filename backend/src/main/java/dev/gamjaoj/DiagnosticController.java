@@ -52,7 +52,8 @@ class DiagnosticController {
     @PostMapping("/{id}/finish") Diagnostics.View finish(Principal user,@PathVariable UUID id) {
         return diagnostics.finish(user.getName(),id);
     }
-    @PostMapping("/{id}/items/{item}/skip") Diagnostics.View skip(Principal user,@PathVariable UUID id,@PathVariable UUID item) {
-        return diagnostics.skip(user.getName(),id,item);
+    record Skip(@Size(max=24) String reason) {}
+    @PostMapping("/{id}/items/{item}/skip") Diagnostics.View skip(Principal user,@PathVariable UUID id,@PathVariable UUID item,@Valid @RequestBody(required=false) Skip body) {
+        return diagnostics.skip(user.getName(),id,item,body==null?null:body.reason());
     }
 }

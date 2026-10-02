@@ -155,13 +155,13 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
   await page.screenshot({path:`/tmp/gamja-diagnostic-${width}.png`,fullPage:true});
   await page.getByRole('button',{name:'다음 문제',exact:true}).click();
   await expect(page.getByRole('heading',{name:'진단 문항 2'})).toBeVisible();
-  await page.getByRole('button',{name:'모르겠어요 · 건너뛰기'}).click();
+  await page.getByRole('button',{name:'건너뛰기',exact:true}).click();await page.getByRole('button',{name:'접근 방법을 모르겠어요',exact:true}).click();
   await expect(page.getByText(/진단을 마쳤어요/)).toBeVisible();
   await expect(page.locator('.workspace-heading')).toBeVisible();
   await page.getByRole('button',{name:'종합 평가 요청'}).click();
   await expect(page.getByText('완료한 문항의 코드만 확인했습니다.')).toBeVisible();
   await expect(page.getByText(width===1440?'연습 제안: 입력 처리 연습':'추가 진단 제안: 입력 처리 추가 진단')).toBeVisible();
-  await page.getByText('이 해석에 의견 남기기',{exact:true}).click();
+  await page.getByText('코드 근거·정정·학습 계획',{exact:true}).click();await page.getByText('이 해석에 의견 남기기',{exact:true}).click();
   await page.getByLabel('관찰 1 정정 설명').fill('문법보다 입력 설명을 잘못 읽었습니다.');
   await page.getByRole('button',{name:'정정 의견 저장'}).click();
   await page.getByRole('button',{name:'같은 정정 다시 확인'}).click();
@@ -189,7 +189,8 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
     await page.getByRole('button',{name:'선택 진단',exact:true}).click();
     await page.getByText('지난 진단',{exact:true}).click();
     await page.getByRole('button',{name:'2문항 · 완료'}).click();
-    await page.getByRole('button',{name:'이 제안으로 학습 계획 준비'}).click();
+    await page.getByRole('button',{name:'근거 확인하고 목표 정하기'}).click();
+    await page.getByRole('button',{name:/최신 의견·학습 계획 다시 확인|이 제안으로 학습 계획 준비/}).click();
     await page.getByRole('button',{name:'도움 없이 풀었어요'}).click();
     await expect(page.getByText(/본인이 보고한 도움 없는 AC로 기록/)).toBeVisible();
     await page.getByRole('button',{name:'최신 의견 확인 · 다음 회차 준비'}).click();
@@ -276,7 +277,7 @@ for(const width of [390,1440])test('reassessment selection and known-question re
   await page.keyboard.press('Escape');await expect(records).toBeHidden();
   expect(reports).toBe(2);expect(starts).toHaveLength(2);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.getByRole('button',{name:'모르겠어요 · 건너뛰기'}).click();
+  await page.getByRole('button',{name:'건너뛰기',exact:true}).click();await page.getByRole('button',{name:'접근 방법을 모르겠어요',exact:true}).click();
   await expect(page.getByText('진단을 마쳤어요.',{exact:false})).toBeVisible();
   await page.getByText('문항별 진행과 제출 기록',{exact:true}).click();
   await page.getByRole('button',{name:'2번 문항 · 이전에 본 문제로 정정'}).click();

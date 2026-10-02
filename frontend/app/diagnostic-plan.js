@@ -12,16 +12,16 @@ export default function DiagnosticPlan({api,row,index,onOpen,onGeneration}) {
   async function confirm(event){event.preventDefault();if(lock.current)return;lock.current=true;setBusy(true);setError('');
     pending.current ||= {key:crypto.randomUUID(),body:{evaluationId:row.id,observationIndex:index,reviewHash:options.reviewHash,goal}};
     try{const plan=await api(base,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':pending.current.key},body:JSON.stringify(pending.current.body)});
-      pending.current=null;setPlans(old=>[plan,...old.filter(p=>p.id!==plan.id)]);
+      pending.current=null;setPlans(old=>[plan,...old.filter(p=>p.id!==plan.id)]);window.dispatchEvent(new Event('gamjaoj-plan-changed'));
     }catch(e){if(e.status>=400&&e.status<500)pending.current=null;setError(e.message);}finally{lock.current=false;setBusy(false);}}
   async function start(plan,target){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{
     const version=target||plan.problemVersion||selected[plan.id];
     const saved=await api(`${base}/${plan.id}/start`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({problemVersion:version})});
-    setPlans(old=>old.map(p=>p.id===saved.id?saved:p));await onOpen(saved.problemVersion);
+    setPlans(old=>old.map(p=>p.id===saved.id?saved:p));window.dispatchEvent(new Event('gamjaoj-plan-changed'));await onOpen(saved.problemVersion);
   }catch(e){setError(e.message);}finally{lock.current=false;setBusy(false);}}
   async function action(plan,kind,body){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{
     const saved=await api(`${base}/${plan.id}/${kind}`,{method:'POST',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
-    setPlans(old=>old.some(p=>p.id===saved.id)?old.map(p=>p.id===saved.id?saved:p):[...old,saved]);
+    setPlans(old=>old.some(p=>p.id===saved.id)?old.map(p=>p.id===saved.id?saved:p):[...old,saved]);window.dispatchEvent(new Event('gamjaoj-plan-changed'));
   }catch(e){setError(e.message);}finally{lock.current=false;setBusy(false);}}
   const alreadySaved=plans.some(p=>p.goal===goal&&['READY','ACTIVE','TRAINING_ENDED','AC_WITH_HELP','SELF_REPORTED_UNASSISTED_AC'].includes(p.status));
   return <div className="diagnostic-plan">
