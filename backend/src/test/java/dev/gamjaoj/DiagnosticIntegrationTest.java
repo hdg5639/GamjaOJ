@@ -39,6 +39,7 @@ class DiagnosticIntegrationTest {
     @Autowired AiTasks ai;
     @Autowired DiagnosticEvaluations evaluations;
     @Autowired DiagnosticPlans plans;
+    @Autowired LearningCurricula curricula;
     @Autowired org.springframework.core.env.ConfigurableEnvironment environment;
     @org.springframework.test.context.bean.override.mockito.MockitoBean AiProvider provider;
     @Autowired MockMvc mvc;
@@ -93,6 +94,101 @@ class DiagnosticIntegrationTest {
         assertThat(evaluation.interpretation()).isNull(); // No submitted code: no invented observations or model task.
         assertThat(evaluation.status()).isEqualTo("FACTS_ONLY");
         assertThat(evaluations.request(user,done.id()).id()).isEqualTo(evaluation.id());
+    }
+    @Test void oneClickBasicsAreDurableOwnerScopedAndProgressThroughExistingTraining() throws Exception {
+        jdbc.sql("UPDATE diagnostic_bank_item SET category='implementation' WHERE bank_id=?").param(bank).update();
+        jdbc.sql("UPDATE problem_version SET catalog_category='구현',catalog_difficulty='EASY' WHERE id='sum-v1'").update();
+        try {
+            var d=start();var first=diagnostics.skip(user,d.id(),d.current().itemId(),"NOT_SURE");
+            diagnostics.skip(user,d.id(),first.current().itemId(),"NOT_SURE");
+            var evaluation=evaluations.request(user,d.id());UUID key=UUID.randomUUID();
+            mvc.perform(post("/api/learning-curricula").with(user(user)).header("Idempotency-Key",key).contentType("application/json").content("{\"evaluationId\":\""+evaluation.id()+"\"}"))
+                    .andExpect(status().isForbidden());
+            var created=curricula.create(user,key,evaluation.id());
+            assertThat(created.plans()).hasSize(1); // Two skipped questions in one family give one basic revision goal.
+            var plan=created.plans().get(0);assertThat(plan.sourceKind()).isEqualTo("SELF_REPORT");
+            assertThat(plan.goal()).contains("구현");assertThat(plan.status()).isEqualTo("READY");
+            assertThat(curricula.create(user,key,evaluation.id()).plans().get(0).id()).isEqualTo(plan.id());
+            assertThat(curricula.create(user,UUID.randomUUID(),evaluation.id()).plans().get(0).id()).isEqualTo(plan.id());
+            assertThatThrownBy(()->curricula.create(other,key,evaluation.id())).isInstanceOf(AccountException.class);
+            assertThatThrownBy(()->curricula.create(other,UUID.randomUUID(),evaluation.id())).isInstanceOf(AccountException.class);
+            assertThat(curricula.overview(other)).isEmpty();
+            var step=curricula.overview(user).get(0).steps().get(0);
+            assertThat(step.candidate().version()).isEqualTo("sum-v1");assertThat(step.progress()).isNull();
+            assertThat(jdbc.sql("SELECT count(*) FROM ai_task").query(Integer.class).single()).isZero();
+            assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isZero();
+            var active=plans.start(user,plan.id(),step.candidate().version());
+            assertThat(plans.start(user,plan.id(),"sum-v1").sessionId()).isEqualTo(active.sessionId());
+            submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,active.sessionId()));
+            var pending=curricula.overview(user).get(0).steps().get(0);
+            assertThat(pending.progress().pending()).isEqualTo(1);assertThat(pending.plan().status()).isEqualTo("ACTIVE");
+            finish("AC");training.end(user,active.sessionId(),"범위를 확인했어요.");
+            var ended=curricula.overview(user).get(0).steps().get(0);
+            assertThat(ended.progress().latestVerdict()).isEqualTo("AC");assertThat(ended.plan().status()).isEqualTo("TRAINING_ENDED");
+            plans.reflect(user,plan.id(),false);
+            assertThat(curricula.overview(user).get(0).steps().get(0).plan().status()).isEqualTo("SELF_REPORTED_UNASSISTED_AC");
+            assertThat(plans.trainedScope(user,d.id())).isEmpty(); // A self report never becomes a verified code-rule mapping.
+            var options=plans.options(user,evaluation.id(),0,"SELF_REPORT");
+            var next=plans.nextRound(user,plan.id(),options.reviewHash());
+            assertThat(next.sourceKind()).isEqualTo("SELF_REPORT");
+            assertThat(curricula.overview(user).get(0).steps()).hasSize(1);
+            assertThat(curricula.overview(user).get(0).steps().get(0).plan().id()).isEqualTo(next.id());
+            assertThat(curricula.create(user,key,evaluation.id()).plans().get(0).id()).isEqualTo(plan.id());
+            var otherEvaluation=evaluations.request(user,completeSkipped(start()).id());
+            assertThatThrownBy(()->curricula.create(user,key,otherEvaluation.id())).isInstanceOf(AccountException.class);
+        } finally {jdbc.sql("UPDATE problem_version SET catalog_category=NULL,catalog_difficulty=NULL WHERE id='sum-v1'").update();}
+    }
+    @Test void oneClickCodeGoalsPreserveManualPlansAndExcludeCorrectionsStrengthsAndHypotheses() {
+        var d=start();var submitted=submit(d.current());finish("AC");diagnostics.skip(user,d.id(),diagnostics.detail(user,d.id()).current().itemId(),"NO_TIME");
+        org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=true","OPENAI_API_KEY=test-only").applyTo(environment);
+        var evaluation=evaluations.request(user,d.id());var work=ai.claim();
+        var output=JudgeJson.JSON.createObjectNode().put("summary","관측한 코드만 확인합니다.").put("uncertainty","다른 문제의 숙련은 알 수 없습니다.").put("requiredScope","OBSERVED_ITEMS_ONLY");
+        var observations=output.putArray("observations");
+        for(int i=0;i<4;i++)habit(observations.addObject().put("submissionId",submitted.id().toString()).put("quote","System.out.println(3)")
+                .put("interpretation","입력 처리를 확인해 주세요.").put("confidence",i==3?"UNCERTAIN":"SUPPORTED").put("nextAction","PRACTICE").put("recommendation","입력 범위를 확인하기"))
+                .put("tone",i==1?"WATCH":i==2?"STRENGTH":"RISK");
+        ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
+        var options=plans.options(user,evaluation.id(),0);
+        var manual=plans.confirm(user,UUID.randomUUID(),evaluation.id(),0,options.reviewHash(),"내가 직접 정한 목표");
+        evaluations.correct(user,d.id(),evaluation.id(),UUID.randomUUID(),1,"이 관찰은 설명을 다시 확인해야 합니다.");
+        evaluations.correct(user,d.id(),evaluation.id(),UUID.randomUUID(),1,"이 의견을 추가로 확인할게요.");
+        var created=curricula.create(user,UUID.randomUUID(),evaluation.id());
+        assertThat(curricula.overview(user).get(0).manualReviewCount()).isEqualTo(1);
+        assertThat(created.plans()).extracting(DiagnosticPlans.Plan::id).containsExactly(manual.id());
+        assertThat(created.plans().get(0).goal()).isEqualTo("내가 직접 정한 목표");assertThat(created.manualReviewCount()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM diagnostic_practice_plan").query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt").query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isZero();
+    }
+    @Test void oneClickCannotCreateGoalsDuringAssessmentOrFromStaleHeldOrUnknownSkips() {
+        var d=start();var second=diagnostics.skip(user,d.id(),d.current().itemId(),"NO_TIME");diagnostics.skip(user,d.id(),second.current().itemId());
+        var unknown=evaluations.request(user,d.id());
+        assertThatThrownBy(()->curricula.create(user,UUID.randomUUID(),unknown.id())).isInstanceOf(AccountException.class);
+        assertThat(jdbc.sql("SELECT count(*) FROM learning_curriculum_request").query(Integer.class).single()).isZero();
+        jdbc.sql("UPDATE diagnostic_item SET skip_reason='NOT_SURE' WHERE session_id=?").param(d.id()).update();
+        var evaluation=evaluations.request(user,d.id());UUID key=UUID.randomUUID();var created=curricula.create(user,key,evaluation.id());
+        var active=start();
+        assertThatThrownBy(()->curricula.create(user,UUID.randomUUID(),evaluation.id())).isInstanceOf(AccountException.class);
+        assertThat(curricula.overview(user).get(0).steps()).allMatch(step->step.plan().status().equals("HELD")&&step.plan().goal()==null&&step.candidate()==null);
+        assertThat(curricula.create(user,key,evaluation.id()).plans()).allMatch(plan->plan.status().equals("HELD"));
+        assertThatThrownBy(()->plans.start(user,created.plans().get(0).id(),"sum-v1")).isInstanceOf(AccountException.class);
+        diagnostics.finish(user,active.id());
+        jdbc.sql("UPDATE problem_version SET review_hold=true WHERE id=?").param(d.current().problemVersion()).update();
+        assertThatThrownBy(()->curricula.create(user,UUID.randomUUID(),evaluation.id())).isInstanceOf(AccountException.class);
+        jdbc.sql("UPDATE problem_version SET review_hold=false WHERE id=?").param(d.current().problemVersion()).update();
+        jdbc.sql("UPDATE diagnostic_session SET exposure_revision=exposure_revision+1 WHERE id=?").param(d.id()).update();
+        assertThatThrownBy(()->curricula.create(user,UUID.randomUUID(),evaluation.id())).isInstanceOf(AccountException.class);
+    }
+    @Test void concurrentOneClickRequestsConvergeOnOneSavedGoal() throws Exception {
+        var d=start();var second=diagnostics.skip(user,d.id(),d.current().itemId(),"NOT_SURE");diagnostics.skip(user,d.id(),second.current().itemId(),"NO_TIME");
+        var evaluation=evaluations.request(user,d.id());
+        try(var executor=Executors.newFixedThreadPool(2)) {
+            var first=executor.submit(()->curricula.create(user,UUID.randomUUID(),evaluation.id()));
+            var next=executor.submit(()->curricula.create(user,UUID.randomUUID(),evaluation.id()));
+            assertThat(first.get().plans().get(0).id()).isEqualTo(next.get().plans().get(0).id());
+        }
+        assertThat(jdbc.sql("SELECT count(*) FROM diagnostic_practice_plan").query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM learning_curriculum_request").query(Integer.class).single()).isEqualTo(2);
     }
     @Test void legacySkipsRemainUnknownAndFinishingDoesNotClaimConceptDifficulty() {
         var d=start();var skipped=diagnostics.skip(user,d.id(),d.current().itemId());

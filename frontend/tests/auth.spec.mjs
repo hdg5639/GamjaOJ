@@ -84,6 +84,7 @@ if config.get('SUBMISSIONS_ENABLED','false').lower() != 'true':
 
   await page.getByRole('button', { name: '훈련 기록', exact: true }).click();
   const training = page.getByRole('region', { name: '훈련 세션', exact: true });
+  await training.getByRole('button',{name:'직접 훈련 시작',exact:true}).click();
   await training.getByLabel('이번 훈련 목표').fill('입출력과 경계값 확인');
   let lostStart = false;
   const sessionKeys = [];
@@ -103,7 +104,7 @@ if config.get('SUBMISSIONS_ENABLED','false').lower() != 'true':
   await page.reload();
   await page.getByRole('button', { name: '훈련 기록', exact: true }).click();
   await training.getByRole('button', { name: '같은 훈련 요청 다시 확인' }).click();
-  await expect(training.getByRole('button', { name: '훈련 마치기' })).toBeEnabled();
+  await expect(training.getByRole('button', { name: '훈련 마무리',exact:true })).toBeEnabled();
   expect(sessionKeys).toHaveLength(2);
   expect(sessionKeys[0]).toBe(sessionKeys[1]);
   await page.unroute('**/api/training-sessions');
@@ -198,6 +199,7 @@ print(r.stdout.strip())
   expect(await page.evaluate(()=>fetch('/api/runs').then(r=>r.json()))).toEqual([]);
 
   await page.getByRole('button', { name: '훈련 기록', exact: true }).click();
+  await training.getByRole('button',{name:'훈련 마무리',exact:true}).click();
   await training.getByLabel('마무리 메모').fill('long으로 경계값을 처리했다.');
   let lostEnd = false;
   await page.route('**/api/training-sessions/*/end', async route => {
@@ -213,6 +215,8 @@ print(r.stdout.strip())
   await page.reload();
   await page.getByRole('button', { name: '훈련 기록', exact: true }).click();
   await training.getByRole('button', { name: '같은 훈련 요청 다시 확인' }).click();
+  await page.getByRole('navigation',{name:'훈련 화면'}).getByRole('button',{name:'내 훈련 기록',exact:true}).click();
+  await training.locator('.training-record-row').first().click();
   await expect(training.getByLabel('저장된 마무리 메모')).toHaveText('long으로 경계값을 처리했다.');
   await expect(training.locator('.training-detail')).toContainText('정식 제출 1회 · 정답 1회 · 처리 중 0개');
   await training.getByRole('button').filter({ hasText: '정식 제출 · AC' }).click();

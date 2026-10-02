@@ -1111,3 +1111,65 @@ dialog.modal.my-record-dialog { max-width:1180px; width:calc(100vw - 48px); }
  .export-providers .export-search { grid-template-columns:minmax(0,1fr); }
  .settings-profile .primary { width:100%; }
 }
+
+.training-hub-tabs { display:flex; gap:8px; border-bottom:1px solid var(--line); padding-bottom:16px; }
+:root .training-hub .training-hub-tabs button[aria-current="page"] { background:var(--subtle); color:var(--green); border-color:var(--green); font-weight:600; }
+.training-hub .learning-tracks { padding:32px 40px; background:var(--surface); border:1px solid var(--line); border-radius:12px; }
+.learning-tracks > .training-section-heading { margin-bottom:28px; }
+.learning-track-choice { display:grid; grid-template-columns:minmax(0,1fr) minmax(260px,1fr); gap:32px; align-items:center; padding-bottom:24px; border-bottom:1px solid var(--line); }
+.learning-progress { display:grid; gap:8px; font-size:13px; }
+.learning-progress progress { display:block; appearance:none; border:0; width:100%; height:8px; accent-color:var(--green); background:var(--subtle); border-radius:4px; overflow:hidden; }
+.learning-progress progress::-webkit-progress-bar { background:var(--subtle); }
+.learning-progress progress::-webkit-progress-value { background:var(--green); }
+.learning-progress progress::-moz-progress-bar { background:var(--green); }
+.learning-progress small { color:var(--muted); font-size:12px; line-height:1.7; }
+.learning-next-step { padding:24px 0; border-bottom:1px solid var(--line); }
+.learning-next-step h3 { margin:8px 0; font-size:18px; }
+.learning-next-step > p { line-height:1.8; margin:8px 0 16px; }
+.learning-next-step .draft-help { margin:12px 0 0; }
+.learning-plan-steps { list-style:none; margin:0; padding:0; }
+.learning-plan-steps > li { border-bottom:1px solid var(--line); padding:22px 0; }
+.learning-goal-summary { display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:12px; align-items:start; }
+.learning-goal-number { color:var(--muted); font-size:12px; line-height:24px; }
+.learning-goal-summary h3 { font-size:15px; margin:0; }
+.learning-goal-summary p { font-size:12px; color:var(--muted); margin:6px 0 0; }
+.learning-goal-summary > strong { font-size:12px; color:var(--muted); font-weight:500; line-height:24px; }
+.learning-plan-steps > li[data-status="SELF_REPORTED_UNASSISTED_AC"] .learning-goal-number,.learning-plan-steps > li[data-status="AC_WITH_HELP"] .learning-goal-number { color:var(--green); }
+.learning-goal-actions { display:flex; flex-wrap:wrap; gap:8px; padding-left:40px; margin-top:16px; }
+.learning-plan-steps > li > .muted { margin:12px 0 0 40px; }
+.learning-manual-plan { margin:20px 0 0 40px; border-top:1px solid var(--line); padding-top:20px; }
+.learning-manual-plan > p { color:var(--muted); font-size:12px; line-height:1.8; }
+.learning-plan-empty { padding:24px 0 8px; }
+.learning-plan-empty p { max-width:75ch; line-height:1.8; margin:12px 0 20px; }
+.learning-reflection > div { display:flex; gap:8px; flex-wrap:wrap; }
+.learning-reflection p { font-size:13px; line-height:1.8; margin-bottom:12px; }
+.training-session-tools { padding:0 8px; }
+.training-session-tools .training-section-heading h2 { font-size:15px; }
+.training-session-tools .training-section-heading p { max-width:75ch; }
+.training-tool-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.training-extra-practice { border-top:1px solid var(--line); padding-top:20px; }
+.training-extra-practice > summary { cursor:pointer; font-size:13px; line-height:1.7; padding-bottom:20px; }
+.training-hub .diagnostic-dialog .training-current { margin:0; padding:0; border:0; }
+.training-hub .diagnostic-dialog .training-detail { padding:0; border:0; }
+.training-hub .diagnostic-dialog .training-detail .training-section-heading > button { display:none; }
+.quick-curriculum { display:flex; flex-wrap:wrap; align-items:center; gap:12px; border-block:1px solid var(--line); padding:24px 0; margin:24px 0; }
+.quick-curriculum > div { flex:1 1 450px; }
+.quick-curriculum h3 { font-size:17px; margin:0 0 8px; }
+.quick-curriculum p { max-width:75ch; font-size:13px; line-height:1.8; margin:0; }
+.quick-curriculum > [role="alert"] { flex-basis:100%; }
+.diagnostic-saved-curriculum > details { margin-top:16px; }
+.diagnostic-saved-curriculum > details > summary { cursor:pointer; font-size:13px; padding:8px 0; }
+@media(max-width:850px) {
+ .training-hub .learning-tracks { padding:24px; }
+ .learning-track-choice { grid-template-columns:1fr; gap:20px; }
+ .learning-goal-summary { grid-template-columns:24px minmax(0,1fr); }
+ .learning-goal-summary > strong { grid-column:2; }
+ .learning-goal-actions { padding-left:36px; }
+}
+@media(max-width:500px) {
+ .training-hub .learning-tracks { padding:24px 16px; }
+ .learning-next-step h3 { font-size:16px; }
+ .learning-goal-actions { padding-left:0; }
+ .learning-manual-plan { margin-left:0; }
+ .quick-curriculum > div { flex-basis:100%; }
+}

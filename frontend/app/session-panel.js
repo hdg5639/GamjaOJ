@@ -5,9 +5,10 @@ import Pager,{usePage} from './pager';
 import AiFeedback from './ai-feedback';
 import {verdictText} from './verdicts';
 import ProblemId from './problem-id';
+import Modal from './modal';
 
 const summary = item => `정식 제출 ${item.submissions}회 · 정답 ${item.accepted}회 · 처리 중 ${item.pending}개`;
-export default function SessionPanel({ user, problem, sessions, onChange, activity, api, problems=[], onOpen, onDiagnostic, locked=false }) {
+export default function SessionPanel({ user, problem, sessions, onChange, activity, api, problems=[], onOpen, onDiagnostic, locked=false, view="records", onRecords=()=>{} }) {
   const active = sessions.find(item => item.status === 'ACTIVE');
   const [goal, setGoal] = useState(user.trainingGoal || '');
   const [note, setNote] = useState('');
@@ -18,7 +19,7 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
   const [entry, setEntry] = useState(null);
   const [filter,setFilter]=useState('ALL'),[query,setQuery]=useState('');
   const [target,setTarget]=useState(problem?.version||'');
-  const [opening,setOpening]=useState(false);
+  const [opening,setOpening]=useState(false),[controlsOpen,setControlsOpen]=useState(false),[detailOpen,setDetailOpen]=useState(false);
   const openRevision=useRef(0),executionLock=useRef(false);
   const title=version=>problems.find(item=>item.version===version)?.title||'목록에 없는 문제';
   const targetProblem=problems.find(item=>item.version===target);
@@ -51,12 +52,12 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
   useEffect(()=>{
     const show=async event=>{
       if(typeof event.detail!=='string')return;
-      await open(event.detail);
+      onRecords();await open(event.detail);
       requestAnimationFrame(()=>document.getElementById('training-detail-heading')?.focus());
     };
     window.addEventListener('gamjaoj-training-open',show);
     return()=>window.removeEventListener('gamjaoj-training-open',show);
-  },[user.id]);
+  },[user.id,onRecords]);
 
   async function execute(attempt) {
     if(executionLock.current)return;executionLock.current=true;
@@ -67,7 +68,7 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': attempt.key }, body: JSON.stringify(attempt.body),
       });
       setPending(null); try { sessionStorage.removeItem(storageKey); } catch { /* Accepted request is reflected below. */ }
-      setNote(''); onChange(await api('/api/training-sessions'));
+      setControlsOpen(false);setNote(''); onChange(await api('/api/training-sessions'));
       setDetail(await api(`/api/training-sessions/${result.id}`)); setEntry(null);
       window.dispatchEvent(new Event('gamjaoj-training-changed'));
     } catch (e) {
@@ -81,7 +82,7 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
   async function open(id) {
     const revision=++openRevision.current;setOpening(true);setError('');
     try { const value=await api(`/api/training-sessions/${id}`);if(revision!==openRevision.current)return;
-      setDetail(value);setEntry(null);
+      setDetail(value);setEntry(null);setDetailOpen(true);
       requestAnimationFrame(()=>{const heading=document.getElementById('training-detail-heading');heading?.scrollIntoView({block:'start'});heading?.focus({preventScroll:true});});
     } catch (e) { if(revision===openRevision.current)setError(e.message); }
     finally { if(revision===openRevision.current)setOpening(false); }
@@ -92,13 +93,16 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
   }
   const filtered=sessions.filter(item=>(filter==='ALL'||item.status===filter)&&`${title(item.problemVersion)} ${item.goal||''} ${item.problemVersion}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const sessionPaging=usePage(filtered,10),entryPaging=usePage(detail?.entries||[],10);
-  return <section className="training-panel editor-card" aria-label="훈련 세션">
-    <header className="training-section-heading"><div><h2>목표를 정하고, 풀이를 돌아보기</h2><p className="muted">진단에서 찾은 보완점이나 직접 정한 목표를 훈련 기록으로 남겨요.</p></div>
-      <button className="secondary" onClick={onDiagnostic}>진단·추천 커리큘럼 보기</button></header>
+  return <section className={view==='records'?"training-panel editor-card":"training-session-tools"} aria-label="훈련 세션">
+    <header className="training-section-heading"><div><h2>{view==='records'?'내 훈련 기록':active?'진행 중인 훈련':'직접 정한 목표로 연습'}</h2><p className="muted">{view==='records'?'지난 실행이 아니라, 목표별로 묶은 정식 제출과 마무리 기록이에요.':active?`${title(active.problemVersion)} · ${active.goal||'자유 연습'}`:'진단 계획 외에도 문제와 목표를 직접 선택할 수 있어요.'}</p></div>
+      <div className="training-tool-actions">{active&&<button className="primary" disabled={locked||busy||!!pending||active.problemHeld} onClick={async()=>{try{await onOpen(active.problemVersion);}catch(e){setError(e.message);}}}>훈련 이어 풀기</button>}<button className="secondary" onClick={()=>setControlsOpen(true)}>{active?'훈련 마무리':'직접 훈련 시작'}</button></div></header>
+    {!controlsOpen&&pending&&<button className="secondary" disabled={busy} onClick={()=>execute(pending)}>같은 훈련 요청 다시 확인</button>}
+    {!controlsOpen&&error&&<p role="alert" className="notice error">{error}</p>}
+    <Modal open={controlsOpen} title={active?'훈련 마무리':'직접 훈련 시작'} onClose={()=>setControlsOpen(false)} className="diagnostic-dialog"><div className="diagnostic-dialog-content">
     <section className="training-current" aria-label={active?'진행 중인 훈련':'새 훈련'}>
     <div className="training-section-heading"><div><h3>{active ? '진행 중인 훈련' : '새 훈련 시작'}</h3>
       {active&&<p className="training-problem-title">{title(active.problemVersion)}</p>}</div>
-      {active&&<button className="primary" disabled={locked||busy||!!pending||active.problemHeld} onClick={async()=>{try{await onOpen(active.problemVersion);}catch(e){setError(e.message);}}}>훈련 이어 풀기</button>}</div>
+</div>
     {active?.problemHeld&&<p className="notice">문제 검토 중 · 기존 훈련을 마칠 수 있지만 새 작업과 분석은 보류됩니다.</p>}
     {active ? <>
       <p className="training-goal">목표 · {active.goal || '자유 연습'}</p>
@@ -120,23 +124,25 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
     </section>
     {pending && <button className="secondary" disabled={busy} onClick={() => execute(pending)}>같은 훈련 요청 다시 확인</button>}
     {error && <p role="alert" className="notice error">{error}</p>}
-    <section className="training-history" aria-label="내 훈련 기록">
+    </div></Modal>
+    {view==='records'&&<section className="training-history" aria-label="내 훈련 기록">
       <div className="training-section-heading"><h3>내 훈련 기록 <span className="muted">최근 {sessions.length}개</span></h3><span className="muted">진행 중 {sessions.filter(item=>item.status==='ACTIVE').length} · 종료 {sessions.filter(item=>item.status!=='ACTIVE').length}</span></div>
       <p className="draft-help">최근 훈련 최대 20개에서 검색·필터합니다. 상세 기록에는 최근 정식 제출 최대 50개를 표시해요.</p>
       <div className="training-record-filters"><label><span className="sr-only">훈련 기록 검색</span><input type="search" value={query} placeholder="문제명 또는 훈련 목표 검색" onChange={event=>{setQuery(event.target.value);sessionPaging.setPage(0);}}/></label>
         <label><span className="sr-only">훈련 상태</span><select aria-label="훈련 상태" value={filter} onChange={event=>{setFilter(event.target.value);sessionPaging.setPage(0);}}><option value="ALL">전체 상태</option><option value="ACTIVE">진행 중</option><option value="ENDED">종료</option></select></label>
         <button className="secondary" disabled={!query&&filter==='ALL'} onClick={()=>{setQuery('');setFilter('ALL');sessionPaging.setPage(0);}}>초기화</button></div>
       {opening&&<p role="status" className="muted">훈련 상세 기록을 불러오는 중…</p>}
-      {!sessions.length?<p className="training-empty">아직 훈련 기록이 없어요. 위에서 문제와 목표를 정해 첫 기록을 시작해 보세요.</p>:!filtered.length?<p className="training-empty">조건에 맞는 기록이 없어요. 검색어나 상태를 바꿔 보세요.</p>:<ul className="training-record-list">
+      {!sessions.length?<p className="training-empty">아직 훈련 기록이 없어요. 학습 계획에서 연습을 시작하거나 목표를 직접 정해 보세요.</p>:!filtered.length?<p className="training-empty">조건에 맞는 기록이 없어요. 검색어나 상태를 바꿔 보세요.</p>:<ul className="training-record-list">
       {sessionPaging.visible.map(item => <li key={item.id}><button className="training-record-row" aria-current={detail?.session.id===item.id?'true':undefined} onClick={() => open(item.id)}>
         <span className="training-record-main"><strong>{title(item.problemVersion)}</strong><span>{item.goal||'자유 연습'}</span><small>{new Date(item.startedAt).toLocaleString('ko-KR')} · <ProblemId version={item.problemVersion}/></small></span>
         <span className="training-record-meta"><strong>{item.status==='ACTIVE'?'진행 중':'종료'}{item.problemHeld?' · 검토 중':''}</strong><span>정식 제출 {item.submissions}회 · 정답 {item.accepted}회</span>{item.pending>0&&<span>처리 중 {item.pending}개</span>}<small>상세 기록 보기 →</small></span>
       </button></li>)}
       </ul>}
       <Pager paging={sessionPaging} label="훈련 기록 페이지"/>
-    </section>
+    </section>}
+    <Modal open={detailOpen} title="훈련 상세 기록" onClose={()=>{setDetailOpen(false);setEntry(null);}} className="diagnostic-dialog" wide><div className="diagnostic-dialog-content">
     {detail && <article className="training-detail">
-      <div className="training-section-heading"><h3 id="training-detail-heading" tabIndex={-1}>{detail.session.status === 'ACTIVE' ? '진행 중인 기록' : '종료한 훈련 기록'}</h3><button className="secondary" onClick={()=>{openRevision.current++;setOpening(false);setDetail(null);setEntry(null);}}>상세 닫기</button></div>
+      <div className="training-section-heading"><h3 id="training-detail-heading" tabIndex={-1}>{detail.session.status === 'ACTIVE' ? '진행 중인 기록' : '종료한 훈련 기록'}</h3><button className="secondary" onClick={()=>{openRevision.current++;setOpening(false);setDetailOpen(false);setDetail(null);setEntry(null);}}>상세 닫기</button></div>
       <p className="training-problem-title">{title(detail.session.problemVersion)}</p>
       {detail.session.problemHeld&&<p className="notice">문제 검토 중 · 학습 판단 근거에서 제외된 기록입니다.</p>}
       <p>{detail.session.goal || '자유 연습'}</p><p>{summary(detail.session)}</p>
@@ -156,5 +162,6 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
         {entry.input===null&&<AiFeedback key={entry.id} submission={entry} api={api} />}
       </div>}
     </article>}
+    </div></Modal>
   </section>;
 }

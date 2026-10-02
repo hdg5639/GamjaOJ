@@ -21,7 +21,7 @@ import {verdictText,verdictHelp} from './verdicts';
 const Editor=dynamic(()=>import('./code-editor'),{ssr:false});
 const starter='import java.util.*;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner input = new Scanner(System.in);\n    }\n}\n';
 const outcomes={OPEN:'아직 완료하지 않음',PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀'};
-export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration,onRuleDraft,visible=true}) {
+export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration,onRuleDraft,onLearning,requestedReport,visible=true}) {
   const [size,changeSize]=useEditorSizing(user.id,'diagnostic',50,390);
   const [sheet,setSheet]=useState(null),[historyPage,setHistoryPage]=useState(1);
   const [split,setSplit]=useSplit(user.id,'diagnostic',62);
@@ -77,6 +77,13 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
     refresh().catch(e=>setError(e.message));
     return()=>{revision.current++;};
   },[]);
+  const reportOpened=useRef(null);
+  useEffect(()=>{
+    if(!visible||!loaded||!requestedReport||reportOpened.current===requestedReport.key||busy||request)return;
+    if(sessions.some(saved=>saved.status!=='COMPLETED')){reportOpened.current=requestedReport.key;setError('진행 중인 진단을 마친 뒤 이전 결과를 확인해 주세요.');return;}
+    let live=true;api(`/api/diagnostics/${requestedReport.id}`).then(saved=>{if(!live)return;if(saved.status!=='COMPLETED')throw new Error('완료한 진단 결과를 선택해 주세요.');reportOpened.current=requestedReport.key;active.current=saved;setSession(saved);setHeld(null);setSheet(null);setRecords([]);setRecord(null);setError('');}).catch(e=>{if(live)setError(e.message);});
+    return()=>{live=false;};
+  },[visible,loaded,requestedReport?.key,busy,request]);
   useEffect(()=>{
     if(!current)return;
     let chosen='JAVA';try{const pending=JSON.parse(sessionStorage.getItem(requestKey));chosen=pending?.body?.source!=null ? (pending.body.language||'JAVA') : (localStorage.getItem(languageKey)||'JAVA');}catch{}
@@ -182,9 +189,9 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
           </div>}
         </div></div></div>}
 
-      {session.status==='COMPLETED'&&!held&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} learningBlocked={sessions.some(saved=>saved.status!=='COMPLETED')} />}
+      {session.status==='COMPLETED'&&!held&&<DiagnosticEvaluation onLearning={onLearning} key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} learningBlocked={sessions.some(saved=>saved.status!=='COMPLETED')} />}
       {session.status==='COMPLETED'&&!held&&<div className="diagnostic-result-tools"><button className="secondary" onClick={()=>setSheet('records')}>문항별 진행과 제출 기록</button></div>}
-      <Modal open={sheet==='records'} title="진단 기록" className="diagnostic-dialog" onClose={()=>setSheet(null)} wide><div className="diagnostic-dialog-content"><h4>문항별 진행과 제출 기록</h4>{recordsView}{session.status!=='COMPLETED'&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} learningBlocked={sessions.some(saved=>saved.status!=='COMPLETED')} />}</div></Modal>
+      <Modal open={sheet==='records'} title="진단 기록" className="diagnostic-dialog" onClose={()=>setSheet(null)} wide><div className="diagnostic-dialog-content"><h4>문항별 진행과 제출 기록</h4>{recordsView}{session.status!=='COMPLETED'&&<DiagnosticEvaluation onLearning={onLearning} key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} learningBlocked={sessions.some(saved=>saved.status!=='COMPLETED')} />}</div></Modal>
       {session.status==='COMPLETED'&&!held&&<DiagnosticReassessment key={`reassessment-${session.id}`} api={api} session={session} busy={busy||!!request} onStart={mutate}/> }
 
     </>}
