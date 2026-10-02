@@ -106,8 +106,55 @@ test('next goal opens the correct page; generation and held goals keep their gat
  await expect(learning.getByRole('navigation',{name:'학습 목표 페이지'})).toContainText('2 / 3');
  await learning.getByRole('button',{name:'이 제안으로 학습 계획 준비'}).click();
  await expect(learning.getByLabel('내가 확인한 연습 목표')).toHaveValue('순서대로 확인할 목표 8');
- await expect(learning.locator('.learning-plan-steps > li').filter({hasText:'순서대로 확인할 목표 9'}).getByRole('button',{name:'문제 생성 진행 확인'})).toBeVisible();
+ await expect(learning.locator('.learning-plan-steps > li').filter({hasText:'순서대로 확인할 목표 9'}).getByRole('button',{name:'생성·검증 상세 보기'})).toBeVisible();
  await learning.getByRole('navigation',{name:'학습 목표 페이지'}).getByRole('button',{name:'다음',exact:true}).click();
  await expect(learning.locator('.learning-plan-steps > li').filter({hasText:'순서대로 확인할 목표 10'}).getByRole('button',{name:'수동 설정·근거 확인'})).toBeDisabled();
  expect(paid).toBe(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+for(const width of [390,1710])test(`automatic preparation stays in learning and becomes playable at ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:1000});await page.emulateMedia({reducedMotion:'reduce'});
+ let phase='DRAFT_READY',automatic=0,manual=0,started=0;
+ const plan={id:'auto',evaluationId:'e',observationIndex:0,sourceKind:'SELF_REPORT',goal:'동적 계획법 기초 복습',status:'READY',generationId:'auto',generationStatus:phase};
+ const problem={version:'published',title:'하루씩 쌓는 점수',category:'동적 계획법',difficulty:'EASY',statement:'점수를 구하세요.',submissionsEnabled:true};
+ await page.route('**/api/**',async route=>{
+  const req=route.request(),path=new URL(req.url()).pathname;let data=[];
+  if(path==='/api/me')data={id:'learner',username:'learner'};
+  if(path==='/api/problems')data=phase==='PUBLISHED'?[problem]:[];
+  if(path==='/api/learning-curricula')data=[{evaluationId:'e',bankId:'algo-mix-a-v2',createdAt:'2026-10-03T10:00:00Z',steps:[{plan:{...plan,generationStatus:phase},basis:'SELF_REPORT',category:'dp',candidate:phase==='PUBLISHED'?problem:null,preparation:automatic?{status:phase==='PUBLISHED'?'MAPPED':'GENERATING'}:null}]}];
+  if(path==='/api/learning-curricula/plans/auto/prepare'){automatic++;data={status:'GENERATING'};}
+  if(path==='/api/diagnostic-plans/auto/start'){started++;Object.assign(plan,{status:'ACTIVE',problemVersion:'published',sessionId:'auto'});data=plan;}
+  if(path.includes('/generation')&&req.method()==='POST')manual++;
+  await route.fulfill({json:data});
+ });
+ await page.goto(base+'/#training');
+ const next=page.getByRole('region',{name:'다음 학습'});
+ await expect.poll(()=>automatic).toBe(1);
+ for(const status of ['DRAFT_READY','BUILD_GENERATING','CHECKED','REVIEW_GENERATING','FINAL_CHECKING']){
+  phase=status;await page.evaluate(()=>window.dispatchEvent(new Event('gamjaoj-plan-changed')));
+  await expect(next.getByRole('status')).toContainText('자동 생성·검증');
+  await expect(next.getByRole('button',{name:'생성·검증 상세 보기'})).toBeVisible();
+  await expect(next.getByRole('button',{name:'바로 훈련 시작'})).toHaveCount(0);
+ }
+ await page.screenshot({path:`/tmp/gamja-auto-generation-${width}.png`,fullPage:true});
+ phase='PUBLISHED';await page.evaluate(()=>window.dispatchEvent(new Event('gamjaoj-plan-changed')));
+ await expect(next).toContainText('하루씩 쌓는 점수');await next.getByRole('button',{name:'바로 훈련 시작'}).click();
+ await expect.poll(()=>started).toBe(1);await expect(page.getByRole('heading',{name:'하루씩 쌓는 점수',exact:true})).toBeVisible();
+ expect(manual).toBe(0);expect(automatic).toBe(1);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+test('automatic generation failures explain recovery without starting another paid job',async({page})=>{
+ let posts=0;
+ await page.route('**/api/**',async route=>{
+  const req=route.request(),path=new URL(req.url()).pathname;let data=[];
+  if(path==='/api/me')data={id:'learner',username:'learner'};
+  if(path==='/api/learning-curricula')data=[{evaluationId:'e',bankId:'algo-mix-a-v2',createdAt:'2026-10-03T10:00:00Z',steps:[{plan:{id:'failed',status:'READY',goal:'방문 상태를 구분하기',generationId:'failed',generationStatus:'BUILD_FAILED'},candidate:null,preparation:{status:'FAILED',message:'생성·검증을 통과하지 못했어요.'}}]}];
+  if(req.method()==='POST')posts++;
+  await route.fulfill({json:data});
+ });
+ await page.goto(base+'/#training');
+ const next=page.getByRole('region',{name:'다음 학습'});
+ await expect(next).toContainText('문제 준비에 확인이 필요해요.');
+ await expect(next).toContainText('생성·검증을 통과하지 못했어요.');
+ await expect(next.getByRole('button',{name:'생성·검증 상세 보기'})).toBeVisible();
+ await expect(next.getByRole('button',{name:'바로 훈련 시작'})).toHaveCount(0);expect(posts).toBe(0);
 });

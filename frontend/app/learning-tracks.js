@@ -4,16 +4,23 @@ import Pager,{usePage} from './pager';
 import DiagnosticPlan from './diagnostic-plan';
 import {bankTitle,categoryLabels} from './diagnostic-categories';
 const done=plan=>['AC_WITH_HELP','SELF_REPORTED_UNASSISTED_AC'].includes(plan.status);
+const preparing=new Set(['WAITING','GENERATING']);
 const labels={READY:'연습 준비',ACTIVE:'문제 풀이 중',TRAINING_ENDED:'훈련 종료 · 확인 필요',AC_WITH_HELP:'훈련 확인 완료 · 도움 사용',SELF_REPORTED_UNASSISTED_AC:'훈련 확인 완료 · 혼자 해결',HELD:'근거·문제 확인 대기',NEEDS_REVIEW:'정정 의견 확인 필요'};
 export default function LearningTracks({api,userId,visible,initialEvaluation,onOpen,onGeneration,onDiagnostic,locked}) {
  const [tracks,setTracks]=useState([]),[selected,setSelected]=useState(''),[loaded,setLoaded]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[pending,setPending]=useState(null),[manual,setManual]=useState(null);
- const lock=useRef(false),revision=useRef(0);const storageKey=`gamjaoj-learning-action-${userId}`;
+ const lock=useRef(false),revision=useRef(0),prepared=useRef(new Set());const storageKey=`gamjaoj-learning-action-${userId}`;
  useEffect(()=>{try{const saved=JSON.parse(sessionStorage.getItem(storageKey));if(saved?.id&&['start','reflect','next-round'].includes(saved.kind)&&saved.body)setPending(saved);}catch{}},[storageKey]);
  useEffect(()=>{if(initialEvaluation)setSelected(initialEvaluation);},[initialEvaluation]);
  async function refresh(){const request=++revision.current;try{const values=await api('/api/learning-curricula');if(request===revision.current){setTracks(Array.isArray(values)?values:[]);setLoaded(true);}}catch(e){if(request===revision.current){setError(e.message);setLoaded(true);}}}
- const waiting=tracks.some(t=>t.steps.some(s=>s.plan.status==='ACTIVE'||s.progress?.pending>0||['QUEUED','GENERATING','DESIGNING','BUILDING','VALIDATING','AWAITING_REVIEW','REVIEWING'].includes(s.plan.generationStatus)));
+ const waiting=tracks.some(t=>t.steps.some(s=>s.plan.status==='ACTIVE'||s.progress?.pending>0||preparing.has(s.preparation?.status)||['QUEUED','GENERATING','DESIGNING','BUILDING','VALIDATING','AWAITING_REVIEW','REVIEWING'].includes(s.plan.generationStatus)));
  useEffect(()=>{if(!visible)return;refresh();window.addEventListener('gamjaoj-plan-changed',refresh);window.addEventListener('gamjaoj-training-changed',refresh);window.addEventListener('focus',refresh);
   const timer=waiting?setInterval(refresh,5000):null;return()=>{revision.current++;clearInterval(timer);window.removeEventListener('gamjaoj-plan-changed',refresh);window.removeEventListener('gamjaoj-training-changed',refresh);window.removeEventListener('focus',refresh);};},[visible,waiting]);
+ // Existing manual goals can opt into the same preparation path when this learning screen is opened.
+ useEffect(()=>{if(!visible||locked||manual)return;
+  const ready=tracks.flatMap(t=>t.steps).filter(s=>s.plan.status==='READY'&&!s.preparation&&!prepared.current.has(s.plan.id));
+  for(const step of ready){prepared.current.add(step.plan.id);api(`/api/learning-curricula/plans/${step.plan.id}/prepare`,{method:'POST'}).then(refresh).catch(e=>{prepared.current.delete(step.plan.id);setError(e.message);});}
+ },[visible,locked,manual,tracks]);
+ async function prepare(step){setBusy(true);setError('');try{await api(`/api/learning-curricula/plans/${step.plan.id}/prepare`,{method:'POST'});await refresh();}catch(e){setError(e.message);}finally{setBusy(false);}}
  const track=tracks.find(t=>t.evaluationId===selected)||tracks[0];
  const steps=track?.steps||[],completed=steps.filter(s=>done(s.plan)).length;
  const next=steps.find(s=>s.plan.status==='ACTIVE')||steps.find(s=>s.plan.status==='TRAINING_ENDED')||steps.find(s=>s.plan.status==='READY')||steps.find(s=>s.plan.status==='NEEDS_REVIEW');
@@ -38,7 +45,12 @@ export default function LearningTracks({api,userId,visible,initialEvaluation,onO
  }
  function primary(step){const plan=step.plan;
   if(plan.status==='ACTIVE')return <button className="primary" disabled={busy||locked||!!pending} onClick={async()=>{try{await onOpen(plan.problemVersion);}catch(e){setError(e.message);}}}>이어서 학습하기</button>;
-  if(plan.status==='READY'&&plan.generationId&&!step.candidate)return <button className="primary" onClick={onGeneration}>문제 생성 진행 확인</button>;
+  if(plan.status==='READY'&&!step.candidate&&(step.preparation||plan.generationId)){
+   const failed=step.preparation?.status==='FAILED'||/FAILED|REJECTED|NEEDS_REVIEW/.test(plan.generationStatus||'');
+   return <div className="learning-generation-state"><p role="status">{failed?'문제 준비에 확인이 필요해요.':step.preparation?.status==='WAITING'?'기존 문제를 찾고, 없으면 자동으로 생성해요. 다른 출제가 진행 중이면 차례를 기다려요.':'맞춤 문제를 자동 생성·검증하고 있어요. 준비되면 바로 훈련할 수 있어요.'}</p>{step.preparation?.message&&<p className="muted">{step.preparation.message}</p>}
+    {failed&&!plan.generationId&&<button className="secondary" disabled={busy||locked} onClick={()=>prepare(step)}>문제 준비 다시 시도</button>}
+    {plan.generationId&&<button className="secondary" onClick={onGeneration}>생성·검증 상세 보기</button>}</div>;
+  }
   if(plan.status==='READY'&&step.candidate)return <button className="primary" disabled={busy||locked||!!pending} onClick={()=>act(step,'start',{problemVersion:step.candidate.version})}>바로 훈련 시작</button>;
   if(plan.status==='TRAINING_ENDED'){
    if(step.progress?.pending>0)return <p role="status">채점이 끝나면 학습 확인을 남길 수 있어요.</p>;
@@ -59,7 +71,7 @@ export default function LearningTracks({api,userId,visible,initialEvaluation,onO
     <div className="learning-progress"><strong>{completed} / {steps.length} 목표 훈련 확인 완료</strong><progress aria-label="계획 목표 진행도" value={completed} max={steps.length||1}/><small>훈련 종료 후 학습 확인까지 남긴 목표예요. 숙련도 점수는 아니에요.</small></div></div>
    {next&&<section className="learning-next-step" aria-label="다음 학습"><span className="roadmap-kind">{next.plan.status==='ACTIVE'?'지금 이어갈 목표':'다음으로 할 일'}</span><h3>{next.plan.goal||'최신 의견 확인하기'}</h3>
     <p>{next.plan.status==='ACTIVE'?next.problemTitle:next.candidate?`연습할 문제 · ${next.candidate.title}`:labels[next.plan.status]}</p>{primary(next)}
-    {next.plan.status==='READY'&&next.candidate&&<p className="draft-help">같은 분야의 연습 후보입니다. 목표와 같은 풀이 규칙을 보장하지 않으며, 문제를 읽고 적합성을 확인해 주세요.</p>}
+    {next.plan.status==='READY'&&next.candidate&&<p className="draft-help">접근 가능한 문제 풀에서 분야·난도·목표를 기준으로 연결했어요. 문제를 바꾸려면 수동 설정을 이용하세요.</p>}
    </section>}
    {!next&&steps.length>0&&completed===steps.length&&<p className="notice">이 계획의 목표를 모두 확인했어요. 다른 문제로 다시 연습하거나 새 진단으로 확인해 보세요.</p>}
    <ol className="learning-plan-steps" start={paging.offset+1}>{paging.visible.map(step=><li key={step.plan.id} data-status={step.plan.status}><div className="learning-goal-summary"><span className="learning-goal-number">{steps.indexOf(step)+1}</span><div><h3>{step.plan.goal||'근거 확인 후 표시할 목표'}</h3><p>{categoryLabels[step.category]||'개별 연습 목표'} · {step.basis==='SELF_REPORT'?'접근 어려움 · 본인 표시':'진단 코드 관찰'} · {step.plan.roundNumber||1}회차</p></div><strong>{labels[step.plan.status]||'확인 중'}</strong></div>

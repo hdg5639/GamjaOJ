@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:diagnostics;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.username=sa","spring.datasource.password=","gamjaoj.invite-code=test-only",
-        "gamjaoj.submissions-enabled=true","AI_POLL_MS=3600000","gamjaoj.worker-token=worker-test-credential-32-characters"})
+        "gamjaoj.submissions-enabled=true","AI_POLL_MS=3600000","LEARNING_PREPARATION_POLL_MS=3600000","gamjaoj.worker-token=worker-test-credential-32-characters"})
 @AutoConfigureMockMvc
 class DiagnosticIntegrationTest {
     // Optional isolated PostgreSQL run exercises production row locks and migration syntax.
@@ -40,6 +40,11 @@ class DiagnosticIntegrationTest {
     @Autowired DiagnosticEvaluations evaluations;
     @Autowired DiagnosticPlans plans;
     @Autowired LearningCurricula curricula;
+    @Autowired LearningProblemPreparation preparation;
+    @Autowired GenerationSpecDrafts drafts;
+    @Autowired GenerationJobs generation;
+    @Autowired ContentDeletion deletion;
+    @Autowired LearningPreparationWorker preparationWorker;
     @Autowired org.springframework.core.env.ConfigurableEnvironment environment;
     @org.springframework.test.context.bean.override.mockito.MockitoBean AiProvider provider;
     @Autowired MockMvc mvc;
@@ -49,8 +54,12 @@ class DiagnosticIntegrationTest {
     @BeforeEach void fixture() {
         org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=false","OPENAI_API_KEY=","AI_MONTHLY_BUDGET_USD=10").applyTo(environment);
         jdbc.sql("DELETE FROM diagnostic_practice_plan").update();
+        jdbc.sql("DELETE FROM generation_spec_execution").update();
+        jdbc.sql("DELETE FROM submission").update();
         jdbc.sql("DELETE FROM generation_spec_draft").update();
         jdbc.sql("DELETE FROM ai_attempt").update();
+        jdbc.sql("DELETE FROM training_session").update();
+        jdbc.sql("DELETE FROM problem_version WHERE owner_id IS NOT NULL").update();
         jdbc.sql("DELETE FROM app_user").update();
         user="a"+UUID.randomUUID().toString().substring(0,8);other="b"+UUID.randomUUID().toString().substring(0,8);
         for(String name:List.of(user,other))jdbc.sql("INSERT INTO app_user(id,username,password_hash,nickname) VALUES (?,?,?,?)")
@@ -113,6 +122,7 @@ class DiagnosticIntegrationTest {
             assertThatThrownBy(()->curricula.create(other,key,evaluation.id())).isInstanceOf(AccountException.class);
             assertThatThrownBy(()->curricula.create(other,UUID.randomUUID(),evaluation.id())).isInstanceOf(AccountException.class);
             assertThat(curricula.overview(other)).isEmpty();
+            preparation.prepare(user,plan.id(),false);
             var step=curricula.overview(user).get(0).steps().get(0);
             assertThat(step.candidate().version()).isEqualTo("sum-v1");assertThat(step.progress()).isNull();
             assertThat(jdbc.sql("SELECT count(*) FROM ai_task").query(Integer.class).single()).isZero();
@@ -137,6 +147,100 @@ class DiagnosticIntegrationTest {
             var otherEvaluation=evaluations.request(user,completeSkipped(start()).id());
             assertThatThrownBy(()->curricula.create(user,key,otherEvaluation.id())).isInstanceOf(AccountException.class);
         } finally {jdbc.sql("UPDATE problem_version SET catalog_category=NULL,catalog_difficulty=NULL WHERE id='sum-v1'").update();}
+    }
+    DiagnosticPlans.Plan basicPlan(String category) {
+        jdbc.sql("UPDATE diagnostic_bank_item SET category=? WHERE bank_id=?").param(category).param(bank).update();
+        var d=start();var next=diagnostics.skip(user,d.id(),d.current().itemId(),"NOT_SURE");
+        diagnostics.skip(user,d.id(),next.current().itemId(),"NO_TIME");
+        return curricula.create(user,UUID.randomUUID(),evaluations.request(user,d.id()).id()).plans().getFirst();
+    }
+    String catalogProblem(String prefix,String ownerName,boolean shared,boolean held,boolean diagnostic,String category,String difficulty) {
+        String version=prefix+UUID.randomUUID();
+        UUID owner=ownerName==null?null:submissions.owner(ownerName,false);
+        var pkg=(ObjectNode)JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id='sum-v1'").query(String.class).single());pkg.put("version",version);
+        String json=JudgeJson.canonical(pkg);
+        jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id,shared,review_hold,diagnostic_only,catalog_category,catalog_difficulty) SELECT ?,?,?,runtime_image,runner_policy,true,?,?,?,?,?,? FROM problem_version WHERE id='sum-v1'")
+            .param(version).param(json).param(JudgeJson.hash(json)).param(owner).param(shared).param(held).param(diagnostic).param(category).param(difficulty).update();return version;
+    }
+    @Test void automaticMappingIncludesOwnAndSharedButExcludesPrivateHeldDiagnosticWrongLevelAndUsed() throws Exception {
+        var plan=basicPlan("dp");
+        catalogProblem("00-private-",other,false,false,false,"동적 계획법","EASY");
+        catalogProblem("00-held-",user,false,true,false,"동적 계획법","EASY");
+        catalogProblem("00-diagnostic-",null,true,false,true,"동적 계획법","EASY");
+        catalogProblem("00-hard-",user,false,false,false,"동적 계획법","HARD");
+        String mine=catalogProblem("01-own-",user,false,false,false,"동적 계획법","EASY");
+        String shared=catalogProblem("02-shared-",other,true,false,false,"동적 계획법","EASY");
+        mvc.perform(post("/api/learning-curricula/plans/"+plan.id()+"/prepare").with(user(other)).with(csrf())).andExpect(status().isNotFound());
+        mvc.perform(post("/api/learning-curricula/plans/"+plan.id()+"/prepare").with(user(user))).andExpect(status().isForbidden());
+        assertThat(preparation.prepare(user,plan.id(),false).problemVersion()).isEqualTo(mine);
+        assertThat(preparation.prepare(user,plan.id(),false).problemVersion()).isEqualTo(mine);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isZero();
+        var active=plans.start(user,plan.id(),mine);training.end(user,active.sessionId(),"다른 문제로 연습하기");
+        var next=plans.nextRound(user,plan.id(),plans.options(user,plan.evaluationId(),0,"SELF_REPORT").reviewHash());
+        assertThat(preparation.state(next.id())).isNotNull();
+        assertThat(preparation.prepare(user,next.id(),false).problemVersion()).isEqualTo(shared);
+        assertThat(curricula.overview(user).getFirst().steps().getFirst().candidate().version()).isEqualTo(shared);
+        deletion.problem(other,shared);
+        assertThat(preparation.state(next.id()).problemVersion()).isNull();
+        assertThat(curricula.overview(user).getFirst().steps().getFirst().candidate()).isNull();
+        assertThat(preparation.prepare(user,next.id(),false).status()).isEqualTo("GENERATING");
+    }
+    @Test void codeGoalNeedsFocusedTopicEvidenceRatherThanJustTheSameCategory() {
+        jdbc.sql("UPDATE diagnostic_bank_item SET category='arrays-strings' WHERE bank_id=?").param(bank).update();
+        var d=start();var submitted=submit(d.current());finish("AC");diagnostics.skip(user,d.id(),diagnostics.detail(user,d.id()).current().itemId(),"NO_TIME");
+        org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=true","OPENAI_API_KEY=test-only").applyTo(environment);
+        var evaluation=evaluations.request(user,d.id());var work=ai.claim();
+        var output=JudgeJson.JSON.createObjectNode().put("summary","관찰한 코드의 범위를 확인해요.").put("uncertainty","숙련도는 알 수 없어요.").put("requiredScope","OBSERVED_ITEMS_ONLY");
+        output.putArray("observations").addObject().put("submissionId",submitted.id().toString()).put("quote","System.out.println(3)")
+            .put("pattern","누적 합의 경계를 확인하기").put("risk","경계 처리 누락").put("tone","RISK").put("interpretation","경계값을 확인해 보세요.")
+            .put("confidence","SUPPORTED").put("nextAction","PRACTICE").put("recommendation","누적 합의 경계를 확인하기").putArray("alsoSeenIn");
+        ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
+        var plan=curricula.create(user,UUID.randomUUID(),evaluation.id()).plans().getFirst();
+        String unrelated=catalogProblem("00-unrelated-",user,false,false,false,"문자열","EASY");
+        String relevant=catalogProblem("01-focused-",other,true,false,false,"누적 합","MEDIUM");
+        jdbc.sql("UPDATE problem_version SET catalog_tags='누적 합,경계' WHERE id=?").param(relevant).update();
+        assertThat(preparation.prepare(user,plan.id(),false).problemVersion()).isEqualTo(relevant).isNotEqualTo(unrelated);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isZero();
+    }
+    @Test void automaticGenerationRunsEveryExistingGateResumesAfterAssessmentAndPublishesOnce() {
+        var plan=basicPlan("dp");UUID id=plan.id();
+        preparationWorker.advance();assertThat(preparation.state(id).status()).isEqualTo("GENERATING");
+        preparationWorker.advance();assertThat(preparation.state(id).status()).isEqualTo("GENERATING");
+        var fixture=new GenerationIntegrationTest();fixture.jdbc=jdbc;fixture.queue=queue;fixture.generation=generation;
+        var work=generation.claim();assertThat(work.id()).isEqualTo(id);
+        generation.complete(id,work.token(),fixture.draftSpec(),null,null,null);
+        assertThat(drafts.view(user,id).status()).isEqualTo("DRAFT_READY");
+        var interruption=start();preparationWorker.advance();
+        assertThat(drafts.view(user,id).status()).isEqualTo("DRAFT_READY"); // Assessment fence pauses paid progression.
+        completeSkipped(interruption);
+        new LearningPreparationWorker(preparation).advance();assertThat(drafts.view(user,id).status()).isEqualTo("BUILD_QUEUED");
+        var build=generation.claim();generation.complete(id,build.token(),fixture.artifacts(),JudgeJson.JSON.createObjectNode().put("source","public class Main {}"),null,null);
+        fixture.finishExperimental(false,false);fixture.finishExperimental(false,false);
+        assertThat(drafts.view(user,id).status()).isEqualTo("CHECKED");
+        preparationWorker.advance();assertThat(drafts.view(user,id).status()).isEqualTo("REVIEW_QUEUED");
+        var review=generation.claim();generation.complete(id,review.token(),fixture.independentReview(),null,null,null);fixture.finishReview("WA");
+        assertThat(drafts.view(user,id).status()).isEqualTo("REVIEW_CHECKED");
+        preparationWorker.advance();assertThat(drafts.view(user,id).status()).isEqualTo("FINAL_QUEUED");
+        var finish=generation.claim();generation.complete(id,finish.token(),fixture.finalPlan(),fixture.planAcceptance(),null,null);
+        assertThat(curricula.overview(user).getFirst().steps().getFirst().candidate()).isNull();
+        fixture.finishFinal("");fixture.finishFinal("");fixture.finishFinal("");
+        assertThat(drafts.view(user,id).status()).isEqualTo("PUBLISHED");
+        assertThat(preparation.prepare(user,id,false).problemVersion()).isEqualTo("experimental-check-"+id);
+        assertThat(curricula.overview(user).getFirst().steps().getFirst().candidate().version()).isEqualTo("experimental-check-"+id);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isEqualTo(1);
+        assertThat(generation.claim()).isNull();
+    }
+    @Test void automaticPreparationWaitsForOtherJobAndNeverRetriesFailedPaidWork() {
+        var plan=basicPlan("dp");UUID busy=UUID.randomUUID();drafts.create(user,busy,"기존 수동 출제");
+        assertThat(preparation.prepare(user,plan.id(),false).status()).isEqualTo("WAITING");
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isEqualTo(1);
+        jdbc.sql("UPDATE generation_spec_draft SET status='FAILED' WHERE id=?").param(busy).update();
+        assertThat(preparation.prepare(user,plan.id(),false).status()).isEqualTo("GENERATING");
+        var author=generation.claim();generation.complete(plan.id(),author.token(),JudgeJson.JSON.createObjectNode(),null,null,null);
+        assertThat(preparation.prepare(user,plan.id(),false).status()).isEqualTo("FAILED");
+        preparation.prepare(user,plan.id(),true);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isEqualTo(2);
+        assertThat(generation.claim()).isNull();
     }
     @Test void oneClickCodeGoalsPreserveManualPlansAndExcludeCorrectionsStrengthsAndHypotheses() {
         var d=start();var submitted=submit(d.current());finish("AC");diagnostics.skip(user,d.id(),diagnostics.detail(user,d.id()).current().itemId(),"NO_TIME");
