@@ -23,7 +23,7 @@ public class LearningCurricula {
         Map.entry("binary-search","이분 탐색"),Map.entry("greedy","탐욕법"),Map.entry("graph","그래프·최단 경로"),Map.entry("mst","최소 신장 트리"));
     static String categoryLabel(String category){return category==null?"기초 개념":CATEGORIES.getOrDefault(category,"기초 개념");}
     public record Created(UUID evaluationId,List<DiagnosticPlans.Plan> plans,int manualReviewCount) {}
-    public record Candidate(String version,String title,String category,String difficulty) {}
+    public record Candidate(String version,String title,String category,String difficulty,ThinkingDifficulty.Profile thinking) {}
     public record Progress(int submissions,int accepted,int pending,String latestVerdict) {}
     public record Step(DiagnosticPlans.Plan plan,String category,String basis,String problemTitle,Candidate candidate,Progress progress,LearningProblemPreparation.State preparation) {}
     public record Track(UUID evaluationId,UUID diagnosticSessionId,String bankId,OffsetDateTime createdAt,List<Step> steps,int manualReviewCount) {}
@@ -101,15 +101,15 @@ public class LearningCurricula {
                 if(!"HELD".equals(plan.status())) {
                     var options=plans.options(username,evaluationId,plan.observationIndex(),plan.sourceKind());category=options.category();
                     if(plan.problemVersion()!=null){final String version=plan.problemVersion();title=problems.stream().filter(p->version.equals(p.version())).map(Submissions.Problem::title).findFirst().orElse("목록에 없는 문제");}
-                    if(plan.generatedVersion()!=null){final String generated=plan.generatedVersion();candidate=problems.stream().filter(p->generated.equals(p.version())&&!p.problemHeld()&&p.submissionsEnabled()).map(p->new Candidate(p.version(),p.title(),p.category(),p.difficulty())).findFirst().orElse(null);}
+                    if(plan.generatedVersion()!=null){final String generated=plan.generatedVersion();candidate=problems.stream().filter(p->generated.equals(p.version())&&!p.problemHeld()&&p.submissionsEnabled()).map(p->new Candidate(p.version(),p.title(),p.category(),p.difficulty(),p.thinking())).findFirst().orElse(null);}
                     var mapping=preparation.state(plan.id());
                     if(candidate==null&&"READY".equals(plan.status())&&mapping!=null&&mapping.problemVersion()!=null) {
-                        final String version=mapping.problemVersion();candidate=problems.stream().filter(p->version.equals(p.version())&&!p.problemHeld()&&p.submissionsEnabled()).map(p->new Candidate(p.version(),p.title(),p.category(),p.difficulty())).findFirst().orElse(null);
+                        final String version=mapping.problemVersion();candidate=problems.stream().filter(p->version.equals(p.version())&&!p.problemHeld()&&p.submissionsEnabled()).map(p->new Candidate(p.version(),p.title(),p.category(),p.difficulty(),p.thinking())).findFirst().orElse(null);
                     }
                     // Unenrolled manual plans retain a catalog preview without scheduling model work.
                     if(candidate==null&&"READY".equals(plan.status())&&mapping==null&&plan.generationId()==null) {
                         var matched=LearningProblemPreparation.match(plan,options,problems,Set.of());
-                        if(matched!=null)candidate=new Candidate(matched.version(),matched.title(),matched.category(),matched.difficulty());
+                        if(matched!=null)candidate=new Candidate(matched.version(),matched.title(),matched.category(),matched.difficulty(),matched.thinking());
                     }
                     if(plan.sessionId()!=null) {
                         var session=jdbc.sql("SELECT (SELECT count(*) FROM submission WHERE training_session_id=t.id AND run_input IS NULL) AS submissions,(SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=t.id AND s.run_input IS NULL AND j.verdict='AC') AS accepted,(SELECT count(*) FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.training_session_id=t.id AND j.status<>'FINISHED') AS pending FROM training_session t WHERE t.id=? AND t.user_id=?")

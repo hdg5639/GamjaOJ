@@ -21,6 +21,35 @@ class SharedCatalogIntegrationTest {
     @Autowired TrainingSessions training; @Autowired GenerationJobs generation; @Autowired GenerationSpecDrafts drafts;
     UUID addUser(String name){var id=UUID.randomUUID();jdbc.sql("INSERT INTO app_user(id,username,password_hash,nickname) VALUES (?,?,?,?)").param(id).param(name).param("unused").param(name).update();return id;}
     String settings(boolean shared){return "{\"shared\":"+shared+",\"category\":\"자료구조\",\"tags\":[\"스택\",\"경계값\"],\"difficulty\":\"MEDIUM\"}";}
+    @Test void thinkingRatingsAreValidatedOwnerMetadataAndNeverChangeJudgeOrConfidence() throws Exception {
+        String name="t"+UUID.randomUUID().toString().substring(0,8),other="t"+UUID.randomUUID().toString().substring(0,8);
+        UUID owner=addUser(name);addUser(other);String version="thinking-"+UUID.randomUUID();
+        jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id,catalog_difficulty) SELECT ?,package_json,package_sha256,runtime_image,runner_policy,true,?,'HARD' FROM problem_version WHERE id='total-v1'").param(version).param(owner).update();
+        assertThat(progress(name,version).thinking()).isNull(); // Legacy HARD does not become an invented layer.
+        assertThat(progress(name,"total-v1").thinking().layer()).isEqualTo(1);
+        String endpoint="/api/problems/"+version+"/catalog-settings",hash=jdbc.sql("SELECT package_sha256 FROM problem_version WHERE id=?").param(version).query(String.class).single();
+        String body=settings(true).replace("\"MEDIUM\"","\"HARD\"").replace("}",",\"thinking\":{\"layer\":5,\"insight\":4,\"implementation\":2,\"edgeCases\":3,\"rationale\":\"질문의 방향을 바꿔 생각해야 해요.\"}}");
+        mvc.perform(put(endpoint).with(user(other)).with(csrf()).contentType("application/json").content(body)).andExpect(status().isNotFound());
+        mvc.perform(put(endpoint).with(user(name)).with(csrf()).contentType("application/json").content(body.replace("\"layer\":5","\"layer\":10"))).andExpect(status().isBadRequest());
+        mvc.perform(put(endpoint).with(user(name)).with(csrf()).contentType("application/json").content(body)).andExpect(status().isOk()).andExpect(jsonPath("$.thinking.layer").value(5)).andExpect(jsonPath("$.thinking.name").value("뒤집어보기")).andExpect(jsonPath("$.thinking.source").value("AUTHOR_ESTIMATE"));
+        mvc.perform(put(endpoint).with(user(name)).with(csrf()).contentType("application/json").content(body)).andExpect(status().isOk());
+        assertThat(progress(other,version).thinking().implementation()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT count(*) FROM problem_thinking_profile WHERE problem_version=?").param(version).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT package_sha256 FROM problem_version WHERE id=?").param(version).query(String.class).single()).isEqualTo(hash);
+        assertThat(jdbc.sql("SELECT count(*) FROM problem_reflection WHERE problem_version=?").param(version).query(Integer.class).single()).isZero();
+        // Changing public sharing through an older client must preserve the new profile.
+        mvc.perform(put(endpoint).with(user(name)).with(csrf()).contentType("application/json").content(settings(false))).andExpect(status().isOk()).andExpect(jsonPath("$.thinking.layer").value(5));
+        assertThat(submissions.problems(other)).noneMatch(p->p.version().equals(version));
+        mvc.perform(put(endpoint).with(user(name)).with(csrf()).contentType("application/json").content(body.replace("\"edgeCases\":3","\"edgeCases\":0"))).andExpect(status().isBadRequest());
+        mvc.perform(put(endpoint).with(user(name)).with(csrf()).contentType("application/json").content(body.replace("\"thinking\":","\"clearThinking\":true,\"thinking\":"))).andExpect(status().isBadRequest());
+        assertThat(progress(name,version).shared()).isFalse(); // Conflicting profile save rolls back sharing too.
+        assertThat(progress(name,version).thinking().layer()).isEqualTo(5);
+        jdbc.sql("UPDATE problem_version SET package_sha256=? WHERE id=?").param("0".repeat(64)).param(version).update();
+        assertThat(progress(name,version).thinking()).isNull(); // A rating for another package identity is never reused.
+        jdbc.sql("UPDATE problem_version SET package_sha256=? WHERE id=?").param(hash).param(version).update();
+        mvc.perform(put(endpoint).with(user(name)).with(csrf()).contentType("application/json").content(settings(false).replace("}",",\"clearThinking\":true"+"}"))).andExpect(status().isOk()).andExpect(jsonPath("$.thinking").isEmpty());
+        assertThat(progress(name,version).thinking()).isNull();
+    }
     @Test void shareSolveTrainWithdrawAndHoldPreserveOwnerIsolation() throws Exception {
         String alice="a"+UUID.randomUUID().toString().substring(0,8),bob="b"+UUID.randomUUID().toString().substring(0,8);
         var owner=addUser(alice);addUser(bob);String version="shared-"+UUID.randomUUID();

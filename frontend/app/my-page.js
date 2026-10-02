@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
+import ThinkingDifficulty from './thinking-difficulty';
 import ProblemId,{shortProblemId} from './problem-id';
 import ListPagination from './list-pagination';
 import ExecutionMetrics from './execution-metrics';
@@ -39,7 +40,7 @@ export default function MyPage({api,user,problems,onChoose,onDiagnostic,activity
    {!busy&&!error&&!items.length&&<div className="my-record-empty"><strong>{tab==='problems'?'아직 풀어본 문제가 없어요.':'아직 제출한 코드가 없어요.'}</strong><p className="muted">문제를 풀고 정식 제출하면 여기에 기록이 쌓여요.</p></div>}
    {!!items.length&&<div className={`my-column-head ${tab}`} aria-hidden="true">{(tab==='problems'?['문제','풀이 상태','내 평가','최근 제출','다음 행동']:['문제','채점 결과','언어','제출 시각','']).map((label,i)=><span key={i}>{label}</span>)}</div>}
    <ul className={`my-records ${tab}`} aria-label={tab==='problems'?'풀어본 문제 목록':'전체 제출 목록'}>{items.map(item=>tab==='problems'?<li key={item.version} className="my-problem-row">
-    <div className="record-problem"><strong>{item.title}</strong><small>{item.category||'분야 미분류'}{item.diagnostic?' · 진단':''}</small><small className="record-id"><ProblemId version={item.version}/></small></div>
+    <div className="record-problem"><strong>{item.title}</strong><small>{item.category||'분야 미분류'}{!item.diagnostic&&<> · <ThinkingDifficulty compact problem={problems.find(p=>p.version===item.version)}/></>}{item.diagnostic?' · 진단':''}</small><small className="record-id"><ProblemId version={item.version}/></small></div>
     <div className="record-state"><span className={`record-status ${item.held?'held':item.accepted>0?'solved':'attempted'}`}>{item.held?'검토 보류':item.accepted>0?'정답':'도전 중'}</span><small>제출 {item.attempts}회</small></div>
     <div className="record-assessment">{item.confidence&&!item.held?<span className="record-confidence">{confidenceLabels[item.confidence]}</span>:<span className="record-unrated">{item.held?'평가 보류':item.diagnostic?'진단 결과에서 확인':item.accepted>0?'아직 평가하지 않았어요':'정답 후 돌아봐요'}</span>}{item.reflectionNote&&!item.held&&<details className="record-memo"><summary>메모 보기</summary><p tabIndex={0}>{item.reflectionNote}</p></details>}</div>
     <time className="record-date" dateTime={item.lastSubmitted}>{recordDate(item.lastSubmitted)}</time>

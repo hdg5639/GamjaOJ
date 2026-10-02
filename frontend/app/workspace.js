@@ -18,6 +18,7 @@ import MyPage from './my-page';
 import ResetCode from './reset-code';
 import TrainingHub from './training-hub';
 import ProblemCatalog from './problem-catalog';
+import ThinkingDifficulty from './thinking-difficulty';
 import NavIcon from './nav-icon';
 import AiFeedback from './ai-feedback';
 import ProblemTeaching from './problem-teaching';
@@ -363,7 +364,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     </nav>
     {problem && <div className="practice-grid" data-layout={layout} data-pane-order={paneOrder} data-mirrored={mirrored} data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{...columnLayoutStyle(paneOrder,firstColumn,columnSplit,mirrored,size.ratio,split),'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
       <article className="problem-card">
-        <span className="version">문제 · <ProblemId version={problem.version}/></span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2>
+        <span className="version">문제 · <ProblemId version={problem.version}/></span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2><ThinkingDifficulty problem={problem}/>
         <LimitChips profile={inspected?inspected.execution:problem.languages?.find(l=>l.id===language)} label={inspected?recordLanguageLabel(inspected):(problem.languages?.find(l=>l.id===language)||languageInfo[language])?.label}/><p>{problem.statement}</p>
         {problem.api&&<section aria-label="구현할 API"><h3>{problem.api.api.mode==='MULTI_API'?'명령 처리 - 다중 API':'명령 처리 - 단일 함수'} · Java</h3><p>UserSolution의 메서드를 완성하세요. 입력과 출력은 제공된 구동 코드가 처리합니다. 한 케이스의 호출은 같은 객체를 사용하고, 다음 케이스에서는 새 객체를 만듭니다. 시간 제한은 입력에 포함된 모든 케이스와 호출 전체에 적용됩니다.</p>{problem.api.api.methods.map(m=><div key={m.name}><h4><code>{m.returns} {m.name}({m.parameters.map(p=>`${p.type} ${p.name}`).join(', ')})</code></h4><p>{m.description}</p></div>)}<details><summary>Main.java · 읽기 전용</summary><pre>{problem.api.driver}</pre></details></section>}
         <Examples examples={problem.examples?.length?problem.examples:[{input:problem.sampleInput,output:problem.sampleOutput}]}/>

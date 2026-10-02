@@ -99,9 +99,9 @@ class LearningProblemPreparation {
         if(!basic&&focus.isEmpty())return null;
         return problems.stream().filter(p->!p.problemHeld()&&p.submissionsEnabled()&&!used.contains(p.version())&&!"SOLVED".equals(p.solveStatus())&&p.pendingSubmissions()==0)
             .filter(p->FAMILIES.getOrDefault(category,List.of()).stream().anyMatch(name->normalize(name).equals(normalize(p.category()))))
-            .filter(p->"EASY".equals(p.difficulty())||(!basic&&"MEDIUM".equals(p.difficulty())))
+            .filter(p->p.thinking()!=null?p.thinking().layer()<=(basic?4:6):("EASY".equals(p.difficulty())||(!basic&&"MEDIUM".equals(p.difficulty()))))
             .filter(p->basic||focus.stream().allMatch(normalize(p.title()+" "+String.join(" ",p.tags())+" "+p.statement())::contains))
-            .sorted(Comparator.comparingInt((Submissions.Problem p)->"EASY".equals(p.difficulty())?0:1).thenComparing(Submissions.Problem::version)).findFirst().orElse(null);
+            .sorted(Comparator.comparingInt((Submissions.Problem p)->p.thinking()!=null?p.thinking().layer():"EASY".equals(p.difficulty())?4:6).thenComparing(Submissions.Problem::version)).findFirst().orElse(null);
     }
     static String normalize(String value){return value.toLowerCase(Locale.ROOT).replaceAll("\\s+","").replace("투포인터","두포인터").replace("너비우선탐색","bfs").replace("깊이우선탐색","dfs");}
     List<Object[]> pending() {

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('stage_basic_pool', ROOT / 'scripts/stage-basic-pool.py')
@@ -56,6 +57,24 @@ class BasicPoolReleaseTests(unittest.TestCase):
                 self.write(file, self.package if file=='package.json' else self.meta)
         self.write('teaching.json', {'hints': ['입력', '값', '출력'], 'editorial': '변경'})
         with self.assertRaisesRegex(ValueError, 'artifact changed'): stage.load_candidate(self.path)
+
+    def test_only_exact_reviewed_packages_receive_profiles_and_existing_reviews_are_preserved(self):
+        (self.path/'runner').mkdir()
+        (self.path/'generation').mkdir()
+        (self.path/'runner/java-image.txt').write_text((ROOT/'runner/java-image.txt').read_text())
+        baseline = self.path/'generation/thinking-baseline-v1.json'
+        profile = {'packageSha256': stage.digest(self.package), 'layer': 2, 'insight': 2,
+                   'implementation': 1, 'edgeCases': 3, 'rationale': '경계를 살펴봐요.'}
+        with patch.object(stage, 'ROOT', self.path):
+            baseline.write_text(json.dumps({self.package['version']: profile}))
+            sql = stage.stage([self.path])
+            self.assertIn('INSERT INTO problem_thinking_profile', sql)
+            self.assertIn('AND NOT EXISTS (SELECT 1 FROM problem_thinking_profile', sql)
+            self.assertNotIn('UPDATE problem_thinking_profile', sql)
+            baseline.write_text(json.dumps({self.package['version']: dict(profile, packageSha256='0'*64)}))
+            self.assertNotIn('INSERT INTO problem_thinking_profile', stage.stage([self.path]))
+            baseline.write_text('{}')
+            self.assertNotIn('INSERT INTO problem_thinking_profile', stage.stage([self.path]))
 
     def test_failed_partial_or_stale_runner_cannot_release(self):
         for changed in [dict(self.evidence, status='FAIL'), dict(self.evidence, executionContract={}), dict(self.evidence, languages={})]:

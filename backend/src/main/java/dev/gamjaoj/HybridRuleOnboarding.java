@@ -28,10 +28,12 @@ class HybridRuleOnboarding {
     record View(UUID id,String status,String error,String request,OffsetDateTime createdAt,OffsetDateTime deadlineAt,
                 String versionId,String label,BigDecimal spentUsd,Map<String,String> checks,String failedCheck,
                 String difficulty,String style,String category,boolean targeted,boolean publish,
-                UUID followupGenerationId,String followupStatus,String followupError,String publishedVersion,int repairs,List<String> requirementIssues,String authorStage,List<String> completedAuthorStages,UUID failedAuthorAttempt) {}
+                UUID followupGenerationId,String followupStatus,String followupError,String publishedVersion,int repairs,List<String> requirementIssues,String authorStage,List<String> completedAuthorStages,UUID failedAuthorAttempt,Integer thinkingLayer) {}
     static final List<String> DIFFICULTIES=List.of("EASY","MEDIUM","HARD","EXPERT"),STYLES=List.of("GENERAL","SIMULATION","COMMAND","COMMAND_MULTI","COMMAND_SINGLE");
     /** target: server-resolved habit to break ({pattern,risk,category,quote}); never raw client text. */
-    record Spec(String request,String difficulty,String style,String category,JsonNode target,boolean publish,boolean shared) {}
+    record Spec(String request,String difficulty,String style,String category,JsonNode target,boolean publish,boolean shared,Integer thinkingLayer) {
+        Spec(String request,String difficulty,String style,String category,JsonNode target,boolean publish,boolean shared){this(request,difficulty,style,category,target,publish,shared,null);}
+    }
     record Call(UUID attemptId,UUID onboarding,String role,AiSettings.Model model,String instructions,String input,
                 JsonNode schema,OffsetDateTime deadlineAt) {}
     private final JdbcClient jdbc;private final AiSettings config;private final AiTasks ledger;private final Submissions submissions;
@@ -60,16 +62,17 @@ class HybridRuleOnboarding {
     View create(String user,UUID id,Spec spec) {
         UUID owner=submissions.owner(user,true);
         String text=spec.request()==null?"":spec.request().strip();
-        boolean legacy=spec.difficulty()==null&&spec.style()==null&&spec.category()==null&&spec.target()==null&&!spec.publish();
+        boolean legacy=spec.difficulty()==null&&spec.style()==null&&spec.category()==null&&spec.target()==null&&!spec.publish()&&spec.thinkingLayer()==null;
         boolean anchored=spec.target()!=null||(spec.category()!=null&&!spec.category().isBlank());
         if(text.length()>10000||(!anchored&&text.length()<10))throw new AccountException(400,"만들고 싶은 문제를 10~10,000자로 설명하거나 분야를 골라 주세요.");
         var node=JudgeJson.JSON.createObjectNode().put("request",text);
         if(!legacy) {
-            String difficulty=spec.difficulty()==null?"MEDIUM":spec.difficulty(),style=spec.style()==null?"GENERAL":spec.style();
+            String difficulty=spec.thinkingLayer()!=null?ThinkingDifficulty.authoringBand(spec.thinkingLayer()):spec.difficulty()==null?"MEDIUM":spec.difficulty(),style=spec.style()==null?"GENERAL":spec.style();
             if(!DIFFICULTIES.contains(difficulty)||!STYLES.contains(style))throw new AccountException(400,"난이도와 스타일을 목록에서 골라 주세요.");
             String category=spec.category()==null||spec.category().isBlank()?"AUTO":spec.category();
             if(!category.equals("AUTO")&&!DiagnosticProfiles.RULE_KEYWORDS.containsKey(category))throw new AccountException(400,"분야를 목록에서 골라 주세요.");
             node.put("difficulty",difficulty).put("style",style).put("category",category).put("publish",spec.publish()).put("shared",spec.shared());
+            if(spec.thinkingLayer()!=null)node.put("thinkingLayer",spec.thinkingLayer()).put("thinkingName",ThinkingDifficulty.NAMES[spec.thinkingLayer()]);
             if(spec.target()!=null)node.set("target",spec.target());
         }
         String raw=JudgeJson.canonical(node),hash=JudgeJson.hash(raw);
@@ -156,7 +159,7 @@ class HybridRuleOnboarding {
                 row.catalog==null?null:JudgeJson.parse(row.catalog).path("label").asText(),spent(id),checks,failedCheck(row.answers),
                 req.path("difficulty").asText(null),req.path("style").asText(null),req.path("category").asText(null),req.has("target"),req.path("publish").asBoolean(false),
                 row.followup,row.followupStatus,row.followupError,row.published,row.repairs,requirementIssues(row.error,author,row.oracle),
-                snapshot==null?null:snapshot.next(),snapshot==null?List.of():snapshot.completed(),retryableAttempt(id,row.status));
+                snapshot==null?null:snapshot.next(),snapshot==null?List.of():snapshot.completed(),retryableAttempt(id,row.status),req.has("thinkingLayer")?req.path("thinkingLayer").asInt():null);
     }
     private static List<String> requirementIssues(String error,String author,String oracle) {
         if(!"REQUIREMENTS_NOT_MET".equals(error)||author==null)return List.of();
@@ -215,11 +218,10 @@ class HybridRuleOnboarding {
             +" Make naive modeling fail through the rules themselves: extra state (direction, keys, time, parity, remaining budget), special cells or edges, constrained turns, contact or overlap rules, tie-breaking, or several interacting operations."
             +" Define coordinates, boundaries, ties and every exceptional case explicitly, and make the tiny inputs exercise each rule. Avoid textbook statements and never reproduce a known published problem."
             +" When a rule moves, rotates, reflects or wraps the board or coordinates, write the exact coordinate mapping as a formula in the rules (for example: after one clockwise rotation an H by W board becomes W by H and cell (r, c) moves to (c, H-1-r))."
-            +" Calibrate difficulty to Baekjoon (solved.ac) tiers."
-            +" EASY = Bronze III to I: a straightforward implementation (loops, conditions, simple counting or direct simulation) with small bounds and one clearly stated rule to follow carefully; no algorithmic technique is needed."
-            +" MEDIUM = Silver V to I: one standard technique (sorting, prefix sums, basic BFS or DFS, simple greedy, two pointers, simple DP) applied to a story whose model is not immediately obvious; bounds force that technique."
-            +" HARD = Gold V to I: one or two techniques combined or a nontrivial state space (for example position plus direction, or a small bitmask), several interacting rules; N or Q around 10^5 to 2*10^5, grids up to 500x500."
-            +" EXPERT = Platinum III to I: an advanced idea (offline processing, segment or Fenwick tree with lazy updates, bitmask or tree DP, 0-1 BFS or Dijkstra on an expanded state graph, sqrt or amortized structures, divide and conquer) combined with intricate rules."
+            +" Do not map difficulty to external platforms or assign a level by algorithm name. difficulty is only an internal authoring effort/qualification band, never a public calibrated rating."
+            +" EASY supports direct small-bounds implementation; MEDIUM supports selecting and combining tools; HARD supports multiple interacting rules and state; EXPERT supports deeper structural reasoning and efficient implementation."
+            +" If thinkingLayer is supplied, target GamjaOJ's reasoning rubric: 1 follow the explicit procedure, 2 inspect patterns and exceptions, 3 choose a suitable tool, 4 connect partial results or constraints, 5 change the viewpoint, 6 model the information needed by future choices, 7 eliminate redundant work or states, 8 establish and exploit hidden structural invariants, 9 design a new solution architecture from several insights."
+            +" These are increasing cognitive burdens, not mandatory techniques. Simple state or a single familiar technique does not imply layer 6. Judge the actual rules, constraints and solution design burden; never manufacture complexity by long prose or oversized inputs. The requested layer is a target, not verified metadata. Public ratings require a separate review of the completed problem."
             +" For EXPERT choose bounds that substantively require the requested combination. Possible examples, not mandatory additions to the request, include large graphs, grids, subset states and wide numeric ranges; size all interacting dimensions jointly,"
             +" so plausible simpler algorithms are challenged by reachable worst cases. Do not shrink explicit user bounds; justify the selected unspecified bounds."
             +" Keep each generated input under 6 MB and estimate resources honestly. There is no fixed problem time target; Runner profiles first under its infrastructure ceiling, derives a budget and verifies timed replays."

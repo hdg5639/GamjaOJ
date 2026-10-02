@@ -40,7 +40,7 @@ class SolutionExportsIntegrationTest {
   when(remote.publish(anyString(),anyString(),any(),any(),any(),any(),any())).thenAnswer(call->{
    assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
    assertThat(call.getArgument(1,String.class)).isEqualTo("test-token");assertThat(call.getArgument(3,ObjectNode.class).path("source").asText()).isEqualTo(SOURCE);
-   var payload=call.getArgument(3,ObjectNode.class);assertThat(payload.path("difficulty").asText()).isEqualTo("EASY");assertThat(payload.path("maxWallMs").asLong()).isEqualTo(1);assertThat(payload.path("maxMemoryBytes").asLong()).isEqualTo(33554432);assertThat(payload.has("tests")).isFalse();assertThat(payload.has("statement")).isFalse();
+   var payload=call.getArgument(3,ObjectNode.class);assertThat(payload.path("difficulty").asText()).isEqualTo("EASY");assertThat(payload.path("thinking").path("layer").asInt()).isEqualTo(1);assertThat(payload.path("thinking").path("source").asText()).isEqualTo("CURATED_ESTIMATE");assertThat(payload.path("maxWallMs").asLong()).isEqualTo(1);assertThat(payload.path("maxMemoryBytes").asLong()).isEqualTo(33554432);assertThat(payload.has("tests")).isFalse();assertThat(payload.has("statement")).isFalse();
    ((Runnable)call.getArgument(6)).run();return "https://github.com/owner/repo";
   });
   assertThat(exports.runOne()).isTrue();assertThat(exports.deliveries(name,submission).getFirst().status()).isEqualTo("SUCCEEDED");assertThat(exports.runOne()).isFalse();

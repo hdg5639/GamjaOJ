@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 class HybridRuleController {
     /** difficulty EASY|MEDIUM|HARD|EXPERT, style GENERAL|SIMULATION|COMMAND, category a diagnostic category id or AUTO.
      *  evaluationId/observationIndex target a habit from the member's own diagnosis; the server reads it, never the client. */
-    record Request(String request,String difficulty,String style,String category,Boolean publish,Boolean shared,UUID evaluationId,Integer observationIndex) {}
+    record Request(String request,String difficulty,String style,String category,Boolean publish,Boolean shared,UUID evaluationId,Integer observationIndex,Integer thinkingLayer) {}
     record Sharing(Boolean shared) {}
     record Retry(java.util.UUID attemptId) {}
     record Owned(String id,String label,String category,String status,boolean shared) {}
@@ -35,10 +35,10 @@ class HybridRuleController {
     @PostMapping("/onboarding")
     HybridRuleOnboarding.View create(Principal user,@RequestHeader("Idempotency-Key") UUID id,@RequestBody Request body) {
         if(body==null)return onboarding.create(user.getName(),id,(String)null);
-        boolean legacy=body.difficulty()==null&&body.style()==null&&body.category()==null&&body.publish()==null&&body.evaluationId()==null;
+        boolean legacy=body.difficulty()==null&&body.style()==null&&body.category()==null&&body.publish()==null&&body.evaluationId()==null&&body.thinkingLayer()==null;
         if(legacy)return onboarding.create(user.getName(),id,body.request());
         return onboarding.create(user.getName(),id,new HybridRuleOnboarding.Spec(body.request(),body.difficulty(),body.style(),body.category(),
-                target(user.getName(),body.evaluationId(),body.observationIndex()),Boolean.TRUE.equals(body.publish()),Boolean.TRUE.equals(body.shared())));
+                target(user.getName(),body.evaluationId(),body.observationIndex()),Boolean.TRUE.equals(body.publish()),Boolean.TRUE.equals(body.shared()),body.thinkingLayer()));
     }
     @GetMapping("/onboarding")
     List<HybridRuleOnboarding.View> list(Principal user){return onboarding.list(user.getName());}
