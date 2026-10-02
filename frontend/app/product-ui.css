@@ -857,6 +857,77 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
  .my-record-actions { flex-wrap:wrap; }
 }
 .execution-metrics { display:flex; flex-wrap:wrap; gap:8px 24px; margin:12px 0; font-size:12px; color:var(--muted); }
+.my-record-section { container:records / inline-size; margin-top:20px; }
+.my-record-section .my-tabs { gap:24px; }
+.my-record-section .my-tabs button { display:flex; align-items:center; gap:8px; font-weight:650; padding:14px 0; }
+.my-tabs button > span { font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.my-record-section .my-record-toolbar { margin:0; padding:14px 0; }
+.my-column-head,.my-records .my-problem-row { display:grid; grid-template-columns:minmax(0,1fr) 96px 158px 94px 108px; gap:18px; }
+.my-column-head { padding:10px 14px; background:var(--subtle); color:var(--muted); font-size:11px; border-block:1px solid var(--line); }
+.my-column-head.submissions,.my-records .my-submission { grid-template-columns:minmax(0,1fr) 140px 96px 110px 80px; }
+.my-records .my-problem-row { padding:15px 14px; align-items:center; }
+.my-records .record-problem { min-width:0; display:flex; flex-direction:column; gap:4px; }
+.my-records .record-problem strong { font-size:14px; font-weight:650; overflow-wrap:anywhere; line-height:1.5; }
+.my-records .record-problem .record-id { font-size:10px; color:var(--muted); }
+.my-records .record-state { display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
+.record-status { display:inline-block; font-size:12px; font-weight:650; line-height:1.5; }
+.record-status.solved,.record-status.AC { color:var(--green); }
+.record-status.held,.record-status.attempted,.record-status.pending { color:var(--muted); }
+.record-assessment { min-width:0; font-size:12px; }
+.record-unrated { color:var(--muted); font-size:11px; }
+.record-memo { margin-top:5px; color:var(--muted); }
+.record-memo summary { cursor:pointer; font-size:11px; width:max-content; }
+.record-memo p { margin:8px 0 0; max-height:144px; overflow:auto; font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.my-records .record-date { display:flex; flex-direction:column; gap:4px; font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.my-records .my-record-actions { display:flex; flex-direction:column; align-items:stretch; gap:2px; width:auto; }
+.my-record-actions .record-practice { font-size:12px; padding:6px 10px; min-height:34px; background:var(--surface); }
+.record-review { border:0; background:transparent; color:var(--muted); font-size:11px; padding:6px 10px; min-height:30px; }
+.record-review:hover { color:var(--green); }
+.my-records .my-submission-row { display:block; padding:0; }
+.my-records .my-submission { display:grid; padding:16px 14px; gap:18px; border-radius:0; align-items:center; color:var(--ink); }
+.my-submission:hover { background:var(--subtle); }
+.my-records .my-submission[aria-pressed=true] { outline:2px solid var(--green); outline-offset:-2px; background:color-mix(in srgb,var(--green) 6%,var(--surface)); }
+.record-language { font-size:12px; color:var(--muted); }
+.record-open { font-size:11px; color:var(--muted); text-align:right; white-space:nowrap; }
+.record-open > span { font-size:14px; margin-left:4px; }
+.my-record-empty { padding:36px 14px; text-align:center; }
+.my-record-empty p { margin:8px 0 0; }
+dialog.modal.my-record-dialog { max-width:1180px; width:calc(100vw - 48px); }
+.my-record-dialog .modal-head { position:sticky; top:0; z-index:1; background:var(--surface); border-bottom:1px solid var(--line); padding:16px 22px; margin:0; }
+.my-record-dialog .modal-body { padding:0; }
+.my-record-dialog .my-submission-detail { margin:0; padding:20px 22px; border:0; }
+.submission-detail-context { display:flex; gap:8px 16px; flex-wrap:wrap; align-items:center; font-size:12px; }
+.submission-detail-context > strong { width:100%; font-size:17px; }
+.submission-detail-context time { color:var(--muted); }
+.submission-detail-layout { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr); gap:28px; border-top:1px solid var(--line); margin-top:18px; padding-top:18px; }
+.submission-detail-layout h4 { margin-top:0; }
+.submission-code { min-width:0; }
+.submission-code pre { max-height:560px; font-size:12px; }
+.submission-reflection { min-width:0; }
+.submission-reflection .ai-feedback { border:0; padding:0; margin:0; }
+@container records (max-width:850px) {
+ .my-column-head { display:none; }
+ .my-records .my-problem-row { grid-template-columns:minmax(0,1fr) auto; gap:10px 16px; padding:16px 0; }
+ .my-problem-row .record-problem { grid-column:1; grid-row:1; }
+ .my-problem-row .record-state { grid-column:2; grid-row:1; align-items:flex-end; text-align:right; }
+ .my-problem-row .record-assessment { grid-column:1; grid-row:2; }
+ .my-problem-row .record-date { grid-column:2; grid-row:2; text-align:right; }
+ .my-records .my-problem-row .my-record-actions { grid-column:1 / -1; grid-row:3; flex-direction:row; gap:8px; align-items:center; justify-content:flex-start; }
+ .my-records .my-submission { grid-template-columns:minmax(0,1fr) auto; gap:8px 14px; padding:16px 0; }
+ .my-submission .record-problem { grid-column:1; grid-row:1; }
+ .my-submission .record-state { grid-column:2; grid-row:1; align-items:flex-end; }
+ .my-submission .record-language { grid-column:1; grid-row:2; }
+ .my-submission .record-date { grid-column:1; grid-row:3; flex-direction:row; gap:8px; }
+ .my-submission .record-open { grid-column:2; grid-row:3; }
+ .my-record-actions .record-practice,.my-record-actions .record-review { min-height:40px; }
+}
+@media(max-width:1100px) { .submission-detail-layout { grid-template-columns:minmax(0,1fr); gap:22px; } }
+@media(max-width:600px) {
+ dialog.modal.my-record-dialog { width:calc(100vw - 16px); max-height:calc(100dvh - 24px); }
+ .my-record-dialog .modal-head { padding:12px 16px; }
+ .my-record-dialog .my-submission-detail { padding:16px; }
+ .my-record-dialog .confidence-options { gap:6px; }
+}
 .execution-metrics span { display:flex; gap:8px; }
 .execution-metrics strong { color:var(--ink); font-variant-numeric:tabular-nums; }
 .run-console .execution-metrics { color:#9fb2ad; }

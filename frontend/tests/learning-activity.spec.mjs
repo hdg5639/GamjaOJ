@@ -49,7 +49,7 @@ for(const width of [390,820,1440])test(`grass, personal reflection and explicit 
  await page.reload();await my.getByRole('button',{name:'기억할 풀이 풀이 돌아보기'}).click();await expect(reflection.getByLabel('다음에 볼 짧은 메모')).toHaveValue('경계 조건을 다시 정리');await expect(my.getByText('합산 과정은 명확해요.',{exact:true})).toBeVisible();expect(state.posts()).toBe(1);
  await reflection.getByRole('button',{name:'확실히 풀 수 있음',exact:true}).click();await expect(my.getByRole('region',{name:'다시 풀 문제'})).toHaveCount(0);
  await reflection.getByRole('button',{name:'평가 지우기',exact:true}).click();await expect(reflection.getByLabel('다음에 볼 짧은 메모')).toHaveCount(0);
- await my.getByRole('button',{name:'처음 보는 그래프 풀기'}).click();await expect(page.getByLabel('풀이할 문제')).toHaveValue('v2');
+ await page.getByRole('dialog',{name:'제출 상세',exact:true}).getByRole('button',{name:'닫기',exact:true}).click();await my.getByRole('button',{name:'처음 보는 그래프 풀기'}).click();await expect(page.getByLabel('풀이할 문제')).toHaveValue('v2');
 });
 test('learning fetch failure stays distinct from an empty calendar',async({page})=>{
  await fixture(page);await page.route('**/api/my/learning',route=>route.fulfill({status:503,json:{message:'기록 조회 실패'}}));await page.goto(base+'/#mypage');

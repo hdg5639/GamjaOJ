@@ -34,7 +34,7 @@ for(const width of [390,1440])test(`problem history and personal activity stay s
  await expect(my.locator('.my-records li')).toHaveCount(20);
  await my.getByRole('navigation',{name:'기록 페이지',exact:true}).getByRole('button',{name:'다음',exact:true}).click();
  await expect(my.locator('.my-records li')).toHaveCount(11);
- await my.locator('.my-submission').last().click();await expect(my.getByLabel('제출 당시 코드')).toHaveText('// submission 50');
+ await my.locator('.my-submission').last().click();await expect(my.getByLabel('제출 당시 코드')).toHaveText('// submission 50');await page.getByRole('dialog',{name:'제출 상세',exact:true}).getByRole('button',{name:'닫기',exact:true}).click();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await page.screenshot({path:`/tmp/gamja-my-page-${width}.png`,fullPage:true});
  await page.getByRole('button',{name:'문제 풀기',exact:true}).click();await page.getByLabel('풀이할 문제').selectOption('v1');
