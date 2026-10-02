@@ -53,3 +53,34 @@ test('mobile examples stay equal and pane switching preserves the draft',async({
  await page.screenshot({path:'/tmp/gamjaoj-solving-mobile.png'});
  await page.getByRole('button',{name:'코드 작성',exact:true}).click();await expect(editor).toContainText('// draft');
 });
+
+for(const diagnostic of [false,true])for(const width of [1024,1440])test(`three vertical panes preserve drafts and resize independently ${diagnostic?'diagnostic':'practice'} ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:800});await open(page,diagnostic);
+ const choice=page.getByRole('combobox',{name:'풀이 레이아웃',exact:true});
+ const editor=page.getByLabel(diagnostic?'진단 Java 코드':'Main.java',{exact:true});
+ const split=page.locator(diagnostic?'.diagnostic-split':'.practice-view .split-stack');
+ const problem=page.locator(diagnostic?'.diagnostic-workspace > article':'.problem-card');
+ const console=split.locator('.run-console');
+ await expect(choice).toHaveValue('default');await editor.fill('// layout draft');
+ await choice.selectOption('columns');await expect(split).toHaveAttribute('data-layout','columns');
+ await expect(editor).toContainText('// layout draft');
+ const boxes=await Promise.all([problem.boundingBox(),split.locator('.split-top').boundingBox(),console.boundingBox()]);
+ expect(boxes[0].x+boxes[0].width).toBeLessThanOrEqual(boxes[1].x);
+ expect(boxes[1].x+boxes[1].width).toBeLessThanOrEqual(boxes[2].x);
+ expect(Math.abs(boxes[1].y-boxes[2].y)).toBeLessThan(1);
+ expect(Math.abs(boxes[1].height-boxes[2].height)).toBeLessThan(1);
+ const handle=split.getByRole('separator');await expect(handle).toHaveAttribute('aria-orientation','vertical');
+ await handle.focus();await handle.press('ArrowLeft');await expect(handle).toHaveAttribute('aria-valuenow','63');
+ const resized=await split.locator('.split-top').boundingBox();expect(resized.width).toBeLessThan(boxes[1].width);
+ await page.reload();await expect(choice).toHaveValue('columns');await expect(handle).toHaveAttribute('aria-valuenow','63');
+ await expect(editor).toContainText('// layout draft');
+ await expect(console).toBeInViewport({ratio:1});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:`/tmp/gamjaoj-columns-${diagnostic?'diagnostic':'practice'}-${width}.png`});
+ await page.setViewportSize({width:390,height:844});await expect(split).toHaveAttribute('data-layout','default');
+ await expect(editor).toContainText('// layout draft');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.setViewportSize({width,height:800});await expect(split).toHaveAttribute('data-layout','columns');
+ await choice.selectOption('default');await expect(handle).toHaveAttribute('aria-orientation','horizontal');
+ await expect(editor).toContainText('// layout draft');
+});

@@ -5,7 +5,7 @@ import {useEffect,useRef,useState} from 'react';
 import {languageInfo,starters,recordLanguageLabel,limitText} from './languages';
 import RunConsole,{SubmitTests,Examples} from './run-console';
 import LimitChips from './limit-chips';
-import SplitStack,{useSplit} from './split-stack';
+import SplitStack,{useSplit,useSolvingLayout,SolvingLayoutChoice} from './split-stack';
 import {useVimMode} from './editor-settings';
 import {scheduleServerDraft,loadServerDraft,readLocalDraft,writeLocalDraft,newer} from './server-drafts';
 import dynamic from 'next/dynamic';
@@ -23,6 +23,8 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
   const [size,changeSize]=useEditorSizing(user.id,'diagnostic',50,390);
   const [sheet,setSheet]=useState(null);
   const [split,setSplit]=useSplit(user.id,'diagnostic',62);
+  const [layout,setLayout]=useSolvingLayout(user.id);
+  const [columnSplit,setColumnSplit]=useSplit(user.id,'diagnostic-columns');
   const [vim,setVim]=useVimMode();
   const [banks,setBanks]=useState([]),[sessions,setSessions]=useState([]),[session,setSession]=useState(null);
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false);
@@ -127,6 +129,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
   const recordsView=session&&<><div className="diagnostic-fact-table"><table><caption>문항별 진행</caption><thead><tr><th>문항</th><th>분야</th><th>결과</th><th>제출</th><th>정정</th></tr></thead><tbody>{session.items.map(i=><tr key={i.id}><th scope="row">{number(i.id)}번</th><td>{categories[i.category]||i.category}</td><td>{i.externallySeen?'본 적 있음 · 평가 근거에서 제외':outcomes[i.status]}</td><td>{i.attempts}회</td><td>{session.sourceSessionId&&session.status==='COMPLETED'&&!i.externallySeen&&<button className="secondary" disabled={busy||!!request} onClick={()=>mutate(`/api/diagnostics/${session.id}/items/${i.id}/exposure`,{},true)}>{number(i.id)}번 문항 · 이전에 본 문제로 정정</button>}</td></tr>)}</tbody></table></div><p>미완료·건너뛴 문항은 약점으로 판정하지 않습니다.</p>{session.sourceSessionId&&session.status==='COMPLETED'&&<p>이전에 본 문제로 정정하면 기존 판정은 유지하고 해당 문항을 새 평가 근거에서 제외합니다. 이전 해석과 계획은 보류되며, 위에서 평가를 다시 요청할 수 있어요. 정정은 되돌리지 않습니다.</p>}<button className="secondary" onClick={history}>최근 제출 기록 불러오기</button>{records.filter(r=>!current||r.problemVersion===current.problemVersion).map(r=><button className="secondary" key={r.id} onClick={()=>api(`/api/submissions/${r.id}`).then(setRecord).catch(e=>setError(e.message))}>{verdictText(r.verdict)||'채점 중'} · {recordLanguageLabel(r)} · {new Date(r.createdAt).toLocaleString()}</button>)}{record&&(!current||record.problemVersion===current.problemVersion)&&<><p>{recordLanguageLabel(record)} · {limitText(record.execution)}</p><pre aria-label="제출 당시 코드">{record.source}</pre></>}</>;
   return <section className="diagnostic-panel" data-solving={!!current} aria-label="선택 진단">
     <div className="diagnostic-heading">
+      {current&&<SolvingLayoutChoice value={layout} onChange={setLayout}/>}
       {!current&&<div><h2>{session?(session.status==='COMPLETED'?'진단 완료':'진단 진행'):'나에게 맞는 시작점 찾기'}</h2>{!session&&<p className="muted">내 약점을 몰라도 시작할 수 있어요. 원하는 분야만 풀고, 언제든 일반 연습으로 돌아가세요.</p>}</div>}
       {session&&<div className="diagnostic-session-status"><span>{session.items.filter(i=>i.status!=='OPEN').length} / {session.items.length}문항 완료 · {session.status==='PAUSED'?'일시정지':session.status==='COMPLETED'?'진단 종료':'진행 중'}</span><progress className="diagnostic-progress" aria-label="진단 완료 문항" max={session.items.length||1} value={session.items.filter(i=>i.status!=='OPEN').length}/></div>}
       <div className="diagnostic-session-actions">{session&&session.status!=='COMPLETED'&&<button className="secondary" onClick={()=>setSheet('records')}>진단 기록</button>}{session&&session.status!=='COMPLETED'&&<button className="secondary" disabled={busy||!!request} onClick={()=>mutate(`/api/diagnostics/${session.id}/state`,{status:session.status==='PAUSED'?'ACTIVE':'PAUSED'})}>{session.status==='PAUSED'?'진단 이어서 풀기':'일시정지'}</button>}
@@ -157,7 +160,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
         <div className="diagnostic-code-column"><div className="code-heading"><div className="code-caption"><span className="code-filename">{languageInfo[language].file}</span><span className="muted code-save-note" title={`${saveNote||'초안은 자동 저장돼요.'} 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.`}><span aria-live="polite">{saveNote||'초안은 자동 저장돼요.'}</span> 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.</span></div><div className="code-tools"><label className="language-choice">언어<select aria-label="진단 언어" title="언어를 바꿔도 제출 횟수는 유지돼요." value={language} disabled={disabled||!!item.pending} onChange={e=>changeLanguage(e.target.value)}>{(current.languages||[languageInfo.JAVA]).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
         <EditorTools id="diagnostic-editor-tools"><summary>도구</summary><div className="tool-pop-panel"><label className="check-row vim-toggle"><input type="checkbox" checked={vim} onChange={e=>setVim(e.target.checked)}/>Vim 모드 <small>Esc 일반 모드 · i 입력 모드</small></label><EditorShortcutHelp diagnostic/></div></EditorTools>
         <ResetCode disabled={disabled||!!item.pending} onReset={()=>edit(language==='JAVA'?starter:starters[language])}/></div></div>
-        <SplitStack className="diagnostic-split" share={split} onChange={setSplit}
+        <SplitStack className="diagnostic-split" layout={layout} share={layout==='columns'?columnSplit:split} onChange={layout==='columns'?setColumnSplit:setSplit}
           top={<div className="diagnostic-editor"><Editor key={`${current.itemId}:${language}`} language={language} id="diagnostic-source" label={`진단 ${language==='JAVA'?'Java':languageInfo[language].label} 코드`} value={source} vim={vim} disabled={disabled} onChange={edit} onRun={()=>{if(!disabled)setRunRequest(value=>value+1);}} onSubmit={()=>{if(!disabled&&!item.pending)mutate('/api/submissions',body,true);}} onLimit={()=>setError('코드는 64 KiB 이내로 작성해 주세요.')}/></div>}
           bottom={<RunConsole user={user} api={api} scope={current.problemVersion} disabled={disabled} examples={current.examples?.length?current.examples:[{input:current.sampleInput,output:current.sampleOutput}]}
             body={body} runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount}
@@ -183,4 +186,3 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
     {!session&&sessions.length>0&&<details><summary>지난 진단</summary>{sessions.map(s=><button className="secondary" key={s.id} onClick={()=>accept(s)}>{s.items.length}문항 · {s.status==='COMPLETED'?'완료':'이어서 보기'}</button>)}</details>}
   </section>;
 }
-
