@@ -10,7 +10,7 @@ import {diagnosticOutcome} from './diagnostic-outcomes';
 const tones={STRENGTH:'강점',WATCH:'주의',RISK:'위험'};
 const names={STALE_EXPOSURE:'정정 전 기록',FACTS_ONLY:'판정 기록 저장됨',HELD_DISABLED:'AI 평가 설정 대기',HELD_BUDGET:'평가 예산 대기',QUEUED:'평가 대기',RUNNING:'평가 중',COMPLETED:'평가 완료',UNKNOWN:'처리 결과 확인 필요',FAILED:'평가 실패',HELD_REVIEW:'문항 재검토 중',HIDDEN_DURING_ASSESSMENT:'진단 종료 후 확인 가능'};
 const outcomes={PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀',OPEN:'미완료'};
-export default function DiagnosticEvaluation({api,session,onOpen,onGeneration,onRuleDraft,onAssess}) {
+export default function DiagnosticEvaluation({api,session,onOpen,onGeneration,onRuleDraft,onAssess,learningBlocked=false}) {
   const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[loaded,setLoaded]=useState(false),[selected,setSelected]=useState(''),[visited,setVisited]=useState([]);
   const lock=useRef(false),version=useRef(0);
   const path=`/api/diagnostics/${session.id}/evaluations`;
@@ -43,14 +43,14 @@ export default function DiagnosticEvaluation({api,session,onOpen,onGeneration,on
     <nav className="diagnostic-report-index" aria-label="보고서 목차">{[['diagnostic-report-overview','결과 요약'],['diagnostic-report-roadmap','추천 커리큘럼'],...(row?[[`diagnostic-profile-${row.id}`,'분야별 결과']]:[]),...(row?.interpretation?[[`diagnostic-evidence-${row.id}`,'코드 근거']]:[])].map(([id,label])=><button key={id} onClick={()=>{const node=document.getElementById(id);if(node){node.tabIndex=-1;node.scrollIntoView({block:'start'});node.focus({preventScroll:true});}}}>{label}</button>)}</nav>
     <dl id="diagnostic-report-overview" className="diagnostic-result-counts" aria-label="문항 결과 요약">{Object.entries(outcomes).map(([status,label])=><div key={status} data-outcome={status}><dt>{label}</dt><dd>{facts.filter(i=>i.status===status).length}<span>문항</span></dd></div>)}</dl>
     {loaded&&!row&&<div className="diagnostic-report-empty"><h3>{complete?'판정 기록은 준비됐어요':'현재 진행 상황을 남겨 두세요'}</h3><p>{complete?'종합 평가를 요청하면 제출 코드를 바탕으로 분야별 관찰과 다음 연습 방향을 정리합니다.':'중간 기록은 저장 시점의 결과입니다. 저장 후에도 진단을 계속 풀 수 있어요.'}</p></div>}
-    {loaded&&!row&&complete&&<div id="diagnostic-report-roadmap"><DiagnosticRoadmap api={api} sessionId={session.id} items={facts} onOpen={onOpen} onAssess={onAssess}/></div>}
+    {loaded&&!row&&complete&&<div id="diagnostic-report-roadmap"><DiagnosticRoadmap api={api} blocked={learningBlocked} sessionId={session.id} items={facts} onOpen={onOpen} onAssess={onAssess}/></div>}
     {rows.filter(r=>r.id===row?.id||visited.includes(r.id)).map(row=>{return <div className="diagnostic-report-content" key={row.id} hidden={row.id!==activeId}>
       <div className="diagnostic-result-meta"><strong>{row.facts.complete?'종합 평가':'중간 기록'}</strong><span role="status">{names[row.status]||'상태 확인 중'}</span></div>
       {row.status==='STALE_EXPOSURE'&&<p className="notice">노출 정정 전 기록입니다. 현재 제출 근거로 평가를 다시 요청해 주세요.</p>}
       {row.interpretation&&<section className="diagnostic-summary" aria-label="AI 해석"><h3><span className="report-section-number">01</span> 이번 진단에서 보인 점</h3><p className="diagnostic-summary-text">{row.interpretation.summary}</p><p className="muted">해석 범위 · {row.interpretation.uncertainty}</p></section>}
       {row.status==='QUEUED'||row.status==='RUNNING'?<p className="notice" role="status">제출 코드를 검토하고 있어요. 이 화면에서 결과가 자동으로 갱신됩니다.</p>:null}
       <p className="diagnostic-report-caption">접근 어려움은 본인 보고, 코드 관찰은 제출 근거로 구분합니다. 시간 부족·사유 미상은 미확인이며 일부 통과가 분야 전체의 숙련을 뜻하지는 않아요.</p>
-      {row.status!=='STALE_EXPOSURE'&&<div id={row.id===activeId?'diagnostic-report-roadmap':undefined}><DiagnosticRoadmap api={api} sessionId={session.id} items={row.facts.items} row={row} onObservation={showObservation} onOpen={onOpen} onAssess={onAssess}/>{row.interpretation&&<DiagnosticCurriculum api={api} evaluationId={row.id}/>}</div>}
+      {row.status!=='STALE_EXPOSURE'&&<div id={row.id===activeId?'diagnostic-report-roadmap':undefined}><DiagnosticRoadmap api={api} blocked={learningBlocked} sessionId={session.id} items={row.facts.items} row={row} onObservation={showObservation} onOpen={onOpen} onAssess={onAssess}/>{row.interpretation&&!learningBlocked&&<DiagnosticCurriculum api={api} evaluationId={row.id}/>}</div>}
       {row.status!=='STALE_EXPOSURE'&&<DiagnosticProfile api={api} sessionId={session.id} row={row} onObservation={showObservation} onRuleDraft={onRuleDraft}/>}
       {!row.interpretation&&<div className="diagnostic-fact-table"><table><caption>저장된 문항별 판정</caption><thead><tr><th>문항</th><th>분야</th><th>결과</th><th>제출</th></tr></thead><tbody>{row.facts.items.map((item,n)=><tr key={item.itemId}><th scope="row">{n+1}번</th><td>{categoryLabels[item.category]||'진단 문항'}</td><td>{diagnosticOutcome(item)}</td><td>{item.attempts}회</td></tr>)}</tbody></table></div>}
       {row.interpretation&&<section id={`diagnostic-evidence-${row.id}`} className="diagnostic-observations" aria-label="코드 관찰"><h3><span className="report-section-number">04</span> 코드에서 확인한 근거</h3>{row.interpretation.observations.map((o,n)=><article className="diagnostic-observation" data-tone={o.tone||'NONE'} key={n} id={`diagnostic-observation-${row.id}-${n}`} tabIndex={-1}>

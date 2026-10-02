@@ -182,9 +182,9 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
           </div>}
         </div></div></div>}
 
-      {session.status==='COMPLETED'&&!held&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} />}
+      {session.status==='COMPLETED'&&!held&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} learningBlocked={sessions.some(saved=>saved.status!=='COMPLETED')} />}
       {session.status==='COMPLETED'&&!held&&<div className="diagnostic-result-tools"><button className="secondary" onClick={()=>setSheet('records')}>문항별 진행과 제출 기록</button></div>}
-      <Modal open={sheet==='records'} title="진단 기록" onClose={()=>setSheet(null)} wide><h4>문항별 진행과 제출 기록</h4>{recordsView}{session.status!=='COMPLETED'&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} />}</Modal>
+      <Modal open={sheet==='records'} title="진단 기록" onClose={()=>setSheet(null)} wide><h4>문항별 진행과 제출 기록</h4>{recordsView}{session.status!=='COMPLETED'&&<DiagnosticEvaluation key={`evaluation-${session.id}`} api={api} session={session} onOpen={onOpen} onGeneration={onGeneration} onRuleDraft={onRuleDraft} onAssess={otherDiagnostics} learningBlocked={sessions.some(saved=>saved.status!=='COMPLETED')} />}</Modal>
       {session.status==='COMPLETED'&&!held&&<DiagnosticReassessment key={`reassessment-${session.id}`} api={api} session={session} busy={busy||!!request} onStart={mutate}/> }
 
     </>}
