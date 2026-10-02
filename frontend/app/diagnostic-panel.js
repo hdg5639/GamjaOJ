@@ -19,7 +19,7 @@ import {verdictText,verdictHelp} from './verdicts';
 const Editor=dynamic(()=>import('./code-editor'),{ssr:false});
 const starter='import java.util.*;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner input = new Scanner(System.in);\n    }\n}\n';
 const outcomes={OPEN:'아직 완료하지 않음',PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀'};
-export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration,onRuleDraft}) {
+export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration,onRuleDraft,visible=true}) {
   const [size,changeSize]=useEditorSizing(user.id,'diagnostic',50,390);
   const [sheet,setSheet]=useState(null);
   const [split,setSplit]=useSplit(user.id,'diagnostic',62);
@@ -84,7 +84,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
     setRecord(null);heading.current?.focus();
   },[current?.itemId]);
   useEffect(()=>{
-    if(!session||session.status==='COMPLETED')return;
+    if(!visible||!session||session.status==='COMPLETED')return;
     let stopped=false,running=false;
     const timer=setInterval(async()=>{if(running||lock.current)return;running=true;
       const generation=revision.current;
@@ -92,14 +92,14 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
       catch(e){if(!stopped)setError(e.message);}finally{running=false;}
     },2000);
     return()=>{stopped=true;clearInterval(timer);};
-  },[session?.id,session?.status]);
+  },[session?.id,session?.status,visible]);
   useEffect(()=>{
-    if(!result||result.status==='FINISHED')return;
+    if(!visible||!result||result.status==='FINISHED')return;
     let stopped=false;
     const path=result.input==null?'submissions':'runs';
     const timer=setInterval(async()=>{try{const next=await api(`/api/${path}/${result.id}`);if(!stopped)setResult(next);}catch(e){if(!stopped)setError(e.message);}},1800);
     return()=>{stopped=true;clearInterval(timer);};
-  },[result?.id,result?.status]);
+  },[result?.id,result?.status,visible]);
   async function mutate(path,body,retain=false){
     if(lock.current)return;lock.current=true;revision.current++;setBusy(true);setError('');
     const pending=retain?(request||{path,body,key:crypto.randomUUID()}):{path,body};

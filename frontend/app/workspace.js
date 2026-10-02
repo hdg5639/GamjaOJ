@@ -51,6 +51,9 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
   const [firstColumn,setFirstColumn]=useSplit(user.id,'practice-first-column',33);
   const [problems, setProblems] = useState([]);
   const [screen, updateScreen] = useState('home');
+  const [visited,setVisited]=useState(()=>new Set());
+  useEffect(()=>{setVisited(previous=>previous.has(screen)?previous:new Set([...previous,screen]));},[screen]);
+  const opened=name=>screen===name||visited.has(name);
   function setScreen(next) { updateScreen(next); window.history.pushState(null,'','#'+next); if(next==='home')requestAnimationFrame(()=>document.querySelector('.catalog-view')?.scrollTo(0,0)); }
   useEffect(()=>{
     const sync=()=>{const value=window.location.hash.slice(1)||'home';if(['home','practice','catalog','diagnostic','training','generation','mypage'].includes(value))updateScreen(value);};
@@ -124,8 +127,8 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
 
   useEffect(()=>{
     let stopped=false;
-    async function refreshProblems(){const revision=++catalogRevision.current;try{
-      const items=await api('/api/problems');if(stopped||revision!==catalogRevision.current)return;
+    async function refreshProblems(event){const revision=++catalogRevision.current;try{
+      const items=await api('/api/problems',event?{fresh:true}:{});if(stopped||revision!==catalogRevision.current)return;
       setProblems(items);
       const held=new Set(items.filter(item=>item.problemHeld).map(item=>item.version));
       setSelected(value=>value?{...value,problemHeld:held.has(value.problemVersion)}:value);
@@ -331,13 +334,13 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       {screen==='practice'&&<span className="muted">{currentSession ? `훈련 중 · ${currentSession.goal || '자유 연습'}` : activeSession ? `자유 풀이 · ${shortProblemId(activeSession.problemVersion)} 훈련은 유지 중` : `${lang.label} · ${lang.file}`}</span>}
       {['home','catalog'].includes(screen)&&<button className="primary" onClick={()=>setScreen('generation')}>+ 문제 만들기</button>}
     </div>
-    {screen==='mypage'&&<div className="training-view"><MyPage api={api} user={user} problems={problems} onChoose={chooseProblem} onDiagnostic={()=>setScreen('diagnostic')}/></div>}
-    <div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{screen === 'diagnostic' && <DiagnosticPanel user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onRuleDraft={draft=>{setRuleDraft({...(typeof draft==='string'?{text:draft}:draft),key:crypto.randomUUID()});setGenerationMode('hybrid');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>
+    {opened('mypage')&&<div className="training-view" hidden={screen!=='mypage'}><MyPage activity={activity} api={api} user={user} problems={problems} onChoose={chooseProblem} onDiagnostic={()=>setScreen('diagnostic')}/></div>}
+    <div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{opened('diagnostic') && <DiagnosticPanel visible={screen==='diagnostic'} user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onRuleDraft={draft=>{setRuleDraft({...(typeof draft==='string'?{text:draft}:draft),key:crypto.randomUUID()});setGenerationMode('hybrid');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>
     <div className="catalog-view" hidden={!['home','catalog'].includes(screen)}><ProblemCatalog home={['home','catalog'].includes(screen)} onNavigate={setScreen} api={api} onChanged={value=>{setProblems(items=>items.map(p=>p.version===value.version?value:p));window.dispatchEvent(new Event('gamjaoj-problems-changed'));}} problems={problems} loaded={loaded} error={error}
       selectedVersion={version} locked={busy || !!pending} onChoose={chooseProblem} /></div>
-    <div className="training-view" hidden={screen !== 'training'}>{screen === 'training' && <AiBudget api={api} />}{loaded&&<FollowupPanel api={api} onOpen={openTraining} onGeneration={()=>setScreen('generation')} locked={busy||!!pending}/>}
+    <div className="training-view" hidden={screen !== 'training'}>{opened('training') && <AiBudget visible={screen==='training'} api={api} />}{loaded&&<FollowupPanel api={api} onOpen={openTraining} onGeneration={()=>setScreen('generation')} locked={busy||!!pending}/>}
     {loaded && <SessionPanel user={user} problem={problem} sessions={sessions} onChange={updateSessions} activity={activity} api={api} />}</div>
-    <div className="training-view" hidden={screen !== 'generation'}>{screen === 'generation' && <AiOperations api={api} userId={user.id} initialMode={generationMode} ruleDraft={ruleDraft} onOpen={async generatedVersion => {
+    <div className="training-view" hidden={screen !== 'generation'}>{opened('generation') && <AiOperations visible={screen==='generation'} api={api} userId={user.id} initialMode={generationMode} ruleDraft={ruleDraft} onOpen={async generatedVersion => {
       if (busy || pending) throw new Error('진행 중인 제출을 먼저 마쳐 주세요.');
       const items=await api('/api/problems');setProblems(items);chooseProblem(generatedVersion);
     }} />}</div>

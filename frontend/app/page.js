@@ -7,8 +7,9 @@ import ThemeToggle from './theme-toggle';
 import AppearanceSettings from './appearance-settings';
 import SiteNotice from './site-notice';
 import IntegrationsPanel from './integrations-panel';
+import {cachedApi} from './client-cache.mjs';
 
-async function api(path, options = {}) {
+async function request(path, options = {}) {
   const headers = new Headers(options.headers);
   if (options.method && options.method !== 'GET') {
     const csrfResponse = await fetch('/api/auth/csrf', { cache: 'no-store' });
@@ -26,11 +27,16 @@ async function api(path, options = {}) {
   return response.status === 204 || response.status === 201 ? null : response.json();
 }
 
+const api = cachedApi(request);
+
 export default function Home() {
   const [sidebarCollapsed,setSidebarCollapsed]=useState(true);
 
   const [user, setUser] = useState(null);
   const [settings, setSettings] = useState(false);
+  const [settingsOpened, setSettingsOpened] = useState(false);
+  useEffect(()=>{if(settings)setSettingsOpened(true);},[settings]);
+  useEffect(()=>{api.clear();if(!user)setSettingsOpened(false);},[user?.id]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('login');
   const [busy, setBusy] = useState(false);
@@ -53,7 +59,7 @@ export default function Home() {
       window.history.replaceState(null,'',url);
     }
     refresh();
-    const sync = () => { setMessage(''); refresh(); };
+    const sync = () => { api.clear(); setMessage(''); refresh(); };
     window.addEventListener('focus', sync);
     return () => window.removeEventListener('focus', sync);
   }, []);
@@ -163,7 +169,7 @@ export default function Home() {
             <button className="primary" disabled={busy}>{busy ? '저장 중…' : '내 설정 저장'}</button>
           </form>
           </section>
-          {settings&&<IntegrationsPanel key={user.id} api={api}/>}
+          {(settings||settingsOpened)&&<IntegrationsPanel key={user.id} api={api}/>}
           <section className="settings-section settings-account" aria-labelledby="settings-account">
             <div className="settings-section-heading"><h2 id="settings-account" tabIndex={-1}>계정 관리</h2><p className="muted">계정 삭제 전 삭제되는 기록과 남는 자료를 확인해 주세요.</p></div>
           <details className="account-deletion">

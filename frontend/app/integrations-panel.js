@@ -49,7 +49,7 @@ export function ExportDeliveries({items,onRetry,busy}){return <ul className="exp
  </li>)}</ul>;}
 export default function IntegrationsPanel({api}){
  const [connections,setConnections]=useState(null),[deliveries,setDeliveries]=useState([]),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- async function refresh(){const [c,d]=await Promise.all([api('/api/integrations'),api('/api/integrations/deliveries')]);setConnections(c);setDeliveries(d);}
+ async function refresh(){api.clear?.();const [c,d]=await Promise.all([api('/api/integrations'),api('/api/integrations/deliveries')]);setConnections(c);setDeliveries(d);}
  useEffect(()=>{let live=true;Promise.all([api('/api/integrations'),api('/api/integrations/deliveries')]).then(([c,d])=>{if(live){setConnections(c);setDeliveries(d);}}).catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[api]);
  useEffect(()=>{if(!deliveries.some(d=>['QUEUED','RUNNING','RETRY'].includes(d.status)))return;let live=true;const timer=setTimeout(()=>api('/api/integrations/deliveries').then(d=>{if(live)setDeliveries(d);}).catch(e=>{if(live)setError(e.message);}),5000);return()=>{live=false;clearTimeout(timer);};},[deliveries,api]);
  return <section className="integrations settings-section" aria-labelledby="integrations-heading"><div className="settings-section-heading"><h2 id="integrations-heading" tabIndex={-1}>풀이 자동 저장</h2>
