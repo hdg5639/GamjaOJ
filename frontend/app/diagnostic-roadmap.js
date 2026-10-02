@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {categoryLabels} from './diagnostic-categories';
 const catalogCategory={'implementation':'구현','arrays-strings':'배열·문자열','basic-data-structures':'기초 자료구조','basic-search':'기초 탐색','bfs':'너비 우선 탐색','dfs':'깊이 우선 탐색','backtracking':'백트래킹','dp':'동적 계획법','binary-search':'이분 탐색','greedy':'탐욕법','graph':'그래프·최단 경로','mst':'최소 신장 트리'};
-export default function DiagnosticRoadmap({api,items,row,onObservation,onOpen,onAssess,sessionId}) {
+export default function DiagnosticRoadmap({api,items,row,onObservation,onOpen,onAssess,sessionId,blocked=false}) {
  const [problems,setProblems]=useState([]),[error,setError]=useState('');
  const [busy,setBusy]=useState(false),[pending,setPending]=useState(null);const lock=useRef(false);
  const storageKey=`gamjaoj-diagnostic-basic-request-${sessionId}`;
@@ -10,9 +10,11 @@ export default function DiagnosticRoadmap({api,items,row,onObservation,onOpen,on
  async function start(problem,category){if(lock.current)return;lock.current=true;setBusy(true);setError('');const attempt=pending||{key:crypto.randomUUID(),body:{problemVersion:problem.version,goal:`진단 후 기초 복습 · ${categoryLabels[category]||category} 접근 방법 확인하기`}};setPending(attempt);try{sessionStorage.setItem(storageKey,JSON.stringify(attempt));}catch{}
   try{await api('/api/training-sessions',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':attempt.key},body:JSON.stringify(attempt.body)});await onOpen(attempt.body.problemVersion);setPending(null);try{sessionStorage.removeItem(storageKey);}catch{}}
   catch(e){setError(e.message);if(e.status>=400&&e.status<500){setPending(null);try{sessionStorage.removeItem(storageKey);}catch{}}}finally{lock.current=false;setBusy(false);}}
- const needsBasics=[...new Set(items.filter(i=>!i.externallySeen&&i.skipReason==='NOT_SURE').map(i=>i.category))];
- const observations=(row?.interpretation?.observations||[]).map((o,index)=>({...o,index})).filter(o=>o.tone!=='STRENGTH').sort((a,b)=>({RISK:0,WATCH:1}[a.tone]??2)-({RISK:0,WATCH:1}[b.tone]??2));
+ const available=!blocked&&!['HELD_REVIEW','HIDDEN_DURING_ASSESSMENT','STALE_EXPOSURE'].includes(row?.status);
+ const needsBasics=available?[...new Set(items.filter(i=>!i.externallySeen&&i.skipReason==='NOT_SURE').map(i=>i.category))]:[];
+ const observations=(available?row?.interpretation?.observations||[]:[]).map((o,index)=>({...o,index})).filter(o=>o.tone!=='STRENGTH').sort((a,b)=>({RISK:0,WATCH:1}[a.tone]??2)-({RISK:0,WATCH:1}[b.tone]??2));
  useEffect(()=>{let live=true;if(needsBasics.length)api('/api/problems').then(data=>{if(live)setProblems(Array.isArray(data)?data:[]);}).catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[api,needsBasics.join(',')]);
+ if(!available)return <section className="diagnostic-roadmap" aria-label="추천 커리큘럼"><h3>추천 커리큘럼 확인 대기</h3><p className="notice">{blocked||row?.status==='HIDDEN_DURING_ASSESSMENT'?'진행 중인 진단을 마친 뒤 추천을 확인할 수 있어요.':'문항과 평가 근거를 재검토 중이에요. 확인이 끝난 뒤 추천을 이용해 주세요.'}</p></section>;
  return <section className="diagnostic-roadmap" aria-label="추천 커리큘럼"><header><span className="report-section-number">02</span><div><h3>다음 연습의 순서</h3><p className="muted">이번 진단의 코드 관찰과 본인 보고를 바탕으로 제안해요. 필요한 단계부터 골라 진행하세요.</p></div></header>
   {error&&<p role="alert">연습 연결을 확인하지 못했어요. {error}</p>}
   {pending&&<button className="secondary" disabled={busy} onClick={()=>start()}>같은 기초 훈련 요청 다시 확인</button>}

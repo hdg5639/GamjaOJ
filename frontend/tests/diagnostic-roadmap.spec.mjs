@@ -40,3 +40,17 @@ for(const width of [390,820,1440])test(`skip reasons, curriculum and separate hi
  await page.getByRole('button',{name:'같은 기초 훈련 요청 다시 확인'}).click();await expect(page.getByRole('button',{name:'문제 풀기',exact:true})).toHaveAttribute('aria-pressed','true');expect(trainingKeys).toHaveLength(2);expect(evaluationPosts).toBe(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
+for(const status of ['HELD_REVIEW','HIDDEN_DURING_ASSESSMENT'])test(`withhold curriculum for ${status}`,async({page})=>{
+ const item={id:'blocked-item',itemId:'blocked-item',category:'dp',difficulty:'EASY',status:'SKIPPED',skipReason:'NOT_SURE',attempts:0,pending:0};
+ const session={id:'blocked-session',bankId:'algo-mix-a-v1',status:'COMPLETED',items:[item],current:null};let posts=0;
+ await page.route('**/api/**',route=>{const req=route.request(),path=new URL(req.url()).pathname;let data=[];if(req.method()==='POST')posts++;
+  if(path==='/api/me')data={id:'blocked-user',nickname:'감자'};
+  if(path==='/api/diagnostics')data=[session];
+  if(path.endsWith('/evaluations'))data=[{id:'held-report',status,facts:{complete:true,items:[item]},interpretation:null,corrections:[]}];
+  if(path.endsWith('/profile'))data={categories:[],rules:[]};
+  return route.fulfill({json:data});
+ });
+ await page.goto(base+'/#diagnostic');await page.getByRole('button',{name:'지난 진단',exact:true}).click();await page.getByRole('dialog',{name:'지난 진단',exact:true}).getByRole('button',{name:'1문항 · 완료'}).click();
+ await expect(page.getByRole('region',{name:'추천 커리큘럼'})).toContainText('추천 커리큘럼 확인 대기');
+ await expect(page.getByRole('button',{name:/기초 훈련 시작/})).toHaveCount(0);expect(posts).toBe(0);
+});
