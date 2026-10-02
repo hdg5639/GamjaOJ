@@ -14,7 +14,9 @@ export default function ThemeToggle() {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const follow = () => { if (!saved()) { const next = system(); apply(next); setTheme(next); } };
     media.addEventListener('change', follow);
-    return () => media.removeEventListener('change', follow);
+    const sync = () => setTheme(document.documentElement.getAttribute('data-theme'));
+    window.addEventListener('gamjaoj-appearance', sync);
+    return () => { media.removeEventListener('change', follow); window.removeEventListener('gamjaoj-appearance', sync); };
   }, []);
   if (!theme) return null;
   const next = theme === 'dark' ? 'light' : 'dark';

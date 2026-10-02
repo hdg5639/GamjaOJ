@@ -1,6 +1,7 @@
 import './styles.css';
 import './product-ui.css';
 import './dark.css';
+import './appearance.css';
 
 export const metadata = {
   title: 'GamjaOJ · 나의 알고리즘 연습장',
@@ -15,5 +16,5 @@ export const metadata = {
 
 export default function Layout({ children }) {
   // theme.js runs synchronously before paint, so the saved or system theme never flashes the other one.
-  return <html lang="ko" suppressHydrationWarning><head><script src="/theme.js" /></head><body>{children}</body></html>;
+  return <html lang="ko" suppressHydrationWarning><head><script src="/theme.js" /><script src="/appearance.js" /></head><body>{children}</body></html>;
 }
