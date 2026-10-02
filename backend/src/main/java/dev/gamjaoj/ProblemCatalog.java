@@ -15,7 +15,7 @@ class ProblemCatalog {
     ProblemCatalog(JdbcClient jdbc,Submissions submissions){this.jdbc=jdbc;this.submissions=submissions;}
     record Settings(@NotNull Boolean shared, @NotBlank @Size(max=80) String category,
                     @NotNull @Size(max=6) List<@NotBlank @Size(max=80) String> tags,
-                    @NotNull @Pattern(regexp="UNRATED|EASY|MEDIUM|HARD|EXPERT") String difficulty) {}
+                    @NotNull @Pattern(regexp="UNRATED|EASY|MEDIUM|HARD|EXPERT") String difficulty, @Valid ThinkingDifficulty.Input thinking, Boolean clearThinking) {}
     @PutMapping("/api/problems/{version}/catalog-settings")
     @Transactional
     Submissions.Problem save(Principal user,@PathVariable String version,@Valid @RequestBody Settings request) {
@@ -25,6 +25,14 @@ class ProblemCatalog {
                 .param(request.shared()).param(ProblemCategories.forSave(request.category())).param(String.join(",",request.tags().stream().map(String::strip).distinct().toList()))
                 .param(request.difficulty()).param(version).param(owner).param(request.shared()).update();
         if(changed!=1)throw new AccountException(404,"공개 설정을 변경할 수 있는 내 문제를 찾을 수 없어요. 검토 중인 문제는 공개할 수 없습니다.");
+        if(Boolean.TRUE.equals(request.clearThinking())&&request.thinking()!=null)throw new AccountException(400,"난도 지정과 해제는 함께 할 수 없어요.");
+        if(Boolean.TRUE.equals(request.clearThinking()))jdbc.sql("DELETE FROM problem_thinking_profile WHERE problem_version=?").param(version).update();
+        if(request.thinking()!=null){
+            var t=request.thinking();
+            jdbc.sql("DELETE FROM problem_thinking_profile WHERE problem_version=?").param(version).update();
+            jdbc.sql("INSERT INTO problem_thinking_profile(problem_version,package_sha256,layer,insight,implementation,edge_cases,rationale,source) SELECT id,package_sha256,?,?,?,?,?,'AUTHOR_ESTIMATE' FROM problem_version WHERE id=?")
+                .param(t.layer()).param(t.insight()).param(t.implementation()).param(t.edgeCases()).param(t.rationale().strip()).param(version).update();
+        }
         return submissions.problems(user.getName()).stream().filter(p->p.version().equals(version)).findFirst().orElseThrow();
     }
 }

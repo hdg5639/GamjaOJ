@@ -19,12 +19,12 @@ class LearningProgress {
     LearningProgress(JdbcClient jdbc,Submissions submissions){this.jdbc=jdbc;this.submissions=submissions;}
     record Day(LocalDate date,int solved) {}
     record Category(String category,int attempted,int solved,int available) {}
-    record Suggestion(String version,String title,String category,String difficulty,String reason,String confidence) {}
+    record Suggestion(String version,String title,String category,String difficulty,String reason,String confidence,ThinkingDifficulty.Profile thinking) {}
     record Dashboard(LocalDate start,LocalDate end,String timezone,List<Day> days,int activeDays,int currentStreak,int longestStreak,
                      int practicedProblems,String dominantCategory,List<Category> categories,List<Suggestion> explore,List<Suggestion> revisit) {}
     record Reflection(String problemVersion,UUID submissionId,UUID latestAcceptedSubmissionId,String confidence,String note,OffsetDateTime updatedAt) {}
     record ReflectionRequest(@NotNull UUID submissionId,@Pattern(regexp="SOLID|SHAKY|REVISIT") String confidence,@NotNull @Size(max=500) String note) {}
-    private record Candidate(String version,String title,String category,String difficulty) {}
+    private record Candidate(String version,String title,String category,String difficulty,ThinkingDifficulty.Profile thinking) {}
     private record Attempt(String version,String category,boolean accepted) {}
 
     @GetMapping("/api/my/learning") Dashboard learning(Principal user){return dashboard(user.getName(),LocalDate.now(ZONE));}
@@ -43,8 +43,8 @@ class LearningProgress {
         // An unfinished today does not erase the streak completed through yesterday.
         LocalDate streakEnd=solvedByDay.containsKey(today)?today:today.minusDays(1);int streak=0;
         while(!streakEnd.isBefore(start)&&solvedByDay.containsKey(streakEnd)){streak++;streakEnd=streakEnd.minusDays(1);}
-        var catalog=jdbc.sql("SELECT p.id,p.package_json,p.catalog_category,p.catalog_difficulty FROM problem_version p WHERE p.ready=true AND p.review_hold=false AND p.diagnostic_only=false AND (p.owner_id IS NULL OR p.owner_id=? OR p.shared=true) ORDER BY p.id")
-                .param(owner).query((r,n)->new Candidate(r.getString(1),JudgeJson.parse(r.getString(2)).path("title").asText(),ProblemCategories.display(r.getString(3)),r.getString(4))).list();
+        var catalog=jdbc.sql("SELECT p.id,p.package_json,p.catalog_category,p.catalog_difficulty,"+ThinkingDifficulty.COLUMNS+" FROM problem_version p "+ThinkingDifficulty.JOIN+" WHERE p.ready=true AND p.review_hold=false AND p.diagnostic_only=false AND (p.owner_id IS NULL OR p.owner_id=? OR p.shared=true) ORDER BY p.id")
+                .param(owner).query((r,n)->new Candidate(r.getString(1),JudgeJson.parse(r.getString(2)).path("title").asText(),ProblemCategories.display(r.getString(3)),r.getString(4),ThinkingDifficulty.read(r))).list();
         var attempts=jdbc.sql("SELECT s.problem_version,p.catalog_category,j.verdict FROM submission s JOIN judge_job j ON j.submission_id=s.id JOIN problem_version p ON p.id=s.problem_version WHERE "+FORMAL+" AND p.diagnostic_only=false AND p.review_hold=false AND j.status='FINISHED' AND j.verdict<>'IE' AND s.created_at>=? AND s.created_at<?")
                 .param(owner).param(today.minusDays(89).atStartOfDay(ZONE).toOffsetDateTime()).param(until)
                 .query((r,n)->new Attempt(r.getString(1),ProblemCategories.display(r.getString(2)),"AC".equals(r.getString(3)))).list();
@@ -58,18 +58,17 @@ class LearningProgress {
         Set<String> solved=new HashSet<>(jdbc.sql("SELECT DISTINCT s.problem_version FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE "+FORMAL+" AND j.status='FINISHED' AND j.verdict='AC'").param(owner).query(String.class).list());
         List<Suggestion> explore=new ArrayList<>();Set<String> selectedCategories=new HashSet<>();
         var candidates=catalog.stream().filter(p->!solved.contains(p.version()))
-                .sorted(Comparator.comparingInt((Candidate p)->tried.getOrDefault(p.category(),Set.of()).size()).thenComparingInt(p->difficulty(p.difficulty())).thenComparing(Candidate::version)).toList();
+                .sorted(Comparator.comparingInt((Candidate p)->tried.getOrDefault(p.category(),Set.of()).size()).thenComparingInt(p->p.thinking()!=null?p.thinking().layer():10).thenComparing(Candidate::version)).toList();
         for(var p:candidates){
             if(!selectedCategories.add(p.category()))continue;
             int count=tried.getOrDefault(p.category(),Set.of()).size();
-            explore.add(new Suggestion(p.version(),p.title(),p.category(),p.difficulty(),count==0?"최근 90일 동안 도전하지 않은 분야예요.":"최근 90일에 이 분야의 "+count+"문제에 도전했어요. 다른 유형도 함께 연습해 봐요.",null));
+            explore.add(new Suggestion(p.version(),p.title(),p.category(),p.difficulty(),count==0?"최근 90일 동안 도전하지 않은 분야예요.":"최근 90일에 이 분야의 "+count+"문제에 도전했어요. 다른 유형도 함께 연습해 봐요.",null,p.thinking()));
             if(explore.size()==4)break;
         }
-        var revisit=jdbc.sql("SELECT p.id,p.package_json,p.catalog_category,p.catalog_difficulty,r.confidence FROM problem_reflection r JOIN problem_version p ON p.id=r.problem_version WHERE r.user_id=? AND r.confidence IN ('SHAKY','REVISIT') AND p.ready=true AND p.review_hold=false AND p.diagnostic_only=false AND (p.owner_id IS NULL OR p.owner_id=? OR p.shared=true) ORDER BY CASE WHEN r.confidence='REVISIT' THEN 0 ELSE 1 END,r.updated_at,p.id LIMIT 3")
-                .param(owner).param(owner).query((r,n)->new Suggestion(r.getString(1),JudgeJson.parse(r.getString(2)).path("title").asText(),ProblemCategories.display(r.getString(3)),r.getString(4),"REVISIT".equals(r.getString(5))?"다시 풀어야 한다고 남긴 문제예요.":"조금 애매하다고 남긴 문제예요.",r.getString(5))).list();
+        var revisit=jdbc.sql("SELECT p.id,p.package_json,p.catalog_category,p.catalog_difficulty,r.confidence,"+ThinkingDifficulty.COLUMNS+" FROM problem_reflection r JOIN problem_version p ON p.id=r.problem_version "+ThinkingDifficulty.JOIN+" WHERE r.user_id=? AND r.confidence IN ('SHAKY','REVISIT') AND p.ready=true AND p.review_hold=false AND p.diagnostic_only=false AND (p.owner_id IS NULL OR p.owner_id=? OR p.shared=true) ORDER BY CASE WHEN r.confidence='REVISIT' THEN 0 ELSE 1 END,r.updated_at,p.id LIMIT 3")
+                .param(owner).param(owner).query((r,n)->new Suggestion(r.getString(1),JudgeJson.parse(r.getString(2)).path("title").asText(),ProblemCategories.display(r.getString(3)),r.getString(4),"REVISIT".equals(r.getString(5))?"다시 풀어야 한다고 남긴 문제예요.":"조금 애매하다고 남긴 문제예요.",r.getString(5),ThinkingDifficulty.read(r))).list();
         return new Dashboard(start,today,ZONE.getId(),days,active,streak,longest,total,dominant,categories,explore,revisit);
     }
-    private static int difficulty(String value){return "EASY".equals(value)?0:"MEDIUM".equals(value)?1:2;}
     @GetMapping("/api/my/reflections") Reflection reflection(Principal user,@RequestParam String problemVersion){return find(submissions.owner(user.getName(),false),problemVersion);}
     private Reflection find(UUID owner,String version){
         UUID latest=jdbc.sql("SELECT s.id FROM submission s JOIN judge_job j ON j.submission_id=s.id JOIN problem_version p ON p.id=s.problem_version WHERE "+FORMAL+" AND s.problem_version=? AND p.diagnostic_only=false AND p.review_hold=false AND j.status='FINISHED' AND j.verdict='AC' ORDER BY s.created_at DESC,s.id DESC LIMIT 1")

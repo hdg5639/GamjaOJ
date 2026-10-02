@@ -1,0 +1,42 @@
+import {test,expect} from '@playwright/test';
+const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18790';
+for(const width of [390,820,1710])test(`reasoning levels filter across pages, sort, explain and clear at ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:1000});
+ const problems=Array.from({length:43},(_,i)=>({version:`thinking-${i}`,title:`생각 연습 ${String(i).padStart(2,'0')}`,statement:'두 값을 더하세요.',sampleInput:'1 2',sampleOutput:'3',category:'구현',tags:['구현'],shared:true,submissionsEnabled:true,mine:i===0,difficulty:'EASY',thinking:i===42?null:{layer:i%8+1,name:'fixture',insight:3,implementation:2,edgeCases:4,source:'CURATED_ESTIMATE',rationale:'여러 조건을 연결해야 해요.'}}));
+ let writes=0;
+ await page.route('**/api/**',async route=>{const path=new URL(route.request().url()).pathname;let data=[];
+  if(path==='/api/me')data={id:'thinking-user',username:'learner',nickname:'감자'};
+  if(path==='/api/problems')data=problems;
+  if(path==='/api/auth/csrf')data={headerName:'X-CSRF-TOKEN',token:'fixture'};
+  if(path==='/api/problems/thinking-0/catalog-settings'){
+   const body=route.request().postDataJSON();expect(body.clearThinking).toBe(true);expect(body.thinking).toBeUndefined();
+   writes++;problems[0]={...problems[0],thinking:null};data=problems[0];
+  }
+  await route.fulfill({json:data});
+ });
+ await page.goto(base);if(width===820)await page.getByRole('button',{name:'다크 모드로 전환'}).click();const catalog=page.getByRole('region',{name:'문제 목록',exact:true}),rows=catalog.locator('.catalog-list>li');
+ await expect(rows).toHaveCount(20);
+ if(width<=800)await catalog.getByRole('button',{name:/^필터/}).click();
+ await catalog.getByLabel('난도 정렬').selectOption('desc');await expect(rows.first()).toContainText('8겹');
+ await catalog.getByLabel('난이도',{exact:true}).selectOption('6');await expect(rows).toHaveCount(5);await expect(rows.first()).toContainText('상태 만들기');
+ await catalog.getByRole('button',{name:'검색 초기화',exact:true}).click();await expect(rows).toHaveCount(20);
+ await catalog.getByLabel('난이도',{exact:true}).selectOption('UNRATED');await expect(rows).toHaveCount(1);await expect(rows.first()).toContainText('생각 연습 42');
+ await catalog.getByRole('button',{name:'검색 초기화',exact:true}).click();
+ await catalog.getByText('생각의 겹 · 난도 기준 보기',{exact:true}).click();await expect(catalog.locator('.thinking-guide ol li')).toHaveCount(9);await expect(catalog.locator('.thinking-guide')).toContainText('내 전체 정식 제출의 AC');
+ await page.screenshot({path:`/tmp/gamja-thinking-catalog-${width}.png`,fullPage:true});
+ await catalog.getByText('생각의 겹 · 난도 기준 보기',{exact:true}).click();
+ await rows.first().scrollIntoViewIfNeeded();
+ const positions=await rows.first().evaluate(row=>{const rating=row.querySelector('.catalog-level').getBoundingClientRect(),problem=row.querySelector('.catalog-problem').getBoundingClientRect();return {ratingY:rating.y,problemY:problem.y,ratingBottom:rating.bottom,problemBottom:problem.bottom};});
+ expect(positions.problemY).toBeLessThan(positions.ratingBottom);expect(positions.ratingY).toBeLessThan(positions.problemBottom);
+ await page.screenshot({path:`/tmp/gamja-thinking-list-${width}.png`,fullPage:true});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await rows.first().getByRole('button',{name:/ 풀기$/}).click();
+ if(width<=800)await page.getByRole('button',{name:'문제 보기',exact:true}).click();
+ const detail=page.locator('.problem-card .thinking-detail');await detail.locator('summary').click();
+ await expect(detail).toContainText('발상');await expect(detail).toContainText('3 / 5');await expect(detail).toContainText('여러 조건을 연결해야 해요.');
+ await page.screenshot({path:`/tmp/gamja-thinking-detail-${width}.png`,fullPage:true});
+ await page.getByRole('button',{name:'문제 탐색',exact:true}).click();await catalog.getByRole('button',{name:'내가 만든 문제',exact:true}).click();
+ await catalog.getByRole('button',{name:'공개·분류 설정',exact:true}).click();const form=catalog.getByRole('form',{name:'공개·분류 설정'});
+ await form.getByLabel('예상 난이도').selectOption('UNRATED');await expect(form.getByLabel('배정 근거')).toHaveCount(0);await form.getByRole('button',{name:'설정 저장'}).click();await expect(form).toBeHidden();expect(writes).toBe(1);
+ await expect(rows).toContainText('미배정');
+});

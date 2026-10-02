@@ -140,13 +140,14 @@ class SolutionExports {
     }
     UUID enqueue(UUID user,String provider,UUID submission,boolean manual){
         // Ownership and exportability are resolved in one query; internal/diagnostic/custom-run code is never exported.
-        var rows=jdbc.sql("SELECT s.*,j.finished_at,j.result_json AS judge_result_json,p.package_json,p.catalog_category,p.catalog_tags,p.catalog_difficulty,g.template_id,g.focus,d.spec_json,u.username FROM submission s JOIN judge_job j ON j.submission_id=s.id JOIN problem_version p ON p.id=s.problem_version JOIN app_user u ON u.id=s.user_id LEFT JOIN generation_job g ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) LEFT JOIN generation_spec_draft d ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE s.id=? AND s.user_id=? AND j.status='FINISHED' AND j.verdict='AC' AND s.run_input IS NULL AND s.diagnostic_item_id IS NULL AND s.hybrid_branch_id IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.example_check=false AND p.diagnostic_only=false AND p.review_hold=false")
+        var rows=jdbc.sql("SELECT s.*,"+ThinkingDifficulty.COLUMNS+",j.finished_at,j.result_json AS judge_result_json,p.package_json,p.catalog_category,p.catalog_tags,p.catalog_difficulty,g.template_id,g.focus,d.spec_json,u.username FROM submission s JOIN judge_job j ON j.submission_id=s.id JOIN problem_version p ON p.id=s.problem_version "+ThinkingDifficulty.JOIN+" JOIN app_user u ON u.id=s.user_id LEFT JOIN generation_job g ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) LEFT JOIN generation_spec_draft d ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE s.id=? AND s.user_id=? AND j.status='FINISHED' AND j.verdict='AC' AND s.run_input IS NULL AND s.diagnostic_item_id IS NULL AND s.hybrid_branch_id IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.example_check=false AND p.diagnostic_only=false AND p.review_hold=false")
             .param(submission).param(user).query((r,n)->{
                 var p=JudgeJson.parse(r.getString("package_json"));String language=r.getString("language");String version=r.getString("problem_version");
                 if(!version.matches("[A-Za-z0-9_.-]{1,80}")||version.equals(".")||version.equals(".."))throw new AccountException(409,"이 문제의 저장 경로를 만들 수 없어요.");
                 var metadata=ProblemCatalogMetadata.read(r,version);
                 var result=ExportRemote.obj().put("difficulty",metadata.difficulty()).put("difficultySource",metadata.difficultySource()).put("category",metadata.category());
                 result.set("tags",JudgeJson.JSON.valueToTree(metadata.tags()));
+                result.set("thinking",JudgeJson.JSON.valueToTree(ThinkingDifficulty.read(r)));
                 var report=JudgeJson.parse(r.getString("judge_result_json"));
                 Long wall=ExecutionMetrics.maximum(report,"wall_ms"),memory=ExecutionMetrics.maximum(report,"memory_peak_bytes");
                 if(wall!=null)result.put("maxWallMs",wall);if(memory!=null)result.put("maxMemoryBytes",memory);

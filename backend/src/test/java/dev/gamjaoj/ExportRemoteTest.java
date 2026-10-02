@@ -13,6 +13,17 @@ class ExportRemoteTest {
  ExportSettings settings=new ExportSettings(new MockEnvironment().withProperty("PUBLIC_BASE_URL","https://example.test").withProperty("EXPORT_GITHUB_CLIENT_ID","client").withProperty("EXPORT_GITHUB_CLIENT_SECRET","secret").withProperty("EXPORT_NOTION_CLIENT_ID","notion").withProperty("EXPORT_NOTION_CLIENT_SECRET","secret"));
  ExportHttp http=mock(ExportHttp.class);ExportRemote remote=new ExportRemote(settings,http);
  ObjectNode payload(){return ExportRemote.obj().put("username","learner").put("problemVersion","sum-v1").put("title","두 수의 합").put("language","JAVA").put("filename","Main.java").put("source","public class Main {}").put("problemUrl","https://example.test/?problem=sum-v1#practice").put("finishedAt","2026-10-01T00:00:00Z");}
+ @Test void newRatingSnapshotAppearsInBothExportsWithoutMovingExistingGithubFolders(){
+  var p=payload().put("difficulty","EASY");
+  var target=ExportRemote.obj().put("layout","problem-v1").put("prefix","GamjaOJ");
+  String folder=GitHubSolutionLayout.folder(target,p);
+  p.set("thinking",ExportRemote.obj().put("layer",5).put("name","뒤집어보기").put("insight",4).put("implementation",2).put("edgeCases",3).put("source","CURATED_ESTIMATE").put("rationale","질문의 방향을 바꿔 생각해야 해요."));
+  assertThat(GitHubSolutionLayout.readme(p)).contains("5겹 · 뒤집어보기","발상 4/5","구현 2/5","경계 3/5","검토 추정");
+  assertThat(ExportRemote.info("identity",p)).contains("5겹 · 뒤집어보기","발상 4/5");
+  assertThat(GitHubSolutionLayout.folder(target,p)).isEqualTo(folder);
+  p.putNull("thinking");assertThat(GitHubSolutionLayout.rating(p)).isEqualTo("겹 미배정");
+  p.remove("thinking");assertThat(GitHubSolutionLayout.rating(p)).isEqualTo("Easy");
+ }
  @Test void githubUsesPinnedRepositoryBranchAndShaAndReplayDoesNotCommitAgain(){
   var files=new HashMap<String,JsonNode>();var writes=new ArrayList<JsonNode>();
   when(http.request(anyString(),anyString(),anyMap(),nullable(JsonNode.class))).thenAnswer(c->{

@@ -99,6 +99,7 @@ def load_candidate(directory):
 
 def stage(directories):
     lines = ['BEGIN;', "SELECT pg_advisory_xact_lock(hashtext('basic-pool-v1-release')); "]
+    thinking = json.loads((ROOT / 'generation/thinking-baseline-v1.json').read_text())
     seen = set()
     image = (ROOT / 'runner/java-image.txt').read_text().strip()
     for directory in directories:
@@ -117,6 +118,13 @@ def stage(directories):
         columns = ','.join(values) + ',ready,diagnostic_only,shared'
         encoded = ','.join(quote(v) for v in values.values()) + ',true,false,true'
         lines.append('INSERT INTO problem_version (' + columns + ') SELECT ' + encoded + ' WHERE NOT EXISTS (SELECT 1 FROM problem_version WHERE id=' + quote(version) + ');')
+        profile = thinking.get(version)
+        if profile and profile['packageSha256'] == values['package_sha256']:
+            # Only reviewed exact packages; do not invent levels or overwrite a subsequent review.
+            numbers = ','.join(str(profile[key]) for key in ('layer', 'insight', 'implementation', 'edgeCases'))
+            lines.append('INSERT INTO problem_thinking_profile(problem_version,package_sha256,layer,insight,implementation,edge_cases,rationale,source) '
+                         'SELECT id,package_sha256,' + numbers + ',' + quote(profile['rationale']) + ",'CURATED_ESTIMATE' FROM problem_version WHERE id=" + quote(version)
+                         + ' AND package_sha256=' + quote(profile['packageSha256']) + ' AND NOT EXISTS (SELECT 1 FROM problem_thinking_profile WHERE problem_version=' + quote(version) + ');')
     lines.append('COMMIT;')
     return '\n'.join(lines) + '\n'
 

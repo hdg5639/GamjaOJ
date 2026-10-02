@@ -3,9 +3,9 @@ const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18788';
 for(const width of [390,768,1440])test(`home catalog filters, sharing and editor continuity at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:950});
   let problems=[
-    {version:'seed',title:'두 수의 합',category:'구현',tags:['입출력'],difficulty:'EASY',shared:true},
-    {version:'mine',title:'내 비공개 그래프 연습',category:'그래프',tags:['BFS'],difficulty:'MEDIUM',shared:false,mine:true,generated:true},
-    {version:'other',title:'다른 회원의 최단 경로',category:'그래프',tags:['BFS','방문 처리'],difficulty:'MEDIUM',shared:true,mine:false,generated:true},
+    {version:'seed',title:'두 수의 합',category:'구현',tags:['입출력'],difficulty:'EASY',thinking:{layer:1,name:'그대로',source:'CURATED_ESTIMATE',insight:1,implementation:1,edgeCases:1,rationale:'명시된 계산을 수행해요.'},shared:true},
+    {version:'mine',title:'내 비공개 그래프 연습',category:'그래프',tags:['BFS'],difficulty:'MEDIUM',thinking:{layer:3,name:'골라쓰기',source:'AUTHOR_ESTIMATE',insight:2,implementation:2,edgeCases:3,rationale:'도구를 골라요.'},shared:false,mine:true,generated:true},
+    {version:'other',title:'다른 회원의 최단 경로',category:'그래프',tags:['BFS','방문 처리'],difficulty:'MEDIUM',thinking:{layer:5,name:'뒤집어보기',source:'CURATED_ESTIMATE',insight:4,implementation:2,edgeCases:3,rationale:'관점을 바꿔요.'},shared:true,mine:false,generated:true},
     {version:'held',title:'보류된 문제',category:'그래프',tags:[],shared:true,problemHeld:true},
   ].map(p=>({...p,statement:'정점 사이의 경로를 구하세요.',sampleInput:'1 2',sampleOutput:'3',submissionsEnabled:true}));
   let saves=0;
@@ -16,7 +16,7 @@ for(const width of [390,768,1440])test(`home catalog filters, sharing and editor
     if(path==='/api/auth/csrf')data={headerName:'X-CSRF-TOKEN',token:'fixture'};
     if(path==='/api/problems/mine/catalog-settings'){
       expect(req.method()).toBe('PUT');const body=req.postDataJSON();saves++;
-      expect(body).toEqual({shared:true,category:'그래프',tags:['BFS','상태 관리'],difficulty:'HARD'});
+      expect(body).toEqual({shared:true,category:'그래프',tags:['BFS','상태 관리'],difficulty:'MEDIUM',thinking:{layer:5,insight:2,implementation:2,edgeCases:3,rationale:'질문의 방향을 바꿔 접근해요.'}});
       problems=problems.map(p=>p.version==='mine'?{...p,...body}:p);data=problems.find(p=>p.version==='mine');
       if(saves===1)return route.abort(); // committed settings, lost response; explicit same-value retry
     }
@@ -39,7 +39,7 @@ for(const width of [390,768,1440])test(`home catalog filters, sharing and editor
     await toggle.focus();await toggle.press('Enter');
     await expect(toggle).toHaveAttribute('aria-expanded','true');
   }
-  await page.getByLabel('난이도',{exact:true}).selectOption('EASY');
+  await page.getByLabel('난이도',{exact:true}).selectOption('1');
   await expect(page.getByText('일치하는 문제가 없어요.',{exact:false})).toBeVisible();
   await page.getByRole('button',{name:'검색 초기화',exact:true}).click();
   await page.getByRole('button',{name:'내가 만든 문제',exact:true}).click();
@@ -47,13 +47,13 @@ for(const width of [390,768,1440])test(`home catalog filters, sharing and editor
   await page.getByRole('button',{name:'공개·분류 설정',exact:true}).click();
   const form=page.getByRole('form',{name:'공개·분류 설정'});
   await form.getByLabel('다른 회원에게 공개').check();await form.getByLabel('분류 태그').fill('BFS, 상태 관리');
-  await form.getByLabel('예상 난이도').selectOption('HARD');
+  await form.getByLabel('예상 난이도').selectOption('5');await form.getByLabel('배정 근거').fill('질문의 방향을 바꿔 접근해요.');
   await form.getByRole('button',{name:'설정 저장'}).click();await expect(form.getByRole('alert')).toBeVisible();
   await form.getByRole('button',{name:'설정 저장'}).click();await expect(form).toBeHidden();
   expect(saves).toBe(2);
   await page.getByRole('button',{name:'전체 공개 문제',exact:true}).click();
   await page.getByLabel('분야',{exact:true}).selectOption('그래프');await page.getByLabel('태그',{exact:true}).selectOption('상태 관리');
-  await expect(list.locator('li')).toHaveCount(1);await expect(list).toContainText('상');
+  await expect(list.locator('li')).toHaveCount(1);await expect(list).toContainText('뒤집어보기');
   await page.getByRole('button',{name:/내 비공개 그래프 연습 · mine .*풀기/}).click();
   if(width<=800)await page.getByRole('button',{name:'코드 작성',exact:true}).click();
   const editor=page.getByLabel('Main.java',{exact:true});await editor.fill('// browsing preserves my draft');

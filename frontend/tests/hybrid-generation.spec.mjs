@@ -183,14 +183,14 @@ test('member rule registration submits once, shows qualification progress and to
   });
   const request=page.getByRole('button',{name:'이 조건으로 규칙 등록'});
   await expect(request).toBeDisabled();
-  await page.getByLabel('문제 난이도',{exact:true}).selectOption('EXPERT');
+  await page.getByLabel('문제 난이도',{exact:true}).selectOption('8');
   await page.getByLabel('문제 스타일',{exact:true}).selectOption('COMMAND');
   const conditions='조건을 보존하세요.\n'.repeat(1000).slice(0,10000);
   await page.getByLabel('원하는 규칙과 조건 (선택)').fill(conditions);
   await expect(page.getByText('10,000 / 10,000자 · 공백·줄바꿈 포함')).toBeVisible();
   await request.click();
   await expect(page.getByText('실행 검증 2건 완료')).toBeVisible();expect(writes).toHaveLength(1);
-  expect(writes[0].body).toEqual({request:conditions.trim(),difficulty:'EXPERT',style:'COMMAND',category:'AUTO',publish:true,shared:false});
+  expect(writes[0].body).toEqual({request:conditions.trim(),thinkingLayer:8,style:'COMMAND',category:'AUTO',publish:true,shared:false});
   await expect(page.getByRole('button',{name:'이 조건으로 규칙 등록'})).toBeDisabled();
   items=[{...items[0],status:'ACTIVE',label:'구간 합',difficulty:'EXPERT',style:'COMMAND',publish:true,followupStatus:'PUBLISHED',publishedVersion:'hybrid-check-x'}];mine=[{id:'rule-o1-v1',label:'구간 합',category:'누적 합',status:'ACTIVE',shared:false}];
   await expect(page.getByRole('button',{name:'등록 취소'})).toBeVisible();
@@ -198,7 +198,7 @@ test('member rule registration submits once, shows qualification progress and to
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(page.getByText('문제 게시 완료',{exact:false})).toBeVisible({timeout:8000});
   await expect(page.locator('.generation-side').getByRole('button',{name:'문제 풀기',exact:true})).toBeVisible();
-  await expect(page.locator('.onboard-card .onboard-chips').getByText('명령 API 구현',{exact:true})).toBeVisible();
+  await expect(page.locator('.onboard-card .onboard-chips').getByText('명령 처리 - 표준입출력',{exact:true})).toBeVisible();
   await page.getByRole('tab',{name:/내 규칙/}).click();
   await expect(page.getByText('나만 사용')).toBeVisible();
   await page.getByRole('button',{name:'공개하기'}).click();

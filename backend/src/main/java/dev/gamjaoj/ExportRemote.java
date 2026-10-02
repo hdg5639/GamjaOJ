@@ -162,7 +162,7 @@ class ExportRemote {
             }
             sha=old.path("sha").asText();
         }catch(Failure e){if(!e.code.equals("TARGET_NOT_FOUND"))throw e;}
-        var body=obj().put("message","[GamjaOJ]["+GitHubSolutionLayout.difficulty(payload)+"] "+payload.path("title").asText().replaceAll("[\\p{Cntrl}]"," ")+" - "+GitHubSolutionLayout.language(payload)+" (AC), Time: "+ExecutionMetrics.time(payload)+", Memory: "+ExecutionMetrics.memory(payload))
+        var body=obj().put("message","[GamjaOJ]["+GitHubSolutionLayout.rating(payload)+"] "+payload.path("title").asText().replaceAll("[\\p{Cntrl}]"," ")+" - "+GitHubSolutionLayout.language(payload)+" (AC), Time: "+ExecutionMetrics.time(payload)+", Memory: "+ExecutionMetrics.memory(payload))
             .put("branch",branch).put("content",Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8)));
         if(sha!=null)body.put("sha",sha);fence.run();api("GITHUB",token,"PUT","/repos/"+repo+"/contents/"+GitHubSolutionLayout.path(path),body);
     }
@@ -216,7 +216,7 @@ class ExportRemote {
         }
         throw new Failure("PAGE_TOO_LARGE",false);
     }
-    static String info(String identity,JsonNode p){return identity+"\n문제: "+p.path("problemUrl").asText()+"\n결과: AC\n통과 시각: "+p.path("finishedAt").asText()+"\n최대 실행 시간: "+ExecutionMetrics.time(p)+"\n최대 메모리: "+ExecutionMetrics.memory(p)+"\n메모리는 호스트 관측 컨테이너 cgroup 최고 사용량 (런타임·파일 캐시 포함)입니다.";}
+    static String info(String identity,JsonNode p){return identity+"\n난도: "+GitHubSolutionLayout.ratingDetails(p)+"\n문제: "+p.path("problemUrl").asText()+"\n결과: AC\n통과 시각: "+p.path("finishedAt").asText()+"\n최대 실행 시간: "+ExecutionMetrics.time(p)+"\n최대 메모리: "+ExecutionMetrics.memory(p)+"\n메모리는 호스트 관측 컨테이너 cgroup 최고 사용량 (런타임·파일 캐시 포함)입니다.";}
     static JsonNode rich(String text){
         var out=JudgeJson.JSON.createArrayNode();for(int from=0;from<text.length();){int to=Math.min(from+1800,text.length());if(to<text.length()&&Character.isHighSurrogate(text.charAt(to-1)))to--;out.addObject().put("type","text").putObject("text").put("content",text.substring(from,to));from=to;}return out;
     }

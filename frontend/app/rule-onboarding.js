@@ -4,6 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import Pager,{usePage} from './pager';
 import {categoryLabels} from './diagnostic-categories';
+import {thinkingLayers} from './thinking-difficulty';
 
 const labels={QUEUED:'대기',AUTHORING:'규칙·코드 작성 중',AUTHORED:'독립 검증 코드 준비',ORACLE:'독립 검증 코드 작성 중',QUALIFYING:'실행 검증 중',ACTIVE:'등록 완료',HELD:'검증 보류',FAILED:'등록 실패',CANCELLED:'취소됨',DEADLINE_EXCEEDED:'처리 기한 초과'};
 const authorStages={DESIGN:'규칙 설계',CODE:'정답 코드',TESTS:'검증기·테스트'};
@@ -12,7 +13,8 @@ const steps=['대기','규칙·코드 작성','독립 검증 코드','실행 검
 const stepOf=status=>({QUEUED:'대기',AUTHORING:'규칙·코드 작성',AUTHORED:'독립 검증 코드',ORACLE:'독립 검증 코드',QUALIFYING:'실행 검증'})[status];
 const stateOf=status=>running.includes(status)?'running':status==='ACTIVE'?'active':status==='CANCELLED'?'cancelled':'failed';
 const when=value=>value?new Date(value).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-const difficulties={EASY:'하',MEDIUM:'중',HARD:'상',EXPERT:'최상'};
+const difficulties={EASY:'기존 제작 범위 · 기본',MEDIUM:'기존 제작 범위 · 일반',HARD:'기존 제작 범위 · 복합',EXPERT:'기존 제작 범위 · 심화'};
+const requestLevel=item=>item.thinkingLayer?`요청 ${item.thinkingLayer}겹 · ${thinkingLayers[item.thinkingLayer-1]?.[0]}`:difficulties[item.difficulty]||'겹 미배정';
 const styles={GENERAL:'일반',SIMULATION:'시뮬레이션',COMMAND:'명령 처리 - 표준입출력',COMMAND_MULTI:'명령 처리 - 다중 API',COMMAND_SINGLE:'명령 처리 - 단일 함수'};
 const styleHelp={COMMAND_MULTI:'Java의 여러 API 메서드를 완성합니다. 같은 객체에 명령이 연속 호출되며, 호출 사이의 상태를 유지합니다.',COMMAND_SINGLE:'Java의 solution 메서드를 완성합니다. 명령 목록을 전달받아 처리하고 결과를 반환합니다.',GENERAL:'새로운 규칙의 세계에서 어떤 기법을 써야 할지 스스로 판단하는 문제예요.',SIMULATION:'격자나 세계가 여러 규칙에 따라 단계별로 변하고, 과정 뒤의 결과를 구하는 문제예요.',COMMAND:'초기화·변경·질의 같은 명령을 처리하는 기능을 구현하고, 질의마다 답을 출력하는 문제예요.'};
 const followups={QUEUED:'문제 생성 대기',DESIGNING:'문제 작성 중',BUILDING:'문제 작성 중',VALIDATING:'문제 검증 중',REVIEWING:'최종 검토 중',PUBLISHED:'문제 게시 완료',FAILED:'문제 생성 실패',HELD:'문제 생성 보류',DEADLINE_EXCEEDED:'문제 생성 기한 초과',CANCELLED:'문제 생성 취소'};
@@ -21,7 +23,7 @@ const reasons={CODEX_QUOTA_EXHAUSTED:'코덱스 사용 한도에 도달했어요
 export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,sideTab,onRequested,onCounts}) {
   const [enabled,setEnabled]=useState(null),[items,setItems]=useState([]),[rules,setRules]=useState([]);
   const [text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const [difficulty,setDifficulty]=useState('MEDIUM'),[style,setStyle]=useState('GENERAL'),[category,setCategory]=useState('AUTO');
+  const [thinkingLayer,setThinkingLayer]=useState(4),[style,setStyle]=useState('GENERAL'),[category,setCategory]=useState('AUTO');
   const [publish,setPublish]=useState(true),[shared,setShared]=useState(false),[target,setTarget]=useState(null);
   const pending=useRef(null),live=useRef(false),known=useRef(new Set()),form=useRef(null);
   // A diagnosis draft only fills the box; the learner reviews it and submits explicitly.
@@ -47,7 +49,7 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
   useEffect(()=>{if(!busyWork&&!followupWork)return;const timer=setInterval(refresh,5000);return()=>clearInterval(timer);},[busyWork,followupWork]);
   async function submit(event){
     event.preventDefault();if(busy)return;
-    pending.current ||= {key:crypto.randomUUID(),body:{request:text.trim(),difficulty,style,category,publish,shared,
+    pending.current ||= {key:crypto.randomUUID(),body:{request:text.trim(),thinkingLayer,style,category,publish,shared,
       ...(target?{evaluationId:target.evaluationId,observationIndex:target.observationIndex}:{})}};
     setBusy(true);setError('');
     try{await api('/api/rules/onboarding',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':pending.current.key},body:JSON.stringify(pending.current.body)});
@@ -69,7 +71,7 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
   }
   return <section className="rule-onboarding" aria-labelledby="rule-onboarding-heading">
     <h3 id="rule-onboarding-heading">재사용할 규칙 만들기</h3>
-    <p className="draft-help">난이도와 스타일을 고르면 AI가 입력·행동·목표와 제약을 설계하고, 정답 코드·별도로 작성한 완전탐색 검증 코드·오답·느린 풀이·대형 입력을 모두 실제 채점기로 검증한 뒤에만 등록합니다. 소재와 등장인물은 규칙에 고정하지 않으며, 문제를 만들 때마다 바꿀 수 있어요. 요청당 API 예산은 최대 $1입니다. 상·최상은 최대 40분 동안 단계를 나누어 작성하고, 완료한 단계는 저장합니다. 하·중은 최대 20분입니다. 작성 결과의 오류는 제한적으로 수정하며, 시간 초과나 사용량을 확인할 수 없는 중단은 직접 재시도해야 합니다.</p>
+    <p className="draft-help">목표 겹과 스타일을 고르면 AI가 입력·행동·목표와 제약을 설계하고, 정답 코드·별도로 작성한 완전탐색 검증 코드·오답·느린 풀이·대형 입력을 모두 실제 채점기로 검증한 뒤에만 등록합니다. 소재와 등장인물은 규칙에 고정하지 않으며, 문제를 만들 때마다 바꿀 수 있어요. 요청당 API 예산은 최대 $1입니다. 6~9겹 요청은 최대 40분 동안 단계를 나누어 작성하고, 완료한 단계는 저장합니다. 1~5겹 요청은 최대 20분입니다. 작성 결과의 오류는 제한적으로 수정하며, 시간 초과나 사용량을 확인할 수 없는 중단은 직접 재시도해야 합니다.</p>
     {enabled===false&&<p className="notice">지금은 새 규칙을 등록할 수 없어요.</p>}
     {error&&<p className="notice error" role="alert">{error}</p>}
     {draft&&text===draft.text&&<p className="notice" role="status">진단 결과에서 가져온 초안이에요. 내용을 확인하고 필요하면 고친 뒤 요청해 주세요.</p>}
@@ -77,11 +79,11 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
       {target&&<div className="notice" role="status"><p><strong>진단 습관 겨냥</strong> · {target.pattern}</p><p className="draft-help">이 습관대로 짠 코드가 실제로 틀리는 문제만 등록돼요. 오답 코드 하나를 이 습관으로 작성해 검증합니다.</p>
         <button type="button" className="secondary" disabled={busy||!!pending.current} onClick={()=>setTarget(null)}>겨냥 해제</button></div>}
       <div className="problem-request-options">
-        <label className="field">난이도<select aria-label="문제 난이도" value={difficulty} disabled={busy||!!pending.current} onChange={e=>setDifficulty(e.target.value)}>{Object.entries(difficulties).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+        <label className="field">목표 겹<select aria-label="문제 난이도" value={thinkingLayer} disabled={busy||!!pending.current} onChange={e=>setThinkingLayer(Number(e.target.value))}>{thinkingLayers.map(([name],i)=><option key={i} value={i+1}>{i+1}겹 · {name}</option>)}</select></label>
         <label className="field">스타일<select aria-label="문제 스타일" value={style} disabled={busy||!!pending.current} onChange={e=>setStyle(e.target.value)}>{Object.entries(styles).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
         <label className="field">분야<select aria-label="문제 분야" value={category} disabled={busy||!!pending.current} onChange={e=>setCategory(e.target.value)}><option value="AUTO">자동으로 고르기</option>{Object.entries(categoryLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
       </div>
-      <p className="draft-help">{styleHelp[style]}</p>
+      <p className="draft-help">{thinkingLayers[thinkingLayer-1][1]} {styleHelp[style]}</p><p className="draft-help">목표 겹은 출제 요청입니다. 생성된 문제는 완성된 풀이를 검토한 뒤 공개·분류 설정에서 겹과 세 축을 배정해 주세요.</p>
       <label className="field">원하는 규칙과 조건 (선택)<textarea rows={6} maxLength={10000} aria-describedby="rule-request-length" value={text} disabled={busy||!enabled||!!pending.current} onChange={e=>setText(e.target.value)} placeholder="예: 격자는 매초 90도 회전하고, 특정 시간에만 이동 가능한 연결과 소모·충전되는 자원이 있으며, K개의 지점을 모두 방문"/></label>
       <p id="rule-request-length" className="draft-help">{text.length.toLocaleString('ko-KR')} / 10,000자 · 공백·줄바꿈 포함</p>
       <label className="check-row"><input type="checkbox" checked={publish} disabled={busy||!!pending.current} onChange={e=>setPublish(e.target.checked)}/>등록되면 바로 문제로 만들기</label>
@@ -101,7 +103,7 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
             <div className="onboard-head"><span className="state-badge" data-state={state}>{item.status==='AUTHORING'&&item.authorStage?`${authorStages[item.authorStage]} 작성 중`:labels[item.status]||item.status}</span>
               <time dateTime={item.createdAt}>{when(item.createdAt)}</time></div>
             <p className="onboard-title">{item.label||item.request?.slice(0,80)||'자동으로 고른 주제'}</p>
-            <p className="onboard-chips">{item.difficulty&&<span data-kind="level">{difficulties[item.difficulty]||item.difficulty}</span>}
+            <p className="onboard-chips">{item.difficulty&&<span data-kind="level">{requestLevel(item)}</span>}
               {item.style&&<span>{styles[item.style]||item.style}</span>}
               {item.category&&item.category!=='AUTO'&&<span>{categoryLabels[item.category]||item.category}</span>}
               {item.targeted&&<span data-kind="target">진단 습관 겨냥</span>}
@@ -151,7 +153,7 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
             <div className="onboard-head"><span className="state-badge" data-state={state}>{item.status==='AUTHORING'&&item.authorStage?`${authorStages[item.authorStage]} 작성 중`:labels[item.status]||item.status}</span>
               <time dateTime={item.createdAt}>{when(item.createdAt)}</time></div>
             <p className="onboard-title">{item.label||item.request?.slice(0,80)||'자동으로 고른 주제'}</p>
-            <p className="onboard-chips">{item.difficulty&&<span data-kind="level">{difficulties[item.difficulty]||item.difficulty}</span>}
+            <p className="onboard-chips">{item.difficulty&&<span data-kind="level">{requestLevel(item)}</span>}
               {item.style&&<span>{styles[item.style]||item.style}</span>}
               {item.category&&item.category!=='AUTO'&&<span>{categoryLabels[item.category]||item.category}</span>}
               {item.targeted&&<span data-kind="target">진단 습관 겨냥</span>}

@@ -1,4 +1,5 @@
 'use client';
+import {thinkingLabel} from './thinking-difficulty';
 import {useEffect,useRef,useState} from 'react';
 import {confidenceLabels} from './problem-reflection';
 
@@ -28,7 +29,7 @@ export default function LearningActivity({api,userId,activity,refresh,onChoose})
    <div className="learning-section-heading"><h3>유형도 골고루</h3><p className="muted">최근 90일 · 서로 다른 도전 문제 {data.practicedProblems}개</p></div>
    <p>{data.dominantCategory?`${data.dominantCategory}에 도전이 많이 모였어요. 다른 유형도 한 문제씩 섞어 봐요.`:data.practicedProblems?'최근 도전한 분야를 보고, 덜 풀어본 유형을 골랐어요.':'익숙한 분야부터 시작하고, 다른 유형도 조금씩 섞어 봐요.'}</p>
    <div className="learning-balance-layout"><div className="category-distribution" aria-label="분야별 도전 분포">{data.categories.map(c=><div key={c.category}><span>{c.category}</span><div className="category-bar" aria-hidden="true"><i style={{width:`${c.attempted/max*100}%`}}/></div><small>도전 {c.attempted} · 정답 {c.solved}</small></div>)}</div>
-    <div className="learning-next"><h4>다른 유형도 풀어보기</h4>{data.explore.length?<ul>{data.explore.map(p=><li key={p.version}><div><strong>{p.title}</strong><small>{p.category} · {p.difficulty==='EASY'?'하':p.difficulty==='MEDIUM'?'중':p.difficulty==='HARD'?'상':'미분류'}</small><p>{p.reason}</p></div><button className="secondary" onClick={()=>onChoose(p.version)} aria-label={`${p.title} 풀기`}>풀어보기</button></li>)}</ul>:<p className="muted">지금 선택할 수 있는 새로운 문제가 없어요.</p>}</div>
+    <div className="learning-next"><h4>다른 유형도 풀어보기</h4>{data.explore.length?<ul>{data.explore.map(p=><li key={p.version}><div><strong>{p.title}</strong><small>{p.category} · {thinkingLabel(p)}</small><p>{p.reason}</p></div><button className="secondary" onClick={()=>onChoose(p.version)} aria-label={`${p.title} 풀기`}>풀어보기</button></li>)}</ul>:<p className="muted">지금 선택할 수 있는 새로운 문제가 없어요.</p>}</div>
    </div>
   </section>
   {!!data.revisit.length&&<section className="learning-revisit" aria-label="다시 풀 문제"><h3>다시 풀어볼까요?</h3><ul>{data.revisit.map(p=><li key={p.version}><div><strong>{p.title}</strong><small>{p.category} · {confidenceLabels[p.confidence]}</small></div><button className="secondary" onClick={()=>onChoose(p.version)} aria-label={`${p.title} 다시 풀기`}>다시 풀기</button></li>)}</ul></section>}

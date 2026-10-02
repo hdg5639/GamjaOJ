@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import Pager,{usePage} from './pager';
 import DiagnosticPlan from './diagnostic-plan';
 import Modal from './modal';
+import ThinkingDifficulty from './thinking-difficulty';
 import {bankTitle,categoryLabels} from './diagnostic-categories';
 const done=plan=>['AC_WITH_HELP','SELF_REPORTED_UNASSISTED_AC'].includes(plan.status);
 const preparing=new Set(['WAITING','GENERATING']);
@@ -90,9 +91,9 @@ export default function LearningTracks({api,userId,visible,initialEvaluation,onO
    </section>
    <section className="learning-current-problem" aria-label="다음 학습">
     <span className="roadmap-kind">{active?'현재 진행 중':'훈련 시작하기'}</span>
-    {active&&<><h3>{problems.find(p=>p.version===active.problemVersion)?.title||activeStep?.problemTitle||'현재 훈련 문제'}</h3><p className="learning-current-goal">{active.goal||'자유 연습'}</p><p className="muted">정식 제출 {active.submissions}회 · 정답 {active.accepted}회{active.pending>0?` · 채점 중 ${active.pending}개`:''}</p></>}
+    {active&&<><h3>{problems.find(p=>p.version===active.problemVersion)?.title||activeStep?.problemTitle||'현재 훈련 문제'}</h3><p className="muted"><ThinkingDifficulty compact problem={problems.find(p=>p.version===active.problemVersion)}/></p><p className="learning-current-goal">{active.goal||'자유 연습'}</p><p className="muted">정식 제출 {active.submissions}회 · 정답 {active.accepted}회{active.pending>0?` · 채점 중 ${active.pending}개`:''}</p></>}
     <div className="learning-session-actions" ref={onToolsHost}/>
-    {chosen&&<section className="learning-next-step" aria-label="선택한 문제"><span className="roadmap-kind">{chosen.plan.status==='ACTIVE'?'현재 목표 확인':`선택한 단계 · ${steps.indexOf(chosen)+1} / ${steps.length}`}</span><h3 id="learning-selected-heading" tabIndex={-1} className={chosen.plan.status==='ACTIVE'&&active?'sr-only':undefined}>{chosen.plan.status==='ACTIVE'&&active?'선택한 문제 정보':problemName(chosen)}</h3>{!(chosen.plan.status==='ACTIVE'&&active)&&<p className="learning-selected-goal">{chosen.plan.goal||'최신 의견 확인하기'}</p>}
+    {chosen&&<section className="learning-next-step" aria-label="선택한 문제"><span className="roadmap-kind">{chosen.plan.status==='ACTIVE'?'현재 목표 확인':`선택한 단계 · ${steps.indexOf(chosen)+1} / ${steps.length}`}</span><h3 id="learning-selected-heading" tabIndex={-1} className={chosen.plan.status==='ACTIVE'&&active?'sr-only':undefined}>{chosen.plan.status==='ACTIVE'&&active?'선택한 문제 정보':problemName(chosen)}</h3>{chosen.candidate&&!(chosen.plan.status==='ACTIVE'&&active)&&<p className="muted"><ThinkingDifficulty compact problem={chosen.candidate}/></p>}{!(chosen.plan.status==='ACTIVE'&&active)&&<p className="learning-selected-goal">{chosen.plan.goal||'최신 의견 확인하기'}</p>}
      <p className="learning-selected-state">{stage(chosen)} · {chosen.plan.roundNumber||1}회차</p>
      <div className="learning-selected-actions">{chosen.plan.status!=='ACTIVE'&&primary(chosen)}<button className="secondary" disabled={chosen.plan.status==='HELD'} onClick={()=>showManual(chosen.plan.id)}>수동 설정·근거 확인</button>{chosen.plan.sessionId&&<button className="secondary" onClick={()=>window.dispatchEvent(new CustomEvent('gamjaoj-training-open',{detail:chosen.plan.sessionId}))}>훈련 상세 기록</button>}</div>
      {chosen.plan.status==='READY'&&chosen.candidate&&!active&&<p className="draft-help">목표에 맞춰 연결한 문제예요. 수동 설정에서 다른 문제로 바꿀 수 있어요.</p>}

@@ -386,6 +386,46 @@ button.danger:disabled { opacity:.6; }
 /* New problem request: difficulty, style and field side by side, stacking on narrow screens. */
 .problem-request-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
 .catalog-level[data-level="EXPERT"] strong { color:#8a1c1c; }
+/* Reasoning ratings use text and position; color alone never conveys difficulty. */
+.catalog-filters { grid-template-columns:repeat(5,minmax(0,1fr)); }
+.catalog-level.thinking-level { flex:0 0 104px; background:var(--subtle); color:var(--ink); padding:10px 6px; }
+.thinking-level strong { font-size:21px; color:var(--green); }
+.thinking-level > span { display:block; font-size:12px; margin-top:4px; white-space:nowrap; }
+.thinking-level small { display:block; color:var(--muted); font-size:10px; margin-top:5px; }
+.thinking-detail { padding:10px 0; margin:4px 0 12px; border-bottom:1px solid var(--line); }
+.thinking-detail summary { cursor:pointer; font-weight:650; }
+.thinking-detail summary small { font-weight:400; color:var(--muted); }
+.thinking-detail > p { margin:10px 0 0; font-size:13px; line-height:1.65; }
+.thinking-profile { display:flex; flex-wrap:wrap; gap:14px 24px; margin:14px 0 0; }
+.thinking-profile > div { display:grid; gap:5px; }
+.thinking-profile dt { font-size:12px; color:var(--muted); }
+.thinking-profile dd { margin:0; display:flex; align-items:center; gap:8px; font-size:12px; }
+.thinking-scale { display:flex; gap:3px; }
+.thinking-scale i { width:12px; height:6px; background:var(--line); }
+.thinking-scale i[data-filled="true"] { background:var(--green); }
+.thinking-guide ol { list-style:none; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 24px; margin:18px 0; }
+.thinking-guide ol li { display:grid; gap:4px; }
+.thinking-guide ol span { color:var(--muted); line-height:1.6; }
+.thinking-guide dl > div { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
+.thinking-guide dd { margin:0; }
+.thinking-guide p { line-height:1.75; }
+.thinking-edit-axes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.thinking-inline { white-space:normal; }
+@media(max-width:800px) {
+ .catalog-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .thinking-guide ol { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .catalog-level.thinking-level { flex-basis:88px; }
+}
+@media(max-width:500px) {
+ .thinking-guide ol { grid-template-columns:1fr; }
+ .catalog-level.thinking-level { flex-basis:80px; }
+ .catalog-list .catalog-problem { flex-basis:calc(100% - 92px); }
+ .catalog-list .catalog-actions { margin-left:92px; }
+}
+@media(min-width:501px) and (max-width:700px) {
+ .catalog-list .catalog-problem { flex-basis:calc(100% - 100px); }
+ .catalog-list .catalog-actions { margin-left:100px; }
+}
 /* Coding-test style run console under the editor: always visible, dark output area, pass/fail colored. */
 .run-console { margin-top:10px; border:1px solid #1f2d2a; border-radius:10px; overflow:hidden; background:#16211f; color:#e6efec; }
 .run-console .console-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:8px 12px; background:#1f2d2a; }

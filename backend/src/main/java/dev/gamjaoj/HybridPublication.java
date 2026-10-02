@@ -132,7 +132,7 @@ class HybridPublication {
                     jdbc.sql("UPDATE problem_version SET catalog_category=?,catalog_tags=? WHERE id=?")
                             .param(ProblemCategories.display(catalog.map(HybridRuleRegistry.Version::category).orElse(profile.category())))
                             .param(catalog.map(HybridRuleRegistry.Version::tags).orElse(profile.tags())).param(version).update();
-                    // A member-requested rule carries its target difficulty (하/중/상/최상) onto every problem generated from it.
+                    // Preserve the internal legacy authoring band. A requested thinking layer is never copied as a reviewed public rating.
                     jdbc.sql("SELECT request_json FROM hybrid_rule_onboarding WHERE version_id=?").param(ruleVersion.get()).query(String.class).optional()
                             .map(requestJson->JudgeJson.parse(requestJson).path("difficulty").asText("")).filter(HybridRuleOnboarding.DIFFICULTIES::contains)
                             .ifPresent(d->jdbc.sql("UPDATE problem_version SET catalog_difficulty=? WHERE id=?").param(d).param(version).update());

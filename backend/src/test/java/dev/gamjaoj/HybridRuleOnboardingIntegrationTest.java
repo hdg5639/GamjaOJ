@@ -44,6 +44,21 @@ class HybridRuleOnboardingIntegrationTest {
         HybridProfiles.all().stream().filter(d->d.pkg()!=null).forEach(d->HybridProfiles.unregister(d.id()));
     }
     @AfterEach void reset(){env.getPropertySources().remove("onboarding-test");}
+    @Test void requestedThinkingLayerPersistsAndParticipatesInExactReplayWithoutPublicRating() throws Exception {
+        UUID key=UUID.randomUUID();String body="{\"request\":\"\",\"thinkingLayer\":5,\"style\":\"GENERAL\",\"category\":\"bfs\",\"publish\":true}";
+        mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",key).contentType("application/json").content(body)).andExpect(status().isOk()).andExpect(jsonPath("$.thinkingLayer").value(5));
+        mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",key).contentType("application/json").content(body)).andExpect(status().isOk());
+        mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",key).contentType("application/json").content(body.replace(":5",":6"))).andExpect(status().isConflict());
+        mvc.perform(post("/api/rules/onboarding").with(user("owner")).with(csrf()).header("Idempotency-Key",UUID.randomUUID()).contentType("application/json").content(body.replace(":5",":10"))).andExpect(status().isBadRequest());
+        var saved=JudgeJson.parse(jdbc.sql("SELECT request_json FROM hybrid_rule_onboarding WHERE id=?").param(key).query(String.class).single());
+        assertThat(saved.path("thinkingName").asText()).isEqualTo("뒤집어보기");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_rule_onboarding").query(Integer.class).single()).isEqualTo(1);
+        assertThat(HybridRuleOnboarding.AUTHOR_TARGETING).doesNotContain("Baekjoon","Bronze","Silver","Gold","Platinum");
+        var work=onboarding.claimCall();
+        assertThat(work.input()).contains("thinkingLayer", "thinkingName", "뒤집어보기");
+        assertThat(work.instructions()).contains("increasing cognitive burdens");
+        verifyNoInteractions(provider);
+    }
     HybridRuleOnboarding.CodexCompletion codexResult(JsonNode work,JsonNode payload,String error) {
         var a=work.path("spec").path("assignment");
         if(payload!=null&&payload.has("contract")&&payload.has("reference")) {
