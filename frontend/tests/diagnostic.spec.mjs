@@ -199,6 +199,7 @@ for(const width of [390,1440])test('optional diagnostic survives retry and advan
     await expect(page.getByRole('heading',{name:'2회차 · 설명에 맞게 입력 읽기'})).toBeVisible();
     await expect(page.getByRole('button',{name:'최신 의견 확인 · 다음 회차 준비'})).toHaveCount(0);
     await expect(page.getByText('본인이 보고한 도움 없는 AC로 기록했습니다.',{exact:false})).toBeVisible();
+    await page.getByText('계획 순서 직접 조정',{exact:true}).click();
     await page.getByRole('button',{name:'학습 순서 불러오기'}).click();
     await page.getByRole('button',{name:'1번째 목표 아래로'}).click();
     await page.getByRole('button',{name:'같은 순서 저장 다시 확인'}).click();

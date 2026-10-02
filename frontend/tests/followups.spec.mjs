@@ -51,6 +51,7 @@ for(const width of [390,1440])test('confirmed feedback becomes a linked training
   await expect(page.getByLabel('다시 연습할 지점')).toHaveValue('0');
   await page.getByRole('button',{name:'이 목표 확인하고 다음 훈련 찾기'}).click();
   const panel=page.getByRole('region',{name:'다음 훈련',exact:true});
+  await page.getByText('제출 피드백으로 만든 연습 목표',{exact:true}).click();
   await expect(panel).toBeVisible();
   await panel.getByText('문제 내용 확인',{exact:true}).click();
   await expect(panel.getByText('합계 범위를 연습하는 문제',{exact:true})).toBeVisible();
@@ -63,11 +64,13 @@ for(const width of [390,1440])test('confirmed feedback becomes a linked training
   await expect(page.locator('.workspace-heading')).toContainText('훈련 중');
   expect(sessions).toHaveLength(1);
   await page.getByRole('button',{name:'훈련 기록',exact:true}).click();
+  await page.getByRole('button',{name:'훈련 마무리',exact:true}).click();
   await page.getByRole('button',{name:'훈련 마치기',exact:true}).click();
   await panel.getByRole('button',{name:'도움 없이 해결했어요'}).click();
   await expect(panel.locator('summary')).toContainText('도움 없이 정답 해결 · 본인 확인');
   expect(reflectionCalls).toBe(1);expect(generationCalls).toBe(0);
   await page.reload();await page.getByRole('button',{name:'훈련 기록',exact:true}).click();
+  await page.getByText('제출 피드백으로 만든 연습 목표',{exact:true}).click();
   await expect(panel.locator('summary')).toContainText('도움 없이 정답 해결 · 본인 확인');
   await panel.getByRole('button',{name:'같은 목표로 다시 연습'}).click();
   await expect(panel.getByRole('alert')).toBeVisible();
@@ -78,6 +81,7 @@ for(const width of [390,1440])test('confirmed feedback becomes a linked training
   await panel.getByRole('button',{name:'1차 훈련 기록 보기'}).click();
   await expect(page.locator('#training-detail-heading')).toBeFocused();
   await page.reload();await page.getByRole('button',{name:'훈련 기록',exact:true}).click();
+  await page.getByText('제출 피드백으로 만든 연습 목표',{exact:true}).click();
   await expect(panel.locator('summary').first()).toContainText('2차');
   expect(repeatCalls).toBe(2);expect(generationCalls).toBe(0);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

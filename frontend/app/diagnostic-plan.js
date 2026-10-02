@@ -1,16 +1,16 @@
 'use client';
 import {useRef,useState} from 'react';
-export default function DiagnosticPlan({api,row,index,onOpen,onGeneration}) {
+export default function DiagnosticPlan({api,row,index,onOpen,onGeneration,sourceKind="CODE_OBSERVATION"}) {
   const [options,setOptions]=useState(null),[plans,setPlans]=useState([]),[goal,setGoal]=useState(''),[selected,setSelected]=useState({}),[rule,setRule]=useState({});
   const [busy,setBusy]=useState(false),[error,setError]=useState('');const lock=useRef(false),pending=useRef(null);
-  const base='/api/diagnostic-plans',query=`evaluationId=${row.id}&observationIndex=${index}`;
+  const base='/api/diagnostic-plans',query=`evaluationId=${row.id}&observationIndex=${index}&sourceKind=${sourceKind}`;
   async function load(){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{
     const [value,saved]=await Promise.all([api(`${base}/options?${query}`),api(`${base}?evaluationId=${row.id}`)]);
-    setOptions(value);setPlans(saved.filter(p=>p.observationIndex===index));
-    setGoal(old=>old||(value.observation.recommendation.length<=120?value.observation.recommendation:''));
+    setOptions(value);setPlans(saved.filter(p=>p.observationIndex===index&&(p.sourceKind||'CODE_OBSERVATION')===sourceKind));
+    setGoal(old=>old||saved.find(p=>p.observationIndex===index&&(p.sourceKind||'CODE_OBSERVATION')===sourceKind)?.goal||(value.observation.recommendation.length<=120?value.observation.recommendation:''));
   }catch(e){setError(e.message);}finally{lock.current=false;setBusy(false);}}
   async function confirm(event){event.preventDefault();if(lock.current)return;lock.current=true;setBusy(true);setError('');
-    pending.current ||= {key:crypto.randomUUID(),body:{evaluationId:row.id,observationIndex:index,reviewHash:options.reviewHash,goal}};
+    pending.current ||= {key:crypto.randomUUID(),body:{evaluationId:row.id,observationIndex:index,reviewHash:options.reviewHash,goal,...(sourceKind==='SELF_REPORT'?{sourceKind}: {})}};
     try{const plan=await api(base,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':pending.current.key},body:JSON.stringify(pending.current.body)});
       pending.current=null;setPlans(old=>[plan,...old.filter(p=>p.id!==plan.id)]);window.dispatchEvent(new Event('gamjaoj-plan-changed'));
     }catch(e){if(e.status>=400&&e.status<500)pending.current=null;setError(e.message);}finally{lock.current=false;setBusy(false);}}

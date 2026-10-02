@@ -33,7 +33,8 @@ for(const width of [390,820,1710])test(`training records search, replay and navi
   });
   await page.goto(base+'/#training');
   const panel=page.getByRole('region',{name:'훈련 세션',exact:true});
-  await expect(panel.getByRole('heading',{name:'새 훈련 시작'})).toBeVisible();
+  await page.getByRole('navigation',{name:'훈련 화면'}).getByRole('button',{name:'내 훈련 기록',exact:true}).click();
+  await expect(panel.getByRole('button',{name:'직접 훈련 시작',exact:true})).toBeVisible();
   await expect(panel.locator('.training-record-row')).toHaveCount(10);
   await panel.getByRole('navigation',{name:'훈련 기록 페이지'}).getByRole('button',{name:'다음'}).click();
   await expect(panel.locator('.training-record-row')).toHaveCount(5);
@@ -48,8 +49,9 @@ for(const width of [390,820,1710])test(`training records search, replay and navi
   await expect(panel.getByLabel('저장된 마무리 메모')).toHaveText('범위를 먼저 확인했어요.');
   await panel.getByRole('button',{name:/정식 제출 · AC · 정답/}).click();
   await expect(panel.getByLabel('훈련에 저장된 코드')).toContainText('당시 저장된 코드');
-  await panel.getByRole('button',{name:'상세 닫기'}).click();
-  await expect(page.locator('#training-detail-heading')).toHaveCount(0);
+  await page.getByRole('dialog',{name:'훈련 상세 기록'}).getByRole('button',{name:'닫기',exact:true}).click();
+  await expect(page.getByRole('dialog',{name:'훈련 상세 기록'})).toBeHidden();
+  await panel.getByRole('button',{name:'직접 훈련 시작',exact:true}).click();
   await panel.getByLabel('훈련할 문제').selectOption('two');
   await panel.getByLabel('이번 훈련 목표').fill('큐에 넣는 시점 확인');
   await page.locator('.training-hub-view').evaluate(el=>el.scrollTo(0,0));
@@ -63,20 +65,25 @@ for(const width of [390,820,1710])test(`training records search, replay and navi
   await panel.getByRole('button',{name:'훈련 이어 풀기'}).click();
   await expect(page.getByLabel('풀이할 문제')).toHaveValue('two');
   await page.getByRole('button',{name:'훈련 기록',exact:true}).click();
+  await panel.getByRole('button',{name:'훈련 마무리',exact:true}).click();
   await panel.getByLabel('마무리 메모').fill('방문 처리를 큐에 넣을 때 했어요.');
   await page.locator('.training-hub-view').evaluate(el=>el.scrollTo(0,0));
   await page.screenshot({path:`/tmp/gamja-training-active-${width}.png`,fullPage:true});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await expect(panel).toHaveCSS('background-color','rgb(24, 36, 58)');
+  await expect(page.getByRole('dialog',{name:'훈련 마무리'})).toHaveCSS('background-color','rgb(24, 36, 58)');
   await panel.getByRole('button',{name:'훈련 마치기'}).click();
   await expect(panel.getByRole('button',{name:'같은 훈련 요청 다시 확인'})).toBeEnabled();
   await page.reload();
   await panel.getByRole('button',{name:'같은 훈련 요청 다시 확인'}).click();
   await expect.poll(()=>endBodies.length).toBe(2);
   expect(endBodies).toEqual([{note:'방문 처리를 큐에 넣을 때 했어요.'},{note:'방문 처리를 큐에 넣을 때 했어요.'}]);
+  await page.getByRole('navigation',{name:'훈련 화면'}).getByRole('button',{name:'내 훈련 기록',exact:true}).click();
+  await panel.locator('.training-record-row').first().click();
   await expect(panel.getByLabel('저장된 마무리 메모')).toHaveText('방문 처리를 큐에 넣을 때 했어요.');
   expect(aiPosts).toBe(0);
-  await panel.getByRole('button',{name:'진단·추천 커리큘럼 보기'}).click();
+  await page.getByRole('dialog',{name:'훈련 상세 기록'}).getByRole('button',{name:'닫기',exact:true}).click();
+  await page.getByRole('navigation',{name:'훈련 화면'}).getByRole('button',{name:'학습 계획',exact:true}).click();
+  await page.getByRole('button',{name:'진단·수동 계획 만들기'}).click();
   await expect(page.getByRole('heading',{name:'나에게 맞는 시작점 찾기'})).toBeVisible();
 });
 for(const held of [false,true])test(`training empty and held states with followup paging ${held}`,async({page})=>{
@@ -97,18 +104,24 @@ for(const held of [false,true])test(`training empty and held states with followu
   });
   await page.goto(base+'/#training');
   const panel=page.getByRole('region',{name:'훈련 세션',exact:true}),followup=page.getByRole('region',{name:'다음 훈련',exact:true});
+  await page.getByText('제출 피드백으로 만든 연습 목표',{exact:true}).click();
   await expect(followup.getByRole('alert')).toBeVisible();
   await followup.getByRole('button',{name:'목록 다시 불러오기'}).click();
   if(held){
     await expect(panel.getByRole('button',{name:'훈련 이어 풀기'})).toBeDisabled();
+    await panel.getByRole('button',{name:'훈련 마무리',exact:true}).click();
     await expect(panel.getByRole('button',{name:'훈련 마치기'})).toBeEnabled();
+    await page.keyboard.press('Escape');
     await expect(followup.locator('.followup-record')).toHaveCount(5);
     await followup.getByRole('navigation',{name:'다음 훈련 페이지'}).getByRole('button',{name:'다음'}).click();
     await expect(followup.locator('.followup-record')).toHaveCount(1);
     await expect(followup).toContainText('연습 목표 5');
+    await page.getByRole('navigation',{name:'훈련 화면'}).getByRole('button',{name:'내 훈련 기록',exact:true}).click();
     await expect(panel.locator('.training-record-main small')).not.toContainText(version);
   }else{
+    await page.getByRole('navigation',{name:'훈련 화면'}).getByRole('button',{name:'내 훈련 기록',exact:true}).click();
     await expect(panel).toContainText('아직 훈련 기록이 없어요.');
+    await page.getByRole('navigation',{name:'훈련 화면'}).getByRole('button',{name:'학습 계획',exact:true}).click();
     await expect(followup).toContainText('제출 코드의 피드백에서');
     await expect(page.getByText('AI 분석 예산·사용량',{exact:true})).toHaveCount(0);
   }

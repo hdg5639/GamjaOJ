@@ -16,13 +16,12 @@ import DiagnosticPanel from './diagnostic-panel';
 import RecordHistory from './record-history';
 import MyPage from './my-page';
 import ResetCode from './reset-code';
-import SessionPanel from './session-panel';
+import TrainingHub from './training-hub';
 import ProblemCatalog from './problem-catalog';
 import NavIcon from './nav-icon';
 import AiFeedback from './ai-feedback';
-import FollowupPanel from './followup-panel';
 import ProblemTeaching from './problem-teaching';
-import AiOperations, { AiBudget } from './ai-operations';
+import AiOperations from './ai-operations';
 import dynamic from 'next/dynamic';
 import {verdictText,verdictHelp} from './verdicts';
 import {ExportSubmission} from './integrations-panel';
@@ -43,6 +42,9 @@ public class Main {
 const label = item => item.verdict ? verdictText(item.verdict) : item.status === 'RUNNING' ? '채점 중' : '채점 대기';
 
 export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar }) {
+  const [diagnosticReport,setDiagnosticReport]=useState(null);
+  const [learningEvaluation,setLearningEvaluation]=useState('');
+  const openLearning=evaluationId=>{setLearningEvaluation(evaluationId);setScreen('training');window.dispatchEvent(new CustomEvent('gamjaoj-curriculum-open',{detail:evaluationId}));};
   const [size,changeSize]=useEditorSizing(user.id,'practice');
   const [split,setSplit]=useSplit(user.id,'practice');
   const [layout,setLayout]=useSolvingLayout(user.id);
@@ -335,15 +337,13 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       {['home','catalog'].includes(screen)&&<button className="primary" onClick={()=>setScreen('generation')}>+ 문제 만들기</button>}
     </div>
     {opened('mypage')&&<div className="training-view" hidden={screen!=='mypage'}><MyPage activity={activity} api={api} user={user} problems={problems} onChoose={chooseProblem} onDiagnostic={()=>setScreen('diagnostic')}/></div>}
-    <div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{opened('diagnostic') && <DiagnosticPanel visible={screen==='diagnostic'} user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onRuleDraft={draft=>{setRuleDraft({...(typeof draft==='string'?{text:draft}:draft),key:crypto.randomUUID()});setGenerationMode('hybrid');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>
+    <div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{opened('diagnostic') && <DiagnosticPanel requestedReport={diagnosticReport} onLearning={openLearning} visible={screen==='diagnostic'} user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onRuleDraft={draft=>{setRuleDraft({...(typeof draft==='string'?{text:draft}:draft),key:crypto.randomUUID()});setGenerationMode('hybrid');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>
     <div className="catalog-view" hidden={!['home','catalog'].includes(screen)}><ProblemCatalog home={['home','catalog'].includes(screen)} onNavigate={setScreen} api={api} onChanged={value=>{setProblems(items=>items.map(p=>p.version===value.version?value:p));window.dispatchEvent(new Event('gamjaoj-problems-changed'));}} problems={problems} loaded={loaded} error={error}
       selectedVersion={version} locked={busy || !!pending} onChoose={chooseProblem} /></div>
-    <div className="training-view training-hub-view" hidden={screen !== 'training'}><div className="training-hub">
-      {!loaded&&<p role="status">훈련 기록을 불러오는 중…</p>}
-      {loaded && <SessionPanel user={user} problem={problem} problems={problems} sessions={sessions} onChange={updateSessions} activity={activity} api={api} onOpen={openTraining} onDiagnostic={()=>setScreen('diagnostic')} locked={busy||!!pending} />}
-      {loaded&&<FollowupPanel api={api} onOpen={openTraining} onGeneration={()=>setScreen('generation')} locked={busy||!!pending}/>}
-      {opened('training')&&<AiBudget visible={screen==='training'} api={api} collapsible/>}
-    </div></div>
+    <div className="training-view training-hub-view" hidden={screen !== 'training'}>
+      {!loaded&&<p role="status">훈련 정보를 불러오는 중…</p>}
+      {loaded&&<TrainingHub user={user} api={api} problem={problem} problems={problems} sessions={sessions} onChange={updateSessions} activity={activity} onOpen={openTraining} onDiagnostic={sessionId=>{setDiagnosticReport(sessionId?{id:sessionId,key:crypto.randomUUID()}:null);setScreen('diagnostic');}} onGeneration={()=>setScreen('generation')} locked={busy||!!pending} visible={screen==='training'} initialEvaluation={learningEvaluation}/>}
+    </div>
     <div className="training-view" hidden={screen !== 'generation'}>{opened('generation') && <AiOperations visible={screen==='generation'} api={api} userId={user.id} initialMode={generationMode} ruleDraft={ruleDraft} onOpen={async generatedVersion => {
       if (busy || pending) throw new Error('진행 중인 제출을 먼저 마쳐 주세요.');
       const items=await api('/api/problems');setProblems(items);chooseProblem(generatedVersion);

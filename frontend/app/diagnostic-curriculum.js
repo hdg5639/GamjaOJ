@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-export default function DiagnosticCurriculum({api,evaluationId}) {
+export default function DiagnosticCurriculum({api,evaluationId,onLearning}) {
   const [plans,setPlans]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const lock=useRef(false),pending=useRef(null),revision=useRef(0);
   useEffect(()=>{let live=true;const refresh=async()=>{if(lock.current||pending.current)return;const version=revision.current;try{const values=await api(`/api/diagnostic-plans?evaluationId=${evaluationId}`);if(live&&version===revision.current&&!lock.current&&!pending.current)setPlans(values);}catch(e){if(live)setError(e.message);}};refresh();window.addEventListener('gamjaoj-plan-changed',refresh);return()=>{live=false;window.removeEventListener('gamjaoj-plan-changed',refresh);};},[evaluationId]);
@@ -14,6 +14,8 @@ export default function DiagnosticCurriculum({api,evaluationId}) {
   function open(plan){const node=document.getElementById(`diagnostic-observation-${evaluationId}-${plan.observationIndex}`);if(node){const detail=node.querySelector('.diagnostic-observation-detail');if(detail)detail.open=true;node.scrollIntoView({block:'start'});node.focus();}}
   const next=plans?.find(p=>p.status==='ACTIVE')||plans?.find(p=>p.status==='READY');
   return <section className="diagnostic-saved-curriculum" aria-label="학습 순서"><h3>내가 저장한 커리큘럼</h3><p className="muted">추천에서 확인한 목표를 저장하면 여기에 모여요. 순서를 조정하고 각 목표의 문제를 골라 훈련으로 이어갈 수 있어요.</p>
+    <button className="primary" onClick={()=>onLearning(evaluationId)}>훈련 화면에서 이어서 학습</button>
+    <details><summary>계획 순서 직접 조정</summary>
     <button className="secondary" disabled={busy||!!pending.current} onClick={load}>학습 순서 불러오기</button>
     {error&&<p role="alert">{error}</p>}
     {pending.current&&<button disabled={busy} onClick={()=>move(0,0)}>같은 순서 저장 다시 확인</button>}
@@ -23,6 +25,6 @@ export default function DiagnosticCurriculum({api,evaluationId}) {
       <button className="secondary" aria-label={`${index+1}번째 목표 위로`} disabled={busy||!!pending.current||index===0} onClick={()=>move(index,-1)}>위로</button>
       <button className="secondary" aria-label={`${index+1}번째 목표 아래로`} disabled={busy||!!pending.current||index===plans.length-1} onClick={()=>move(index,1)}>아래로</button>
       <button className="secondary" onClick={()=>open(plan)}>관찰·계획 보기</button>
-    </li>)}</ol>
+    </li>)}</ol></details>
   </section>;
 }
