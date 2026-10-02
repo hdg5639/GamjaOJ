@@ -7,11 +7,12 @@ import Pager,{usePage} from './pager';
 const states={THEME_FAILED:'소재 준비 실패',QUEUED:'생성 대기',GENERATING:'문제 작성 중',AWAITING_REVIEW:'검증 시작 대기',VALIDATING:'테스트 검증 중',READY:'풀이 준비 완료',FAILED:'검증 실패',NEEDS_AUTH:'생성 서비스 연결 확인 필요',NEEDS_REVIEW:'생성 중단 · 서비스 확인 필요'};
 const themeStates={QUEUED:'새 소재 준비 대기',RUNNING:'새 소재 구상 중',HELD_DISABLED:'테마 API 연결 대기',HELD_BUDGET:'테마 API 예산 대기',FAILED:'테마 생성 실패',UNKNOWN:'테마 호출 결과 확인 필요'};
 const activeStates=['QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING'];
-export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleDraft}) {
+export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleDraft,visible=true}) {
   const [draftActive,setDraftActive]=useState(false);
   const [hybridActive,setHybridActive]=useState(false),[hybridOpened,setHybridOpened]=useState(initialMode==='hybrid');
   const [shared,setShared]=useState(true);
   const [mode,setMode]=useState(initialMode);
+  useEffect(()=>{setMode(initialMode);if(initialMode==='hybrid')setHybridOpened(true);},[initialMode,ruleDraft?.key]);
   const [jobs,setJobs]=useState([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false);
   const [category,setCategory]=useState('sequences'),[tags,setTags]=useState(['basics']);
   const [options,setOptions]=useState([]),[optionsError,setOptionsError]=useState(''),[optionsAttempt,setOptionsAttempt]=useState(0);
@@ -53,9 +54,9 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
   const pending=useRef(null);
   const active=draftActive||hybridActive||jobs.some(job=>activeStates.includes(job.status));
   async function refresh(){setJobs(await api('/api/generation'));setLoaded(true);}
-  useEffect(()=>{let stopped=false;
+  useEffect(()=>{if(!visible)return;let stopped=false;
     async function load(){try{const data=await api('/api/generation');if(!stopped){setJobs(data);setLoaded(true);}}catch(e){if(!stopped)setError(e.message);}}
-    load();const timer=setInterval(load,5000);return()=>{stopped=true;clearInterval(timer);};},[]);
+    load();const timer=setInterval(load,5000);return()=>{stopped=true;clearInterval(timer);};},[visible]);
   async function create(){
     if(busy||!resolved||!tags.length)return;
     setBusy(true);setError('');
@@ -82,8 +83,8 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
       <button aria-pressed={mode==='request'} aria-controls="request-generation" onClick={()=>setMode('request')}>직접 요청하기{draftActive?' · 진행 중':''}</button>
       <button aria-pressed={mode==='hybrid'} aria-controls="hybrid-generation" onClick={()=>{setHybridOpened(true);setMode('hybrid');}}>규칙 고정 출제 · 실험{hybridActive?' · 진행 중':''}</button>
     </div>
-    <div id="hybrid-generation" hidden={mode!=='hybrid'}>{hybridOpened&&<HybridGeneration userId={userId} api={api} onOpen={onOpen} ruleDraft={ruleDraft} onActive={setHybridActive} visible={mode==='hybrid'} otherActive={draftActive||jobs.some(job=>activeStates.includes(job.status))}/>}</div>
-    <div id="request-generation" hidden={mode!=='request'}><SpecDrafts api={api} generationActive={hybridActive||jobs.some(job=>activeStates.includes(job.status))} onActive={setDraftActive} onOpen={onOpen}/></div>
+    <div id="hybrid-generation" hidden={mode!=='hybrid'}>{hybridOpened&&<HybridGeneration userId={userId} api={api} onOpen={onOpen} ruleDraft={ruleDraft} onActive={setHybridActive} visible={visible&&mode==='hybrid'} otherActive={draftActive||jobs.some(job=>activeStates.includes(job.status))}/>}</div>
+    <div id="request-generation" hidden={mode!=='request'}><SpecDrafts visible={visible} api={api} generationActive={hybridActive||jobs.some(job=>activeStates.includes(job.status))} onActive={setDraftActive} onOpen={onOpen}/></div>
     <div id="tag-generation" hidden={mode!=='tags'}>
     <div className="generation-layout">
     <section className="generation-compose" aria-label="태그로 문제 요청">
@@ -162,10 +163,10 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
   </section>;
 }
 
-export function AiBudget({api}) {
+export function AiBudget({api,visible=true}) {
   const [budget,setBudget]=useState(null),[error,setError]=useState('');
   useEffect(()=>{
-    let stopped=false;
+    if(!visible)return;let stopped=false;
     async function load(){
       try{
         const status=await api('/api/ai/status');
@@ -174,7 +175,7 @@ export function AiBudget({api}) {
     }
     load();const timer=setInterval(load,30000);
     return()=>{stopped=true;clearInterval(timer);};
-  },[]);
+  },[visible]);
   if(!budget)return null;
   return <section className="ai-operations" aria-label="API 예산">
     <h3>API 예산</h3>
