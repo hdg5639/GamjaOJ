@@ -397,6 +397,7 @@ public class GenerationJobs {
                 report.put("evidenceId",ledger.freeze(id,job.revision(),report).toString());
                 var teaching=JudgeJson.JSON.createObjectNode().put("editorial",job.artifacts().path("editorial").asText());teaching.set("hints",job.artifacts().path("hints"));
                 jdbc.sql("UPDATE problem_version SET ready=true,time_limits_json=?,teaching_json=?,shared=(SELECT share_on_publish FROM generation_job WHERE id=?) WHERE id=? AND ready=false").param(limits).param(teaching.toString()).param(job.id()).param(ver).update();
+                ThinkingDifficulty.publish(jdbc,ver,ThinkingDifficulty.template(type),"TEMPLATE");
                 jdbc.sql("UPDATE generation_job SET status='READY',validation_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").param(report.toString()).param(id).update();
             }
         }

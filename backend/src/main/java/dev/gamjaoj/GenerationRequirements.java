@@ -9,7 +9,7 @@ import java.util.List;
 final class GenerationRequirements {
     static final String AUTHOR_VERSION="rule-author-requirements-v3";
     static final String AUTHOR=read("requirements-author.txt"), REVIEW=read("requirements-review.txt"), RULE_AUTHOR=read("requirements-rule-author.txt");
-    private static String read(String name) {
+    static String read(String name) {
         try(var in=GenerationRequirements.class.getResourceAsStream("/generation/"+name)) {
             if(in==null)throw new IllegalStateException("Missing generation policy: "+name);
             return new String(in.readAllBytes(),StandardCharsets.UTF_8);

@@ -26,6 +26,9 @@ REQUIREMENTS_REVIEW = Path(__file__).with_name('requirements-review.txt').read_t
 REQUIREMENTS_SCHEMA = json.loads(Path(__file__).with_name('requirements-schema.json').read_text())
 
 
+THINKING_REVIEW = Path(__file__).with_name('thinking-review.txt').read_text()
+THINKING_SCHEMA = json.loads(Path(__file__).with_name('thinking-schema.json').read_text())
+
 PROMPT_PROFILE = 'sequence-sum-compact-v1'
 
 
@@ -58,10 +61,12 @@ def draft_schema():
     return {'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}
 
 
-def review_schema(requirements=False):
+def review_schema(requirements=False, thinking=False):
     case={'type':'object','properties':{k:{'type':'string'} for k in ('input','output','reason')},'required':['input','output','reason'],'additionalProperties':False}
     mutant={'type':'object','properties':{'source':{'type':'string'},'witness':case,'explanation':{'type':'string'}},'required':['source','witness','explanation'],'additionalProperties':False}
     props={'verdict':{'type':'string','enum':['ACCEPT','REVISE']},'issues':{'type':'array','items':{'type':'string'},'maxItems':8},'validCases':{'type':'array','items':case,'maxItems':8},'invalidCases':{'type':'array','items':{'type':'string'},'maxItems':8},'mutants':{'type':'array','items':mutant,'maxItems':2}}
+    if thinking:
+        props['thinking'] = copy.deepcopy(THINKING_SCHEMA)
     if requirements:
         props['requirementsReview'] = copy.deepcopy(REQUIREMENTS_SCHEMA)
     return {'type':'object','properties':props,'required':list(props),'additionalProperties':False}
@@ -146,7 +151,7 @@ class CodexCli(GenerationAdapter):
             self.version_checked = True
         contract = directory / 'schema.json'
         is_draft=assignment['spec'].get('phase')=='EXPERIMENTAL_SPEC_DRAFT'
-        contract.write_text(json.dumps(final_schema(assignment["spec"].get("phase")=="EXPERIMENTAL_FINAL_REVIEW") if assignment["spec"].get("phase") in ("EXPERIMENTAL_FINAL_PLAN","EXPERIMENTAL_FINAL_REVIEW") else review_schema(assignment['spec'].get('requirementsPolicy') == 'v1') if assignment["spec"].get("phase")=="EXPERIMENTAL_REVIEW" else draft_schema() if is_draft else schema(oracle, assignment.get('fields', (assignment.get('repair') or {}).get('fields')))))
+        contract.write_text(json.dumps(final_schema(assignment["spec"].get("phase")=="EXPERIMENTAL_FINAL_REVIEW") if assignment["spec"].get("phase") in ("EXPERIMENTAL_FINAL_PLAN","EXPERIMENTAL_FINAL_REVIEW") else review_schema(assignment['spec'].get('requirementsPolicy') == 'v1', assignment['spec'].get('thinkingRubric') == 'v1') if assignment["spec"].get("phase")=="EXPERIMENTAL_REVIEW" else draft_schema() if is_draft else schema(oracle, assignment.get('fields', (assignment.get('repair') or {}).get('fields')))))
         output = directory / 'result.json'
         prompt = ('Write an independent Java 8 oracle using BigInteger and a different approach. '
                   'Only the trusted problem definition is provided; do not seek any reference implementation.' if oracle else
@@ -321,7 +326,7 @@ class CodexCli(GenerationAdapter):
                       'title below 100, category/tags below 80, boundary/mutant entries below 1000, examples below 2000 per field. '
                       'No more than ten entries per list. This draft will require independent semantic and execution validation.')
         if assignment['spec'].get('phase')=='EXPERIMENTAL_REVIEW':
-            prompt = ('Independently review this untrusted Korean problem definition without any existing solution source or strategy. '
+            prompt = (THINKING_REVIEW if assignment['spec'].get('thinkingRubric')=='v1' else '') + ('Independently review this untrusted Korean problem definition without any existing solution source or strategy. '
                       'Check mathematical consistency, sample arithmetic, constraints, ties and impossible cases. '
                       'If ambiguous or contradictory, return REVISE with specific Korean issues and empty case/mutant arrays; do not silently correct the definition. '
                       'Otherwise ACCEPT with empty issues, 2 to 8 distinct hand-computed valid boundary cases, 2 to 8 definitely invalid inputs, '

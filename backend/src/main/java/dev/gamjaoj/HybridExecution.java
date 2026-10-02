@@ -39,7 +39,7 @@ class HybridExecution {
         long bound=HybridArtifacts.MAX_PAYLOAD_BYTES+HybridModels.instructions(role).getBytes(StandardCharsets.UTF_8).length
                 +HybridModels.schema(role).toString().getBytes(StandardCharsets.UTF_8).length+4096L
                 +(role==READER?0L:(role==CONTENT_REVIEW?GenerationRequirements.REVIEW:GenerationRequirements.AUTHOR).getBytes(StandardCharsets.UTF_8).length)
-                +(role==CONTENT_REVIEW?GenerationRequirements.schema().toString().getBytes(StandardCharsets.UTF_8).length:0L)
+                +(role==CONTENT_REVIEW?GenerationRequirements.schema().toString().getBytes(StandardCharsets.UTF_8).length+ThinkingDifficulty.REVIEW.getBytes(StandardCharsets.UTF_8).length+ThinkingDifficulty.schema().toString().getBytes(StandardCharsets.UTF_8).length:0L)
                 +(role==PRESENTATION?8192L:0L) // bounded registered teaching and retheming instructions
                 +(HybridModels.author(role)?8192L:0L); // profile-specific author guidance
         return model.inputRate().multiply(BigDecimal.valueOf(bound))

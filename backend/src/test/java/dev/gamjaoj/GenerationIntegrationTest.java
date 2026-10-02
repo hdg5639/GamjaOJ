@@ -185,7 +185,7 @@ class GenerationIntegrationTest {
         generation.advance();
     }
     JsonNode independentReview(){
-        var value=JudgeJson.JSON.createObjectNode().put("verdict","ACCEPT");value.putArray("issues");value.set("requirementsReview",GenerationRequirementsTest.accepted());
+        var value=JudgeJson.JSON.createObjectNode().put("verdict","ACCEPT");value.putArray("issues");value.set("requirementsReview",GenerationRequirementsTest.accepted());value.set("thinking",ThinkingDifficulty.template(GenerationType.SUM));
         var cases=value.putArray("validCases");for(int i=1;i<=2;i++)cases.addObject().put("input",""+i).put("output","1").put("reason","boundary");
         value.putArray("invalidCases").add("").add("invalid");var mutants=value.putArray("mutants");
         for(int i=0;i<2;i++){var m=mutants.addObject().put("source","public class Main { /* mutant "+i+" */ }").put("explanation","logical mistake "+i);m.set("witness",cases.get(i).deepCopy());}return value;
@@ -231,6 +231,13 @@ class GenerationIntegrationTest {
         generation.complete(id,work.token(),independentReview(),null,null,null);
         jdbc.sql("UPDATE generation_spec_draft SET review_payload_json='{}' WHERE id=?").param(id).update();finishReview("WA");
         assertThat(drafts.view("other",id).error()).isEqualTo("REVIEW_ARTIFACT_FENCE_MISMATCH");
+    }
+    @Test void newDraftReviewRequiresActualThinkingAssessment() {
+        var id=reviewableDraft();drafts.review("other",id,drafts.view("other",id).specHash());var work=generation.claim();
+        var review=(com.fasterxml.jackson.databind.node.ObjectNode)independentReview();review.remove("thinking");
+        generation.complete(id,work.token(),review,null,null,null);
+        assertThat(drafts.view("other",id).status()).isEqualTo("REVIEW_FAILED");
+        assertThat(queue.claim(UUID.randomUUID())).isEmpty();
     }
     @Test void requirementsCannotBeOmittedOrFalselyAcceptedAfterDraftReviewClaim() {
         var id=reviewableDraft();drafts.review("other",id,drafts.view("other",id).specHash());var work=generation.claim();

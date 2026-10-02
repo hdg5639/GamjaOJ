@@ -110,9 +110,13 @@ final class HybridArtifacts {
         return contentReview(candidate,inputHash,false);
     }
     static JsonNode contentReview(JsonNode candidate,String inputHash,boolean requirements) {
+        return contentReview(candidate,inputHash,requirements,false);
+    }
+    static JsonNode contentReview(JsonNode candidate,String inputHash,boolean requirements,boolean thinking) {
         var r=bounded(candidate);
+        if(thinking||r.has("thinking"))ThinkingDifficulty.validate(r.path("thinking"));
         if(requirements||r.has("requirementsReview"))GenerationRequirements.validate(r.path("requirementsReview"),true);
-        var shape=(ObjectNode)r.deepCopy();shape.remove("requirementsReview");
+        var shape=(ObjectNode)r.deepCopy();shape.remove("requirementsReview");shape.remove("thinking");
         fields(shape,"schemaVersion","inputHash","proseEquivalent","teachingCorrect","implementationAligned","issues","reasoning");schema(r);
         require(r.path("inputHash").asText().equals(inputHash),"CONTENT_REVIEW_INPUT_FENCE");
         texts(r.path("issues"),0,16,2000);text(r.path("reasoning"),12000);
