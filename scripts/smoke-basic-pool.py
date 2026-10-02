@@ -24,17 +24,26 @@ def main():
     parser.add_argument('directories',nargs='+',type=Path)
     parser.add_argument('--language',choices=['ALL','JAVA','CPP','PYTHON'],default='ALL')
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--external-manifest',type=Path,help='Check all 358 attributed profiles and submit selected Java references')
     args=parser.parse_args()
     # Validate every local candidate before creating a user or submitting any job.
     candidates=[]
     languages=('JAVA','CPP','PYTHON') if args.language=='ALL' else (args.language,)
+    imported={}
+    if args.external_manifest:
+        rows=json.loads(args.external_manifest.read_text())
+        imported={row['version']:row for row in rows}
+        assert len(rows)==len(imported)==358 and languages==('JAVA',)
     for directory in args.directories:
         package=json.loads((directory/'package.json').read_text())
         meta=json.loads((directory/'metadata.json').read_text())
         sources={}
+        if imported:
+            row=imported[package['version']];layer=row['thinking']['layer']
+            meta=meta|dict(category=row['category'],difficulty='EASY' if layer<=2 else 'MEDIUM' if layer<=5 else 'HARD' if layer<=7 else 'EXPERT')
         for language in languages:
             filename={'JAVA':'Main.java','CPP':'Main.cpp','PYTHON':'Main.py'}[language]
-            sources[language]=(directory/'solutions'/language.lower()/filename).read_text()
+            sources[language]=(directory/'reference.java' if imported else directory/'solutions'/language.lower()/filename).read_text()
         candidates.append((package,meta,sources))
     invitation=helper.ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
     base=helper.ssh(os.environ['GAMJAOJ_APP_SSH_TARGET'],"sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env").rstrip('/')
@@ -59,6 +68,14 @@ def main():
         assert call('/api/auth/login','POST',dict(username=username,password=password),form=True)[0]==204
         status,catalog=call('/api/problems');assert status==200
         by_id={p['version']:p for p in catalog}
+        if imported:
+            for version,row in imported.items():
+                p=by_id[version]
+                assert p['category']==row['category'] and p['shared'] and not p['mine'] and p['submissionsEnabled']
+                assert p['thinking']['source']=='CURATED_ESTIMATE'
+                assert all(p['thinking'][key]==value for key,value in row['thinking'].items())
+                assert not any(k in p for k in ('tests','package','reference','teaching','generator','seed'))
+            print('PASS all 358 public categories, exact thinking profiles, access and hidden-data privacy',flush=True)
         for package,meta,sources in candidates:
             version=package['version']
             p=by_id[version]

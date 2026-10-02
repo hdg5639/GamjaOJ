@@ -60,7 +60,7 @@ def load(directory,source,review):
 def stage(root,source,profiles):
  directories=sorted(p for p in root.iterdir() if (p/'package.json').is_file())
  if len(directories)!=358 or len(profiles)!=358:raise ValueError('Entire 358-problem reviewed release required')
- lines=['BEGIN;',"SELECT pg_advisory_xact_lock(hashtext('iamywl-problemset-v1-release')); "]
+ lines=['BEGIN;', 'SET LOCAL standard_conforming_strings=on;',"SELECT pg_advisory_xact_lock(hashtext('iamywl-problemset-v1-release')); "]
  manifest=[];seen=set();image=LANGUAGES['JAVA']['image']
  for directory in directories:
   version=directory.name;package,meta,p,category,evidence=load(directory,source,profiles[version]);version=package['version']
@@ -75,7 +75,7 @@ def stage(root,source,profiles):
   criteria='problem_version='+quote(version)+' AND package_sha256='+quote(values['package_sha256'])+' AND layer='+str(layer)+' AND insight='+str(p['insight'])+' AND implementation='+str(p['implementation'])+' AND edge_cases='+str(p['edgeCases'])+' AND rationale='+quote(p['rationale'])+" AND source='CURATED_ESTIMATE' AND assessment_kind='IMPORT'"
   lines.append('DO $corpus$ BEGIN IF EXISTS (SELECT 1 FROM problem_thinking_profile WHERE problem_version='+quote(version)+') AND NOT EXISTS (SELECT 1 FROM problem_thinking_profile WHERE '+criteria+") THEN RAISE EXCEPTION 'Existing difficulty differs'; END IF; END $corpus$;")
   lines.append('INSERT INTO problem_thinking_profile(problem_version,package_sha256,layer,insight,implementation,edge_cases,rationale,source,assessment_kind) SELECT id,package_sha256,'+numbers+','+quote(p['rationale'])+",'CURATED_ESTIMATE','IMPORT' FROM problem_version WHERE id="+quote(version)+' AND NOT EXISTS(SELECT 1 FROM problem_thinking_profile WHERE problem_version='+quote(version)+');')
-  manifest.append(dict(version=version,title=package['title'],category=category,upstreamPath=meta['upstreamPath'],upstreamCommit=COMMIT,packageSha256=values['package_sha256'],referenceSha256=evidence['referenceHash'],thinking=p,adaptations=meta['adaptations']))
+  manifest.append(dict(version=version,title=package['title'],category=category,upstreamPath=meta['upstreamPath'],upstreamCommit=COMMIT,sourceHashes=meta['sourceHashes'],packageSha256=values['package_sha256'],referenceSha256=evidence['referenceHash'],thinking=p,adaptations=meta['adaptations']))
  lines.append('COMMIT;');return '\n'.join(lines)+'\n',manifest
 if __name__=='__main__':
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('root',type=Path);parser.add_argument('--source',type=Path,required=True);parser.add_argument('--profiles',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--manifest',type=Path,required=True);a=parser.parse_args();sql,manifest=stage(a.root,a.source,json.loads(a.profiles.read_text()));a.output.write_text(sql);a.output.chmod(0o600);a.manifest.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n');print('358 verified packages staged; no database changed')
