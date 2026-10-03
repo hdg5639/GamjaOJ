@@ -1,4 +1,5 @@
 'use client';
+import SelectControl from './select-control';
 import {useEffect,useState} from 'react';
 import Modal from './modal';
 
@@ -76,7 +77,7 @@ export default function AppearanceSettings() {
       </button>)}</div>
       <div className="appearance-editor-layout"><div className="appearance-controls">
         {tab==='editor'&&<section className="appearance-fonts"><h5>글꼴과 크기</h5>
-          <label>에디터 글꼴<select aria-label="에디터 글꼴" value={prefs.font} onChange={e=>save({...prefs,font:e.target.value})}>{Object.entries(api.fonts).map(([id,[label]])=><option key={id} value={id}>{label}</option>)}</select></label>
+          <label>에디터 글꼴<SelectControl aria-label="에디터 글꼴" value={prefs.font} onChange={e=>save({...prefs,font:e.target.value})}>{Object.entries(api.fonts).map(([id,[label]])=><option key={id} value={id}>{label}</option>)}</SelectControl></label>
           {prefs.font==='custom'&&<label>설치된 글꼴 이름<input aria-label="설치된 글꼴 이름" maxLength={80} value={prefs.customFont} onChange={e=>save({...prefs,customFont:e.target.value})}/></label>}
           <label className="appearance-size-label"><span>글자 크기 <output>{prefs.fontSize}px</output></span><input type="range" aria-label="에디터 글자 크기" min="10" max="28" value={prefs.fontSize} onChange={e=>save({...prefs,fontSize:Number(e.target.value)})}/></label>
           <small>기기에 설치된 글꼴을 사용해요.</small>

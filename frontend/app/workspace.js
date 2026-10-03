@@ -1,4 +1,5 @@
 'use client';
+import SelectControl from './select-control';
 
 import ExecutionMetrics from './execution-metrics';
 import ProblemId,{shortProblemId} from './problem-id';
@@ -351,10 +352,10 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     }} />}</div>
     <div className="practice-view" hidden={screen !== 'practice'}>
     <nav className="workspace-tools" aria-label="풀이 영역">
-        {problems.length > 1 && <label className="solve-problem-choice"><span className="sr-only">풀이할 문제</span><select value={version} disabled={busy || !!pending} aria-describedby={busy || pending || activeSession ? "problem-selection-status" : undefined}
+        {problems.length > 1 && <label className="solve-problem-choice"><span className="sr-only">풀이할 문제</span><SelectControl value={version} disabled={busy || !!pending} aria-describedby={busy || pending || activeSession ? "problem-selection-status" : undefined}
           onChange={event => { try{localStorage.setItem(selectionKey,event.target.value);}catch{} setVersion(event.target.value); restoreDraft(event.target.value);setInspected(null); }}>
           {problems.map(item => <option key={item.version} value={item.version}>{item.problemHeld?'[검토 중] ':''}{item.title} · {shortProblemId(item.version)}</option>)}
-        </select></label>}
+        </SelectControl></label>}
 
       <div className="layout-toolbar"><button aria-pressed={!resultsOpen&&mobilePane==='problem'} onClick={()=>{panelRevision.current++;setResultsOpen(false);setMobilePane('problem');}}>문제 보기</button>
       <SolvingLayoutChoice value={layout} onChange={setLayout} order={paneOrder} onOrderChange={setPaneOrder} mirrored={mirrored} onMirrorChange={setMirrored}/>
@@ -382,7 +383,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
             : `${shortProblemId(activeSession.problemVersion)} 훈련은 유지 중이에요. 현재 문제의 제출은 자유 풀이로 저장돼요.`}
         </p>}
         <div className="code-heading"><div className="code-caption"><span className="code-filename">{inspected?(problems.find(p=>p.version===inspected.problemVersion)?.api?.sourceFile||languageInfo[recordLanguage(inspected)].file):lang.file}</span><span className="draft-status code-save-note" hidden={!!inspected} title={draftStatus} aria-live="polite">{draftStatus}</span></div>
-          <span className="code-tools"><label className="language-choice"><span className="visually-hidden">언어</span><select aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+          <span className="code-tools"><label className="language-choice"><span className="visually-hidden">언어</span><SelectControl aria-label="풀이 언어" value={inspected?recordLanguage(inspected):language} disabled={busy||!!pending||!!inspected} onChange={e=>changeLanguage(e.target.value)}>{(inspected?[{id:recordLanguage(inspected),label:recordLanguageLabel(inspected)}]:(problem.languages||[languageInfo.JAVA])).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</SelectControl></label>
           {!inspected&&<EditorTools id="editor-tools"><summary>도구</summary><div className="tool-pop-panel">
             <label className="check-row vim-toggle"><input type="checkbox" checked={vim} onChange={e=>setVim(e.target.checked)}/>Vim 모드 <small>Esc 명령 모드 · i 입력 모드</small></label>
             <EditorShortcutHelp/>

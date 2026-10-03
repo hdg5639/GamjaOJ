@@ -1,4 +1,5 @@
 'use client';
+import SelectControl from './select-control';
 
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
@@ -79,9 +80,9 @@ export default function RuleOnboarding({api,onRegistered,draft,onOpen,listHost,s
       {target&&<div className="notice" role="status"><p><strong>진단 습관 겨냥</strong> · {target.pattern}</p><p className="draft-help">이 습관대로 짠 코드가 실제로 틀리는 문제만 등록돼요. 오답 코드 하나를 이 습관으로 작성해 검증합니다.</p>
         <button type="button" className="secondary" disabled={busy||!!pending.current} onClick={()=>setTarget(null)}>겨냥 해제</button></div>}
       <div className="problem-request-options">
-        <label className="field">목표 겹<select aria-label="문제 난이도" value={thinkingLayer} disabled={busy||!!pending.current} onChange={e=>setThinkingLayer(Number(e.target.value))}>{thinkingLayers.map(([name],i)=><option key={i} value={i+1}>{i+1}겹 · {name}</option>)}</select></label>
-        <label className="field">스타일<select aria-label="문제 스타일" value={style} disabled={busy||!!pending.current} onChange={e=>setStyle(e.target.value)}>{Object.entries(styles).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
-        <label className="field">분야<select aria-label="문제 분야" value={category} disabled={busy||!!pending.current} onChange={e=>setCategory(e.target.value)}><option value="AUTO">자동으로 고르기</option>{Object.entries(categoryLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+        <label className="field">목표 겹<SelectControl aria-label="문제 난이도" value={thinkingLayer} disabled={busy||!!pending.current} onChange={e=>setThinkingLayer(Number(e.target.value))}>{thinkingLayers.map(([name],i)=><option key={i} value={i+1}>{i+1}겹 · {name}</option>)}</SelectControl></label>
+        <label className="field">스타일<SelectControl aria-label="문제 스타일" value={style} disabled={busy||!!pending.current} onChange={e=>setStyle(e.target.value)}>{Object.entries(styles).map(([id,label])=><option key={id} value={id}>{label}</option>)}</SelectControl></label>
+        <label className="field">분야<SelectControl aria-label="문제 분야" value={category} disabled={busy||!!pending.current} onChange={e=>setCategory(e.target.value)}><option value="AUTO">자동으로 고르기</option>{Object.entries(categoryLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</SelectControl></label>
       </div>
       <p className="draft-help">{thinkingLayers[thinkingLayer-1][1]} {styleHelp[style]}</p><p className="draft-help">목표 겹은 출제 요청입니다. 생성된 문제의 실제 겹과 세 축은 최종 검토에서 자동 배정돼요. 목표와 다를 수 있으며, 공개·분류 설정에서 조정할 수 있어요.</p>
       <label className="field">원하는 규칙과 조건 (선택)<textarea rows={6} maxLength={10000} aria-describedby="rule-request-length" value={text} disabled={busy||!enabled||!!pending.current} onChange={e=>setText(e.target.value)} placeholder="예: 격자는 매초 90도 회전하고, 특정 시간에만 이동 가능한 연결과 소모·충전되는 자원이 있으며, K개의 지점을 모두 방문"/></label>

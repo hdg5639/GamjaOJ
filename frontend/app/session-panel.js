@@ -1,4 +1,5 @@
 'use client';
+import SelectControl from './select-control';
 
 import { useEffect, useRef, useState } from 'react';
 import Pager,{usePage} from './pager';
@@ -115,9 +116,9 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
       </div>
     </> : <>
       <p className="muted">선택한 문제의 제출을 한 기록으로 모아요. 목표를 비워 두면 자유 연습으로 기록합니다.</p>
-      <div className="training-start-fields"><label>훈련할 문제<select aria-label="훈련할 문제" value={target} onChange={event=>setTarget(event.target.value)} disabled={busy||!!pending||locked}>
+      <div className="training-start-fields"><label>훈련할 문제<SelectControl aria-label="훈련할 문제" value={target} onChange={event=>setTarget(event.target.value)} disabled={busy||!!pending||locked}>
         {!target&&<option value="">문제를 선택해 주세요</option>}{problems.map(item=><option key={item.version} value={item.version} disabled={item.problemHeld}>{item.problemHeld?'[검토 중] ':''}{item.title}</option>)}
-      </select></label>
+      </SelectControl></label>
       <label>이번 훈련 목표<input value={goal} onChange={event => setGoal(event.target.value)} maxLength={120} placeholder="예: 경계값을 먼저 확인하고 구현하기" disabled={busy || !!pending} /></label></div>
       {!problems.length&&<p className="draft-help">훈련할 수 있는 문제를 준비하고 있어요.</p>}
       <button className="primary" disabled={busy || !!pending || locked || !targetProblem || targetProblem.problemHeld} onClick={() => execute({kind:'start',key:crypto.randomUUID(),body:{problemVersion:target,goal}})}>훈련 시작</button>
@@ -130,7 +131,7 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
       <div className="training-section-heading"><h3>내 훈련 기록 <span className="muted">최근 {sessions.length}개</span></h3><span className="muted">진행 중 {sessions.filter(item=>item.status==='ACTIVE').length} · 종료 {sessions.filter(item=>item.status!=='ACTIVE').length}</span></div>
       <p className="draft-help">최근 훈련 최대 20개에서 검색·필터합니다. 상세 기록에는 최근 정식 제출 최대 50개를 표시해요.</p>
       <div className="training-record-filters"><label><span className="sr-only">훈련 기록 검색</span><input type="search" value={query} placeholder="문제명 또는 훈련 목표 검색" onChange={event=>{setQuery(event.target.value);sessionPaging.setPage(0);}}/></label>
-        <label><span className="sr-only">훈련 상태</span><select aria-label="훈련 상태" value={filter} onChange={event=>{setFilter(event.target.value);sessionPaging.setPage(0);}}><option value="ALL">전체 상태</option><option value="ACTIVE">진행 중</option><option value="ENDED">종료</option></select></label>
+        <label><span className="sr-only">훈련 상태</span><SelectControl aria-label="훈련 상태" value={filter} onChange={event=>{setFilter(event.target.value);sessionPaging.setPage(0);}}><option value="ALL">전체 상태</option><option value="ACTIVE">진행 중</option><option value="ENDED">종료</option></SelectControl></label>
         <button className="secondary" disabled={!query&&filter==='ALL'} onClick={()=>{setQuery('');setFilter('ALL');sessionPaging.setPage(0);}}>초기화</button></div>
       {opening&&<p role="status" className="muted">훈련 상세 기록을 불러오는 중…</p>}
       {!sessions.length?<p className="training-empty">아직 훈련 기록이 없어요. 학습 계획에서 연습을 시작하거나 목표를 직접 정해 보세요.</p>:!filtered.length?<p className="training-empty">조건에 맞는 기록이 없어요. 검색어나 상태를 바꿔 보세요.</p>:<ul className="training-record-list">
