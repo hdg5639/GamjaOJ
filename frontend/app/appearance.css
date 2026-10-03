@@ -58,6 +58,7 @@
 :root[data-custom-colors="true"] .code-editor .cm-panel :is(input,button) { background:var(--editor-background,#2b2b2b); color:var(--editor-ink,#a9b7c6); }
 :root[data-custom-colors="true"] :is(.primary,.catalog-entry .primary) { background:var(--green); color:var(--button-ink,#fff); }
 :root[data-custom-colors="true"] :is(.generation-modes,.catalog-tags span,.catalog-level,.notice,.intro-path span,.limit-chip,.limit-chip b,.onboard-chips span,.side-tabs,.catalog-list li:hover) { background:var(--subtle); color:var(--ink); border-color:var(--line); }
+:root[data-custom-colors="true"] .problem-catalog :is(.catalog-level.thinking-level,.catalog-tags span) { background:transparent; }
 :root[data-custom-colors="true"] .app-navigation { background:var(--sidebar-background); color:var(--sidebar-ink); }
 :root[data-custom-colors="true"] :is(.workspace-nav button,.nav-section-label,.navigation-note p,.navigation-note small,.sidebar-heading,.sidebar-toggle) { color:var(--sidebar-ink); }
 :root[data-custom-colors="true"] .workspace-nav button.active { background:var(--sidebar-active); color:var(--sidebar-active-ink); }

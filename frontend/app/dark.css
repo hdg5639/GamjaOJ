@@ -38,6 +38,7 @@
 :root[data-theme="dark"] .catalog-level[data-level="EXPERT"] strong { color:#ff8080; }
 :root[data-theme="dark"] .catalog-problem .version { color:#8a9a94; }
 :root[data-theme="dark"] .catalog-tags span { background:#1f2a27; }
+:root[data-theme="dark"] .problem-catalog :is(.catalog-level.thinking-level,.catalog-tags span) { background:transparent; }
 :root[data-theme="dark"] .catalog-list .catalog-actions button:last-child { background:#16302a; border-color:#2f5a48; color:#7fd3a3; }
 :root[data-theme="dark"] .catalog-empty { border-color:#34443f; }
 :root[data-theme="dark"] :is(.catalog-list li > .catalog-remove,.remove-confirm) { background:#2a1714; border-color:#5a2e28; }
