@@ -22,7 +22,7 @@ for(const width of [390,1024,1440])test(`sidebar preference applies across scree
   await page.getByRole('navigation',{name:'작업 화면'}).getByRole('button',{name,exact:true}).click();
   await expect(page.getByRole('button',{name:'사이드바 펼치기'})).toHaveAttribute('aria-expanded','false');
   await expect.poll(async()=>(await sidebar.boundingBox()).width).toBe(width>800?64:40);
-  expect((await header.boundingBox()).height).toBeLessThanOrEqual(44);
+  await expect.poll(async()=>(await header.boundingBox()).height).toBeLessThanOrEqual(44);
   const rail=await sidebar.boundingBox(),toggle=await sidebar.locator('.sidebar-toggle').boundingBox();
   expect(rail.width).toBe(width>800?64:40);
   expect(toggle.x).toBeGreaterThanOrEqual(rail.x);
@@ -30,7 +30,7 @@ for(const width of [390,1024,1440])test(`sidebar preference applies across scree
   expect(toggle.y+toggle.height).toBeLessThanOrEqual((await sidebar.locator('.workspace-nav').boundingBox()).y);
   await page.getByRole('button',{name:'사이드바 펼치기'}).press('Enter');
   await expect(page.getByRole('button',{name:'사이드바 접기'})).toHaveAttribute('aria-expanded','true');
-  expect((await header.boundingBox()).height).toBeGreaterThan(44);
+  await expect.poll(async()=>(await header.boundingBox()).height).toBeGreaterThan(44);
   if(width>800)await expect.poll(async()=>(await sidebar.boundingBox()).width).toBe(176);
   const label=await sidebar.locator('.nav-section-label').boundingBox(),collapse=await sidebar.locator('.sidebar-toggle').boundingBox();
   expect(collapse.x).toBeGreaterThanOrEqual(label.x+label.width);
@@ -48,7 +48,7 @@ for(const width of [390,1024,1440])test(`sidebar preference applies across scree
  await expect(page.getByLabel('Main.java',{exact:true})).toContainText('// preserve layout draft');
  await page.getByRole('button',{name:'사이드바 접기'}).click();
  await page.getByRole('button',{name:'내 설정',exact:true}).click();
- expect((await header.boundingBox()).height).toBeLessThanOrEqual(44);
+ await expect.poll(async()=>(await header.boundingBox()).height).toBeLessThanOrEqual(44);
  await page.getByRole('button',{name:'문제 풀기',exact:true}).click();
  await page.screenshot({path:`/tmp/gamja-sidebar-collapsed-${width}.png`});
  // Account a keeps its collapsed choice; an account without a saved choice starts expanded.
