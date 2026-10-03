@@ -30,10 +30,10 @@ export default function MyPage({api,user,problems,onChoose,onDiagnostic,activity
  function reflectionSaved(){const token=reviewRequest.current;setLearningRefresh(x=>x+1);api.clear?.();api(`/api/my/problems?page=${page}`).then(data=>{if(token===reviewRequest.current&&tab==='problems')setItems(data.items);}).catch(e=>{if(token===reviewRequest.current)setError(e.message);});}
  useEffect(()=>{if(!busy&&moving.current){moving.current=false;const results=document.getElementById('my-records-heading');results?.scrollIntoView({block:'start'});results?.focus({preventScroll:true});}},[busy,items]);
  return <section className="my-activity" aria-label="마이페이지">
-  <GrowthSummary api={api} activity={activity+refresh} onNavigate={screen=>{if(screen==='diagnostic')onDiagnostic();else window.location.hash=screen;}}/>
   <div className="my-activity-heading"><div><h2>{user.nickname}님의 풀이 기록</h2><p className="muted">정식 제출을 기준으로 모았어요. 직접 실행은 기록에 포함하지 않아요.</p></div><button className="secondary" disabled={busy} onClick={()=>{api.clear?.();setRefresh(x=>x+1);}}>기록 새로고침</button></div>
-  {summary&&<dl className="my-stats"><div><dt>정답을 맞힌 문제</dt><dd>{summary.solvedProblems}</dd></div><div><dt>풀어본 문제</dt><dd>{summary.attemptedProblems}</dd></div><div><dt>정식 제출</dt><dd>{summary.submitted}</dd></div></dl>}
-  <LearningActivity api={api} userId={user.id} activity={activity} refresh={refresh+learningRefresh} onChoose={onChoose}/>
+  <LearningActivity api={api} userId={user.id} activity={activity} refresh={refresh+learningRefresh} onChoose={onChoose}
+   growth={<GrowthSummary api={api} activity={activity+refresh} onNavigate={screen=>{if(screen==='diagnostic')onDiagnostic();else window.location.hash=screen;}}/>}
+   stats={summary&&<dl className="my-stats"><div><dt>정답을 맞힌 문제</dt><dd>{summary.solvedProblems}</dd></div><div><dt>풀어본 문제</dt><dd>{summary.attemptedProblems}</dd></div><div><dt>정식 제출</dt><dd>{summary.submitted}</dd></div></dl>}/>
   <section className="my-record-section" aria-label="문제와 제출 기록">
    <nav className="my-tabs" aria-label="내 기록 종류">{[['problems','풀어본 문제'],['submissions','전체 제출']].map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>{setTab(key);setPage(0);}}>{label}<span aria-hidden="true">{key==='problems'?summary?.attemptedProblems??'—':summary?.submitted??'—'}</span></button>)}</nav>
    <div className="my-record-toolbar"><p id="my-records-heading" tabIndex={-1} className="muted" role="status">{busy?'기록 확인 중…':`${tab==='problems'?'풀어본 문제':'전체 제출'} ${total}개${total>0?` · ${page*pageSize+1}–${Math.min((page+1)*pageSize,total)}번째`:''}`}</p><ListPagination page={page+1} pages={pages} onChange={changePage} label="상단 기록 페이지" disabled={busy}/></div>
