@@ -31,10 +31,27 @@ test('live editor font and syntax colors retain the editor and undo history',asy
  await expect(page.locator('.code-editor .cm-editor')).toHaveCSS('background-color','rgb(17, 34, 51)');
  await expect(page.locator('.code-editor .cm-scroller')).toHaveCSS('font-family',/Consolas/);
  await expect(page.locator('.cm-line span').filter({hasText:/^public$/})).toHaveCSS('color','rgb(171, 205, 239)');
- await editor.focus();await editor.press('Control+z');await expect(editor).not.toContainText('// edit');
+ await editor.focus();await editor.press('ControlOrMeta+z');await expect(editor).not.toContainText('// edit');
  await expect(editor).toContainText('public class Main');
  await page.reload();await expect(page.locator('.code-editor .cm-editor')).toHaveCSS('font-size','28px');
  await expect(page.locator('.code-editor .cm-editor')).toHaveCSS('background-color','rgb(17, 34, 51)');
+});
+for(const width of [390,1440])test(`bundled editor fonts render real glyphs and preserve editing at ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:1000});await open(page);
+ const editor=page.getByLabel('Main.java',{exact:true});await editor.fill('public class Main { String text = "한글"; }');
+ await editor.press('End');await editor.pressSequentially(' // keep undo');
+ const original=await editor.elementHandle(),cdp=await page.context().newCDPSession(page);
+ await cdp.send('DOM.enable');await cdp.send('CSS.enable');
+ const actualFonts=async()=>{const {root}=await cdp.send('DOM.getDocument');const {nodeId}=await cdp.send('DOM.querySelector',{nodeId:root.nodeId,selector:'.code-editor .cm-line'});if(!nodeId)return '';return (await cdp.send('CSS.getPlatformFontsForNode',{nodeId})).fonts.filter(f=>f.isCustomFont&&f.glyphCount>0).map(f=>f.familyName).join(' ');};
+ let dialog=await settings(page,'에디터');
+ for(const [id,family] of [['jetbrains',/JetBrains Mono/],['fira',/Fira Code/],['d2coding',/D2Coding/]]){
+  await dialog.getByLabel('에디터 글꼴',{exact:true}).selectOption(id);await expect.poll(actualFonts).toMatch(family);
+  expect(await editor.evaluate((n,old)=>n===old,original)).toBe(true);await expect(editor).toContainText('// keep undo');
+ }
+ await dialog.getByRole('button',{name:'닫기',exact:true}).click();await editor.focus();await editor.press('ControlOrMeta+z');await expect(editor).not.toContainText('// keep undo');
+ await page.reload();await expect.poll(actualFonts).toMatch(/D2Coding/);
+ dialog=await settings(page,'에디터');await dialog.getByLabel('에디터 글꼴',{exact:true}).selectOption('custom');await dialog.getByLabel('설치된 글꼴 이름',{exact:true}).fill('Gamja Nonexistent Font 9274');await expect(dialog.getByRole('status').filter({hasText:'기기에서 찾지 못해'})).toBeVisible();
+ await dialog.getByLabel('에디터 글꼴',{exact:true}).selectOption('jetbrains');await expect(dialog.getByText('기기에서 찾지 못해',{exact:false})).toHaveCount(0);await expect.poll(actualFonts).toMatch(/JetBrains Mono/);
 });
 test('app palettes are separate for light and dark, remembered, and resettable',async({page})=>{
  await open(page);let dialog=await settings(page);
