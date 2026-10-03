@@ -46,7 +46,7 @@ for(const diagnostic of [false,true])for(const width of [1024,1440])test(`indepe
 for(const diagnostic of [false,true])for(const layout of ['columns','default'])test(`${layout} all six pane orders preserve the live editor and undo ${diagnostic?'diagnostic':'practice'}`,async({page})=>{
  await page.setViewportSize({width:1440,height:900});await open(page,diagnostic);
  const editor=page.getByLabel(diagnostic?'진단 Java 코드':'Main.java',{exact:true});
- await editor.fill('// before');await editor.press('Control+End');await editor.pressSequentially(' after');
+ await editor.fill('// before');await editor.press('ArrowLeft');await editor.press('ControlOrMeta+End');await editor.pressSequentially(' after');
  if(layout==='columns')await page.getByRole('button',{name:'세로 3분할',exact:true}).click();
  const grid=page.locator(diagnostic?'.diagnostic-workspace':'.practice-grid');
  const panes={problem:grid.locator(':scope > article'),code:editor,console:grid.locator('.run-console')};
@@ -61,7 +61,7 @@ for(const diagnostic of [false,true])for(const layout of ['columns','default'])t
   if(layout==='columns'){expect(boxes[0].x+boxes[0].width).toBeLessThanOrEqual(boxes[1].x);expect(boxes[1].x+boxes[1].width).toBeLessThanOrEqual(boxes[2].x);}else {expect(boxes[0].x).toBeLessThan(boxes[1].x);expect(boxes[1].y).toBeLessThan(boxes[2].y);}
   await expect(editor).toContainText('// before after');
  }
- await editor.focus();await editor.press('Control+z');await expect(editor).toContainText('// before');await expect(editor).not.toContainText(' after');
+  await editor.focus();await editor.press('ControlOrMeta+z');await expect(editor).toContainText('// before');await expect(editor).not.toContainText(' after');
  await page.locator('summary[aria-label="패널 순서 변경"]:visible').click();await page.locator('.pane-order-editor:visible [data-pane-slot]').nth(2).dragTo(page.locator('.pane-order-editor:visible [data-pane-slot]').nth(0));
  await page.reload();await expect(grid).toHaveAttribute('data-pane-order','console-code-problem');
  if(layout==='default'){await page.locator('summary[aria-label="패널 순서 변경"]:visible').click();await page.getByRole('button',{name:'좌우 반전',exact:true}).click();await expect(grid).toHaveAttribute('data-mirrored','true');return;}

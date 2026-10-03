@@ -21,16 +21,17 @@ for(const width of [390,1024,1440])test(`sidebar preference applies across scree
  for(const name of ['문제 탐색','선택 진단','내 문제 생성','훈련 기록','마이페이지','문제 풀기']){
   await page.getByRole('navigation',{name:'작업 화면'}).getByRole('button',{name,exact:true}).click();
   await expect(page.getByRole('button',{name:'사이드바 펼치기'})).toHaveAttribute('aria-expanded','false');
+  await expect.poll(async()=>(await sidebar.boundingBox()).width).toBe(width>800?64:40);
   expect((await header.boundingBox()).height).toBeLessThanOrEqual(44);
   const rail=await sidebar.boundingBox(),toggle=await sidebar.locator('.sidebar-toggle').boundingBox();
-  expect(rail.width).toBe(width>800?52:40);
+  expect(rail.width).toBe(width>800?64:40);
   expect(toggle.x).toBeGreaterThanOrEqual(rail.x);
   expect(toggle.x+toggle.width).toBeLessThanOrEqual(rail.x+rail.width);
   expect(toggle.y+toggle.height).toBeLessThanOrEqual((await sidebar.locator('.workspace-nav').boundingBox()).y);
   await page.getByRole('button',{name:'사이드바 펼치기'}).press('Enter');
   await expect(page.getByRole('button',{name:'사이드바 접기'})).toHaveAttribute('aria-expanded','true');
   expect((await header.boundingBox()).height).toBeGreaterThan(44);
-  if(width>800)expect((await sidebar.boundingBox()).width).toBe(176);
+  if(width>800)await expect.poll(async()=>(await sidebar.boundingBox()).width).toBe(176);
   const label=await sidebar.locator('.nav-section-label').boundingBox(),collapse=await sidebar.locator('.sidebar-toggle').boundingBox();
   expect(collapse.x).toBeGreaterThanOrEqual(label.x+label.width);
   expect(Math.abs(collapse.y+collapse.height/2-label.y-label.height/2)).toBeLessThan(2);
