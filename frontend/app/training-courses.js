@@ -1,0 +1,56 @@
+'use client';
+import {useEffect,useRef,useState} from 'react';
+import SelectControl from './select-control';
+import Modal from './modal';
+import Pager,{usePage} from './pager';
+import ThinkingDifficulty from './thinking-difficulty';
+
+export default function TrainingCourses({api,userId,visible,sessions=[],onSessionsChange,onOpen,onToolsHost,locked,activity}) {
+ const [catalog,setCatalog]=useState([]),[enrollments,setEnrollments]=useState([]),[selected,setSelected]=useState(''),[browsing,setBrowsing]=useState(true),[kind,setKind]=useState('전체'),[loaded,setLoaded]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[pending,setPending]=useState(null),[preview,setPreview]=useState(null),[focused,setFocused]=useState(null),[switching,setSwitching]=useState(null),[note,setNote]=useState('');
+ const revision=useRef(0),lock=useRef(false);
+ const storageKey=`gamjaoj-course-request-${userId}`,choiceKey=`gamjaoj-course-selected-${userId}`;
+ useEffect(()=>{try{const id=localStorage.getItem(choiceKey);if(id){setSelected(id);setBrowsing(false);}const saved=JSON.parse(sessionStorage.getItem(storageKey));if(saved?.key&&saved?.path&&saved?.body&&['enroll','start'].includes(saved.kind))setPending(saved);}catch{}},[storageKey,choiceKey]);
+ async function refresh(){const request=++revision.current;try{const [courses,mine]=await Promise.all([api('/api/training-courses'),api('/api/training-courses/enrollments')]);if(request===revision.current){setCatalog(Array.isArray(courses)?courses:[]);setEnrollments(Array.isArray(mine)?mine:[]);setLoaded(true);}}catch(e){if(request===revision.current){setError(e.message);setLoaded(true);}}}
+ const active=sessions.find(s=>s.status==='ACTIVE');
+ useEffect(()=>{if(!visible)return;refresh();window.addEventListener('gamjaoj-training-changed',refresh);window.addEventListener('focus',refresh);const timer=active?setInterval(refresh,5000):null;return()=>{revision.current++;clearInterval(timer);window.removeEventListener('gamjaoj-training-changed',refresh);window.removeEventListener('focus',refresh);};},[visible,activity,active?.id]);
+ const track=enrollments.find(e=>e.enrollmentId===selected)||enrollments[0];
+ const steps=track?.steps||[],next=steps.find(s=>s.sessionId===active?.id)||steps.find(s=>s.available&&!s.solved)||steps.find(s=>s.available)||steps[0];
+ const chosen=steps.find(s=>s.position===focused)||next;
+ const paging=usePage(steps,5),coursePaging=usePage(catalog.filter(c=>kind==='전체'||c.course.kind===kind),6);
+ function select(id){setSelected(id);setFocused(null);paging.setPage(0);setBrowsing(false);try{localStorage.setItem(choiceKey,id);}catch{}}
+ function clearPending(){setPending(null);try{sessionStorage.removeItem(storageKey);}catch{}}
+ async function execute(attempt){if(lock.current||locked)return;lock.current=true;setBusy(true);setError('');setPending(attempt);try{sessionStorage.setItem(storageKey,JSON.stringify(attempt));}catch{}
+  try{
+   const result=await api(attempt.path,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':attempt.key},body:JSON.stringify(attempt.body)});
+   clearPending();setSwitching(null);setPreview(null);
+   if(attempt.kind==='enroll')select(result.enrollmentId);
+   await refresh();onSessionsChange(await api('/api/training-sessions'));
+   if(attempt.kind==='start'){
+    setFocused(attempt.body.position);
+    window.dispatchEvent(new Event('gamjaoj-training-changed'));
+    if(result.status==='ACTIVE')await onOpen(result.problemVersion);
+    else setError('이 요청의 훈련은 이미 종료됐어요. 현재 코스에서 새 훈련을 시작해 주세요.');
+   }
+  }catch(e){setError(e.message);if(e.status>=400&&e.status<500){clearPending();try{await refresh();onSessionsChange(await api('/api/training-sessions'));}catch{}}}
+  finally{lock.current=false;setBusy(false);}
+ }
+ function enroll(view){const mine=enrollments.find(e=>e.course.id===view.course.id&&e.course.revision===view.course.revision);if(mine){select(mine.enrollmentId);setPreview(null);return;}execute({kind:'enroll',key:crypto.randomUUID(),path:'/api/training-courses/enrollments',body:{courseId:view.course.id,revision:view.course.revision}});}
+ function start(step,finishNote=''){execute({kind:'start',key:crypto.randomUUID(),path:`/api/training-courses/enrollments/${track.enrollmentId}/start`,body:{position:step.position,activeSessionId:active?.id||null,note:finishNote}});}
+ function choose(step){setFocused(step.position);requestAnimationFrame(()=>document.getElementById('course-selected-heading')?.focus({preventScroll:true}));}
+ const disabled=busy||locked||!!pending;
+ return <section className="training-courses" aria-label="훈련 코스">
+  <header className="training-section-heading"><div><h2>{browsing?'훈련 코스 고르기':'나의 훈련 코스'}</h2><p className="muted">{browsing?'목표와 선행 지식에 맞는 코스를 골라 단계별로 연습해요.':'정답 제출로 진도를 쌓고, 원하는 문제를 골라 이어서 풀어요.'}</p></div><div className="training-tool-actions">{enrollments.length>0&&<button className="secondary" onClick={()=>setBrowsing(!browsing)}>{browsing?'내 코스 이어가기':'다른 코스 고르기'}</button>}</div></header>
+  {error&&<p role="alert" className="notice error">{error}</p>}{pending&&<button className="secondary" disabled={busy||locked} onClick={()=>execute(pending)}>같은 코스 요청 다시 확인</button>}
+  {!loaded?<p role="status">훈련 코스를 불러오는 중…</p>:browsing?<>
+   <div className="course-filter"><label>훈련 목적<SelectControl value={kind} onChange={e=>{setKind(e.target.value);coursePaging.setPage(0);}}>{['전체','입문','목표 대비','알고리즘 집중'].map(k=><option key={k}>{k}</option>)}</SelectControl></label><span className="muted">기존 문제로 구성 · AI 생성 없이 바로 준비</span></div>
+   {!catalog.length&&<p className="notice">제공 중인 코스가 없어요. <button className="secondary" onClick={()=>{setError('');refresh();}}>다시 불러오기</button></p>}
+   <ul className="course-catalog">{coursePaging.visible.map(view=>{const c=view.course,mine=enrollments.find(e=>e.course.id===c.id&&e.course.revision===c.revision);return <li key={c.id}><div className="course-catalog-meta"><span>{c.kind}</span><span>{c.stages.length}단계 · {view.steps.length}문제</span></div><h3>{c.title}</h3><p>{c.summary}</p><p className="muted">선행 지식 · {c.prerequisite}</p><div className="course-catalog-actions"><button className="secondary" onClick={()=>setPreview(view)}>코스 살펴보기</button><button className="primary" disabled={disabled||(!mine&&view.available!==view.steps.length)} onClick={()=>enroll(view)}>{mine?'이 코스 이어가기':view.available!==view.steps.length?'문제 준비 중':'이 코스로 훈련하기'}</button></div>{view.available!==view.steps.length&&<small className="muted">이용 가능 {view.available} / {view.steps.length}문제</small>}{mine&&<small className="muted">내 진도 {mine.solved} / {mine.steps.length}문제</small>}</li>;})}</ul><Pager paging={coursePaging} label="훈련 코스 페이지"/>
+  </>:!track?<p className="notice">아직 선택한 코스가 없어요. <button className="primary" onClick={()=>setBrowsing(true)}>코스 고르기</button></p>:<>
+   <div className="learning-workspace-top"><section className="learning-plan-overview"><label>훈련 코스 선택<SelectControl value={track.enrollmentId} onChange={e=>select(e.target.value)}>{enrollments.map(e=><option key={e.enrollmentId} value={e.enrollmentId}>{e.course.title}</option>)}</SelectControl></label><h3>{track.course.title}</h3><p>{track.course.summary}</p><div className="learning-progress"><strong>정답 제출 {track.solved} / {steps.length}문제</strong><progress aria-label="코스 정답 진도" max={steps.length||1} value={track.solved}/></div><p className="draft-help">이전 정답도 포함해요. 실행·오답은 제외하며, 정답 진도가 숙련도 인증을 뜻하지는 않아요.</p><ol className="course-stage-roadmap">{track.course.stages.map((stage,i)=>{const group=steps.filter(s=>s.stage===stage.title);return <li key={stage.title}><strong>{i+1}. {stage.title}</strong><span>{group.filter(s=>s.solved).length} / {group.length}</span></li>;})}</ol>{track.course.notice&&<p className="draft-help">{track.course.notice}</p>}</section>
+   <section className="learning-current-problem"><div className="training-section-heading"><h3>지금 풀 문제</h3><div className="learning-session-actions" ref={onToolsHost}/></div>{chosen&&<><p className="muted">{chosen.position+1} / {steps.length} · {chosen.stage}</p><h3 id="course-selected-heading" tabIndex={-1}>{chosen.title}</h3><ThinkingDifficulty problem={{thinking:chosen.thinking}}/><p>연습 목표 · {chosen.goal}</p><p className="muted">{chosen.solved?'정답 제출 기록 있음 · 다시 연습할 수 있어요.':chosen.sessionStatus==='ENDED'?'지난 훈련 종료 · 다시 도전해 보세요.':'정답 제출까지 차근차근 연습해요.'}</p>{active?.id!==chosen.sessionId&&<button className="primary" disabled={disabled||!chosen.available} onClick={()=>{if(active?.id===chosen.sessionId){Promise.resolve(onOpen(chosen.version)).catch(e=>setError(e.message));}else if(active){setSwitching(chosen);setNote('훈련 코스의 다른 문제로 전환');}else start(chosen);}}>{!chosen.available?'문제 준비·검토 중':active?.id===chosen.sessionId?'이어서 학습하기':active?'이 문제로 전환':chosen.solved?'다시 연습하기':'훈련 시작'}</button>}{track.solved===steps.length&&<p role="status" className="notice">모든 문제에 정답 기록이 있어요. 다시 연습하거나 다른 코스를 골라 보세요.</p>}</>}</section></div>
+   <section className="learning-problem-list"><div className="training-section-heading"><h3>코스 문제 목록</h3><span className="muted">선택하면 위의 훈련 문제가 바뀌어요.</span></div><ol className="learning-plan-steps" start={paging.offset+1}>{paging.visible.map(step=><li key={step.position}><button className="learning-problem-row" aria-current={chosen?.position===step.position?'step':undefined} onClick={()=>choose(step)}><span className="learning-goal-number">{step.position+1}</span><span className="learning-problem-copy"><strong>{step.title}</strong><small>{step.stage} · {step.category}</small></span><span className="learning-problem-state"><ThinkingDifficulty problem={{thinking:step.thinking}} compact/><small>{!step.available?'준비·검토 중':active?.id===step.sessionId?'풀이 중':step.solved?'정답 기록 있음':'연습 대기'}</small></span></button></li>)}</ol><Pager paging={paging} label="코스 문제 페이지"/></section>
+  </>}
+  <Modal open={!!preview} title={preview?.course.title||'코스 살펴보기'} onClose={()=>setPreview(null)} className="diagnostic-dialog" wide><div className="diagnostic-dialog-content">{preview&&<><p>{preview.course.summary}</p><p className="muted">선행 지식 · {preview.course.prerequisite}</p>{preview.course.notice&&<p className="notice">{preview.course.notice}</p>}{preview.course.stages.map((stage,i)=><details className="course-preview-stage" key={stage.title} open={i===0}><summary>{i+1}. {stage.title} · {stage.versions.length}문제</summary><p>{stage.goal}</p><ol>{preview.steps.filter(s=>s.stage===stage.title).map(s=><li key={s.version}>{s.title} {s.thinking&&<ThinkingDifficulty problem={{thinking:s.thinking}} compact/>}</li>)}</ol></details>)}<button className="primary" disabled={disabled||preview.available!==preview.steps.length} onClick={()=>enroll(preview)}>이 코스로 훈련하기</button></>}</div></Modal>
+  <Modal open={!!switching} title="진행 중인 훈련 전환" onClose={()=>setSwitching(null)} className="diagnostic-dialog"><div className="diagnostic-dialog-content"><p>현재 훈련을 마무리하고 <strong>{switching?.title}</strong> 문제로 전환해요. 이전 제출과 기록은 보존돼요.</p><label>마무리 메모<textarea rows={3} maxLength={2000} value={note} onChange={e=>setNote(e.target.value)} disabled={disabled}/></label><button className="primary" disabled={disabled} onClick={()=>start(switching,note)}>현재 훈련 마치고 전환</button></div></Modal>
+ </section>;
+}

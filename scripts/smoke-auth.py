@@ -85,6 +85,20 @@ def main():
         start = {"problemVersion":"sum-v1", "goal":"재시작 후 훈련 이어가기"}
         assert a.call("/api/training-sessions", "POST", start, key=training_id)[0] == 200
         assert b.call("/api/training-sessions/"+training_id)[0] == 404
+        status, catalog, _ = a.call("/api/training-courses")
+        assert status == 200 and len(catalog) == 8
+        ready_course = next((c for c in catalog if c["available"] == len(c["steps"])), None) if config.get("SUBMISSIONS_ENABLED", "false").lower() == "true" else None
+        enrolled_course = None
+        if ready_course:
+            enroll_key = str(uuid.uuid4())
+            enrollment = {"courseId": ready_course["course"]["id"], "revision": ready_course["course"]["revision"]}
+            assert a.call("/api/training-courses/enrollments", "POST", enrollment, csrf=False, key=enroll_key)[0] == 403
+            status, enrolled_course, _ = a.call("/api/training-courses/enrollments", "POST", enrollment, key=enroll_key)
+            assert status == 200
+            assert a.call("/api/training-courses/enrollments", "POST", enrollment, key=enroll_key)[1]["enrollmentId"] == enrolled_course["enrollmentId"]
+            assert b.call("/api/training-courses/enrollments")[1] == []
+            assert a.call("/api/training-courses/enrollments/" + enrolled_course["enrollmentId"] + "/start", "POST",
+                          {"position": 0, "activeSessionId": None, "note": ""}, key=uuid.uuid4())[0] == 409
         subprocess.run(compose + ["restart", "application"], check=True,
                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
         for attempt in range(90):
@@ -107,6 +121,35 @@ def main():
         assert a.call("/api/training-sessions", "POST", start, key=training_id)[1]["id"] == training_id
         assert a.call("/api/training-sessions/"+training_id+"/end", "POST", {"note":"재시작 검증 완료"})[1]["status"] == "ENDED"
         print("PASS: training session and goal survive app restart, start replay is idempotent, owner can finish")
+        if enrolled_course:
+            restored_courses = a.call("/api/training-courses/enrollments")[1]
+            assert restored_courses[0]["enrollmentId"] == enrolled_course["enrollmentId"]
+            assert restored_courses[0]["course"] == enrolled_course["course"]
+            course_path = "/api/training-courses/enrollments/" + enrolled_course["enrollmentId"] + "/start"
+            start_key = str(uuid.uuid4())
+            first_step = {"position": 0, "activeSessionId": None, "note": ""}
+            assert b.call(course_path, "POST", first_step, key=uuid.uuid4())[0] == 404
+            status, course_session, _ = a.call(course_path, "POST", first_step, key=start_key)
+            assert status == 200 and course_session["status"] == "ACTIVE"
+            assert course_session["problemVersion"] == enrolled_course["steps"][0]["version"]
+            assert a.call(course_path, "POST", first_step, key=start_key)[1]["id"] == start_key
+            switch_key = str(uuid.uuid4())
+            next_step = {"position": 1, "activeSessionId": start_key, "note": "코스 단계 전환 검증"}
+            status, switched, _ = a.call(course_path, "POST", next_step, key=switch_key)
+            assert status == 200 and switched["id"] == switch_key
+            previous = a.call("/api/training-sessions/" + start_key)[1]["session"]
+            assert previous["status"] == "ENDED" and previous["note"] == next_step["note"]
+            assert a.call(course_path, "POST", next_step, key=switch_key)[1]["id"] == switch_key
+            assert a.call(course_path, "POST", {**next_step, "note": "다른 내용"}, key=switch_key)[0] == 409
+            assert a.call(course_path, "POST", first_step, key=uuid.uuid4())[0] == 409
+            assert a.call("/api/training-sessions/" + switch_key + "/end", "POST", {"note": "코스 검증 완료"})[0] == 200
+            assert a.call(course_path, "POST", next_step, key=switch_key)[1]["status"] == "ENDED"
+            assert len(a.call("/api/training-sessions")[1]) == 3
+            assert a.call("/api/training-courses/enrollments")[1][0]["steps"][1]["sessionId"] == switch_key
+            assert sql("SELECT count(*) FROM ai_task WHERE user_id='" + first["id"] + "'") == "0"
+            print("PASS: curated course snapshot survives restart; owned real-problem training, atomic switch, stale fence and ended replay")
+        else:
+            print("SKIP: curated course execution unavailable or disabled; catalog contract only")
         old_cookie = next(c for c in a.jar if c.name == "GAMJAOJ_SESSION").value
         assert a.call("/api/auth/logout", "POST")[0] == 204
         assert a.call("/api/me")[0] == 401

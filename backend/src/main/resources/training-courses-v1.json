@@ -1,0 +1,336 @@
+[
+  {
+    "id": "first-steps",
+    "revision": 1,
+    "title": "처음부터 쌓는 알고리즘",
+    "kind": "입문",
+    "summary": "선형 자료구조와 재귀를 익히고, 탐색과 정렬로 연결해요.",
+    "prerequisite": "기본 반복문과 배열을 사용할 수 있어요.",
+    "notice": "",
+    "stages": [
+      {
+        "title": "선형 자료구조",
+        "goal": "입출력 규칙에 맞는 자료구조를 선택하기",
+        "versions": [
+          "iamywl-v1-0eb44a4694e63e51",
+          "iamywl-v1-5c4d19fa4c392df6",
+          "iamywl-v1-54694bb5d0522fab",
+          "iamywl-v1-6d8c55d292209cd5"
+        ]
+      },
+      {
+        "title": "재귀와 정렬",
+        "goal": "종료 조건을 정하고 입력을 정리하기",
+        "versions": [
+          "iamywl-v1-585a1c2114a2f90c",
+          "iamywl-v1-1118400bbcf53938",
+          "iamywl-v1-20b6b06a3a2a6436",
+          "iamywl-v1-01f1d8857cbf9e20"
+        ]
+      },
+      {
+        "title": "탐색 입문",
+        "goal": "방문 상태와 탐색 경계를 확인하기",
+        "versions": [
+          "iamywl-v1-cafa117eddcee5f4",
+          "iamywl-v1-c5e28680eb50d356",
+          "iamywl-v1-097d2d356265c140",
+          "iamywl-v1-ca341c8386d6511d"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "exam-a-foundation",
+    "revision": 1,
+    "title": "역량검사 목표 · 탐색과 구현",
+    "kind": "목표 대비",
+    "summary": "자료구조 → 완전탐색 → 격자 탐색 순서로 여러 조건을 구현하는 연습을 해요.",
+    "prerequisite": "배열·재귀·스택·큐의 기본 동작을 알고 있어요.",
+    "notice": "공식 기출·모의시험이 아닌 GamjaOJ의 기반 알고리즘 과정이에요.",
+    "stages": [
+      {
+        "title": "자료구조 응용",
+        "goal": "상태 변화와 처리 순서를 정확히 구현하기",
+        "versions": [
+          "iamywl-v1-572b44b1ad9e1b4e",
+          "iamywl-v1-5b1320e876d2e6e9",
+          "iamywl-v1-db7689ba3456a8ad",
+          "iamywl-v1-c9aa60b86f83f18c"
+        ]
+      },
+      {
+        "title": "완전탐색과 선택",
+        "goal": "후보를 열거하고 선택 조건을 검사하기",
+        "versions": [
+          "iamywl-v1-8b9c6143a4bce82f",
+          "iamywl-v1-19960f0744a5c4b8",
+          "iamywl-v1-8bd96992a3e8fab1",
+          "iamywl-v1-bfb9d1bc0c53fc3e"
+        ]
+      },
+      {
+        "title": "격자와 상태 탐색",
+        "goal": "방문·확산·추가 상태를 분리해서 탐색하기",
+        "versions": [
+          "iamywl-v1-a1cc0f9d54d44696",
+          "iamywl-v1-549b4b898b4887a0",
+          "iamywl-v1-da2d5cb7ffae00f1",
+          "iamywl-v1-93f5a0e74c049fde"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "exam-pro-foundation",
+    "revision": 1,
+    "title": "Pro 목표 · 자료구조와 최적화",
+    "kind": "목표 대비",
+    "summary": "연결 리스트·우선순위 큐·그래프·구간 자료구조를 연결하며 반복 처리 비용을 줄여요.",
+    "prerequisite": "기본 탐색을 구현하고 시간 복잡도를 설명할 수 있어요.",
+    "notice": "표준 입출력 문제로 구성된 Pro 기반 과정이에요. 함수 호출형 실전 문제나 공식 자격 인증은 포함하지 않아요.",
+    "stages": [
+      {
+        "title": "자료구조 설계",
+        "goal": "갱신과 조회에 맞는 자료구조를 구성하기",
+        "versions": [
+          "iamywl-v1-5cd7c9bd414cc0ea",
+          "iamywl-v1-51912a6d705b2613",
+          "iamywl-v1-f1a349294401c7b2",
+          "iamywl-v1-210e168065f13898",
+          "iamywl-v1-00643b417b0d9120",
+          "iamywl-v1-3484c4294ae70651"
+        ]
+      },
+      {
+        "title": "그래프와 의존성",
+        "goal": "연결·경로·의존성을 구분해 처리하기",
+        "versions": [
+          "iamywl-v1-b1290fa1c40336de",
+          "iamywl-v1-39b352b080407637",
+          "iamywl-v1-b68c3b4a867030d7",
+          "iamywl-v1-5207a57775de6e8b",
+          "iamywl-v1-1d6b3ff6ce949816",
+          "iamywl-v1-b53cfac246870703"
+        ]
+      },
+      {
+        "title": "반복 조회 최적화",
+        "goal": "전체 재계산을 줄이고 경계 조건을 검증하기",
+        "versions": [
+          "iamywl-v1-c90025b552051d1e",
+          "iamywl-v1-8ae55d9b4bf194d7",
+          "iamywl-v1-8f45f2dc2d4713a8",
+          "iamywl-v1-413eb0e8c6b9f405",
+          "iamywl-v1-2c6d7f685d2f747b",
+          "iamywl-v1-e171b56465b20fb7"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "linear-structures",
+    "revision": 1,
+    "title": "자료구조 집중 · 스택부터 캐시까지",
+    "kind": "알고리즘 집중",
+    "summary": "기본 연산에서 편집·캐시·단조 자료구조 응용으로 확장해요.",
+    "prerequisite": "배열과 반복문을 사용할 수 있어요.",
+    "notice": "",
+    "stages": [
+      {
+        "title": "기본 동작",
+        "goal": "삽입·삭제·조회 순서를 추적하기",
+        "versions": [
+          "iamywl-v1-6e153fb1efffd7fe",
+          "iamywl-v1-5c4d19fa4c392df6",
+          "iamywl-v1-3fa04ffcfaacf8a1",
+          "iamywl-v1-e53613d8da56aded"
+        ]
+      },
+      {
+        "title": "상태를 보존하는 구조",
+        "goal": "편집과 재배치 규칙을 구현하기",
+        "versions": [
+          "iamywl-v1-df536cf398291468",
+          "iamywl-v1-ff911ece9cc1639f",
+          "iamywl-v1-1b82f61518cb1f4d",
+          "iamywl-v1-51912a6d705b2613"
+        ]
+      },
+      {
+        "title": "복합 자료구조",
+        "goal": "조회 비용을 줄이고 갱신 일관성을 지키기",
+        "versions": [
+          "iamywl-v1-651888e69974e0dd",
+          "iamywl-v1-3484c4294ae70651",
+          "iamywl-v1-1940d7324e5ca63d",
+          "iamywl-v1-8ae55d9b4bf194d7"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "search-mastery",
+    "revision": 1,
+    "title": "탐색 집중 · DFS·BFS·백트래킹",
+    "kind": "알고리즘 집중",
+    "summary": "연결 탐색 → 후보 선택 → 상태가 늘어나는 탐색을 연습해요.",
+    "prerequisite": "재귀와 큐를 사용할 수 있어요.",
+    "notice": "",
+    "stages": [
+      {
+        "title": "방문과 거리",
+        "goal": "방문 여부와 거리를 구분하기",
+        "versions": [
+          "iamywl-v1-52cc8cba8892f376",
+          "iamywl-v1-3d2b15cb2291497e",
+          "iamywl-v1-8b9b789fe5abb56b",
+          "iamywl-v1-0d14a02045e8bf29"
+        ]
+      },
+      {
+        "title": "선택과 가지치기",
+        "goal": "선택 상태를 복구하고 불필요한 탐색을 줄이기",
+        "versions": [
+          "iamywl-v1-ceb8010473f38613",
+          "iamywl-v1-71c8bd542e20cb59",
+          "iamywl-v1-ac523c669a321f90",
+          "iamywl-v1-ad75ec2d416e5dba"
+        ]
+      },
+      {
+        "title": "추가 상태",
+        "goal": "위치 외에 필요한 상태를 설계하기",
+        "versions": [
+          "iamywl-v1-9ab31c8992ff67a4",
+          "iamywl-v1-93f5a0e74c049fde",
+          "iamywl-v1-e1b110b3d3b05787",
+          "iamywl-v1-e51a3b60a57eb102"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "graph-mastery",
+    "revision": 1,
+    "title": "그래프 집중 · 연결에서 최단 경로까지",
+    "kind": "알고리즘 집중",
+    "summary": "연결성·최소 비용·의존성에 맞는 그래프 알고리즘을 선택해요.",
+    "prerequisite": "DFS·BFS와 우선순위 큐의 기본 동작을 알고 있어요.",
+    "notice": "",
+    "stages": [
+      {
+        "title": "연결성과 순서",
+        "goal": "집합 연결과 선후 관계를 다루기",
+        "versions": [
+          "iamywl-v1-202dc14f28637b2b",
+          "iamywl-v1-d7c06aa348120095",
+          "iamywl-v1-2f2cbb268e71bd67",
+          "iamywl-v1-241bfb705697b488"
+        ]
+      },
+      {
+        "title": "최소 비용",
+        "goal": "경로와 전체 연결의 차이를 설명하기",
+        "versions": [
+          "iamywl-v1-39b352b080407637",
+          "iamywl-v1-968db97bd84bff68",
+          "iamywl-v1-b68c3b4a867030d7",
+          "iamywl-v1-fc83dcd8176c17d3"
+        ]
+      },
+      {
+        "title": "그래프 응용",
+        "goal": "응용 조건에 맞게 상태와 전이를 확장하기",
+        "versions": [
+          "iamywl-v1-5207a57775de6e8b",
+          "iamywl-v1-42c8ba11c4331587",
+          "iamywl-v1-1d6b3ff6ce949816",
+          "iamywl-v1-002d800981f7ff2d"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dp-mastery",
+    "revision": 1,
+    "title": "동적 계획법 집중 · 상태와 전이",
+    "kind": "알고리즘 집중",
+    "summary": "작은 결과 재사용에서 배낭·구간·비트마스크 상태로 확장해요.",
+    "prerequisite": "재귀와 배열을 사용하고 완전탐색을 이해해요.",
+    "notice": "",
+    "stages": [
+      {
+        "title": "상태 정의",
+        "goal": "저장할 결과와 초기값을 정하기",
+        "versions": [
+          "iamywl-v1-e68d606591db1348",
+          "iamywl-v1-188ca37fe77f5929",
+          "iamywl-v1-827f8200f27b0912",
+          "iamywl-v1-f8081647c5c72859"
+        ]
+      },
+      {
+        "title": "전이와 순서",
+        "goal": "갱신 순서와 중복 계산을 점검하기",
+        "versions": [
+          "iamywl-v1-23fa688894f7b54c",
+          "iamywl-v1-3087163a2da93a04",
+          "iamywl-v1-772852bac26969d8",
+          "iamywl-v1-71f8495305770c83"
+        ]
+      },
+      {
+        "title": "상태 확장",
+        "goal": "선택 범위와 상태 크기에 맞게 최적화하기",
+        "versions": [
+          "iamywl-v1-76bb1a6ed8a4a988",
+          "iamywl-v1-12779942b09de850",
+          "iamywl-v1-8c08217855eebf53",
+          "iamywl-v1-68ca0134a17c4d94"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "query-optimization",
+    "revision": 1,
+    "title": "탐색·구간 집중 · 반복 계산 줄이기",
+    "kind": "알고리즘 집중",
+    "summary": "이분 탐색과 이동 구간을 익히고 구간 질의·단조 자료구조로 연결해요.",
+    "prerequisite": "정렬과 시간 복잡도의 기본을 알고 있어요.",
+    "notice": "",
+    "stages": [
+      {
+        "title": "경계 찾기",
+        "goal": "불변식과 탐색 범위를 유지하기",
+        "versions": [
+          "iamywl-v1-30a8f98982fba783",
+          "iamywl-v1-19504ba049be445e",
+          "iamywl-v1-38300d813821b3a2",
+          "iamywl-v1-2ac64f6ae6a61a9d"
+        ]
+      },
+      {
+        "title": "구간 이동",
+        "goal": "구간을 이동하며 필요한 결과만 갱신하기",
+        "versions": [
+          "iamywl-v1-3283fe9eb934de40",
+          "iamywl-v1-0cda948b28383847",
+          "iamywl-v1-fecd5508ff7e88d9",
+          "iamywl-v1-689369566a8dba03"
+        ]
+      },
+      {
+        "title": "질의와 최적화",
+        "goal": "자료구조로 반복 조회 비용을 줄이기",
+        "versions": [
+          "iamywl-v1-c90025b552051d1e",
+          "iamywl-v1-8ae55d9b4bf194d7",
+          "iamywl-v1-b89d48d4920b07fe",
+          "iamywl-v1-5a6b7c37704b9e06"
+        ]
+      }
+    ]
+  }
+]
