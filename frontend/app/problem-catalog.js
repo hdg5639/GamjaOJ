@@ -1,7 +1,7 @@
 'use client';
 import SelectControl from './select-control';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import SiteNotice from './site-notice';
 import GrowthSummary from './growth-summary';
 import ProblemId,{shortProblemId} from './problem-id';
@@ -15,6 +15,7 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
   const [editing,setEditing]=useState(null),[saving,setSaving]=useState(false),[saveError,setSaveError]=useState(''),[saved,setSaved]=useState('');
   const [page,setPage]=useState(1),[sort,setSort]=useState(''),[editLayer,setEditLayer]=useState('UNRATED');
   const [filtersOpen,setFiltersOpen]=useState(false),[removing,setRemoving]=useState(null);
+  const listRef=useRef(null);
   async function remove(p){
     if(saving)return;setSaving(true);setSaveError('');setSaved('');
     try{const result=await api(`/api/problems/${encodeURIComponent(p.version)}`,{method:'DELETE'});
@@ -35,7 +36,8 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
   const visible=matches.slice((currentPage-1)*pageSize,currentPage*pageSize);
   useEffect(()=>setPage(1),[query,scope,category,difficulty,tag,solve,sort]);
   useEffect(()=>setPage(p=>Math.min(p,pages)),[pages]);
-  function changePage(value){setPage(value);setRemoving(null);requestAnimationFrame(()=>{const list=document.getElementById('catalog-results');list?.scrollIntoView({block:'start'});list?.focus({preventScroll:true});});}
+  function focusResults(){requestAnimationFrame(()=>{const results=document.getElementById('catalog-results');if(!window.matchMedia('(min-width:1200px)').matches)results?.scrollIntoView({block:'start'});results?.focus({preventScroll:true});});}
+  function changePage(value){setPage(value);setRemoving(null);focusResults();}
   const categories=[...new Set(problems.map(p=>p.category||'미분류'))].sort();
   const tags=[...new Set(problems.flatMap(p=>p.tags||[]))].sort();
   async function save(event){
@@ -45,13 +47,15 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
       onChanged(value);setSaved(`${value.title}의 공개·분류 설정을 저장했어요.`);setEditing(null);
     }catch(e){setSaveError(e.message);}finally{setSaving(false);}
   }
-  return <section className="problem-catalog" aria-label="문제 목록">
-    {home&&api&&<GrowthSummary api={api} activity={activity} onNavigate={onNavigate} onTarget={layer=>{setScope('all');setCategory('');setTag('');setQuery('');setDifficulty(`MIN${layer}`);setSolve('UNSOLVED');setSort('asc');setFiltersOpen(true);requestAnimationFrame(()=>document.getElementById('catalog-results')?.scrollIntoView({block:'start'}));}}/>}
+  useEffect(()=>{if(listRef.current)listRef.current.scrollTop=0;},[currentPage,query,scope,category,difficulty,tag,solve,sort]);
+  return <section className={`problem-catalog${home&&api?' catalog-layout':''}`} aria-label="문제 목록">
+    {home&&api&&<aside className="catalog-growth"><GrowthSummary api={api} activity={activity} onNavigate={onNavigate} onTarget={layer=>{setScope('all');setCategory('');setTag('');setQuery('');setDifficulty(`MIN${layer}`);setSolve('UNSOLVED');setSort('asc');setFiltersOpen(true);focusResults();}}/></aside>}
+    <div className="catalog-main">
     <div className="tabs catalog-scopes" role="group" aria-label="문제 공개 범위">
       {[['all','전체 공개 문제'],['mine','내가 만든 문제'],['others','다른 사람의 문제']].map(([id,label])=><button key={id} aria-pressed={scope===id} className={scope===id?'selected':''} onClick={()=>setScope(id)}>{label}</button>)}
     </div>
     <div className="catalog-toolbar">
-      <label>문제 검색<input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="제목, 문제 ID 또는 태그" autoComplete="off" /></label>
+      <label><span className="catalog-search-label">문제 검색</span><input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="제목, 문제 ID 또는 태그" autoComplete="off" /></label>
       <button className="secondary catalog-reset" disabled={!(query||category||difficulty||tag||solve||sort)} onClick={()=>{setQuery('');setCategory('');setDifficulty('');setTag('');setSolve('');setSort('');}}>검색 초기화</button>
       <button className="secondary filter-toggle" aria-expanded={filtersOpen} aria-controls="catalog-filters" onClick={()=>setFiltersOpen(!filtersOpen)}>필터{filterCount?` · ${filterCount}`:''} <span aria-hidden="true">{filtersOpen?'−':'+'}</span></button>
     </div>
@@ -81,7 +85,7 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
       {error&&<p className="notice error" role="alert">{error}</p>}
       {locked&&<p className="notice">제출 접수 확인 또는 파일 처리가 끝나면 문제를 선택할 수 있어요.</p>}
       {!matches.length?<p className="catalog-empty">{!problems.length?'현재 풀이할 수 있는 문제가 없어요.':scope==='mine'&&!term&&!category&&!difficulty&&!tag&&!solve?'아직 내가 만든 문제가 없어요. 문제 생성에서 나만의 연습 문제를 만들어 보세요.':'일치하는 문제가 없어요. 제목이나 문제 ID를 바꾸거나 필터를 지워 주세요.'}</p>:
-        <ul className="catalog-list">{visible.map(p=><li key={p.version}>
+        <ul ref={listRef} className="catalog-list" tabIndex={0} aria-label="문제 목록 결과">{visible.map(p=><li key={p.version}>
           <div className="catalog-level thinking-level" data-layer={p.thinking?.layer||0}><strong>{p.thinking?`${p.thinking.layer}겹`:'미배정'}</strong><span>{p.thinking?thinkingLayers[p.thinking.layer-1]?.[0]:'검토 전'}</span><small>{p.thinking?thinkingSource(p):''}</small></div>
           <div className="catalog-problem"><h2>{p.title}</h2><ProblemId version={p.version}/>
             <p className="catalog-tags"><span>{p.category||'미분류'}</span>{(p.tags||[]).filter(t=>t!==p.category).map(t=><span key={t}>#{t}</span>)}</p>
@@ -99,6 +103,7 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
         </li>)}</ul>}
       <ListPagination page={currentPage} pages={pages} onChange={changePage}/>
     </>}
+    </div>
     {home&&<SiteNotice/>}
   </section>;
 }

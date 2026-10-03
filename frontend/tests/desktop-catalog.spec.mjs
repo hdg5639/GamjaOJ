@@ -1,0 +1,23 @@
+import {test,expect} from '@playwright/test';
+const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18788';
+for(const width of [390,1024,1280,1440,1920])test(`catalog uses desktop space and preserves list position at ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:950});
+ await page.route('**/api/**',route=>{const path=new URL(route.request().url()).pathname;let data=[];
+  if(path==='/api/me')data={id:'desktop-user',nickname:'감자'};
+  if(path==='/api/problems')data=Array.from({length:65},(_,i)=>({version:'desktop-'+i,title:`문제 ${i+1} · 조건을 이어서 생각하기`,category:i%2?'문자열':'구현',tags:['경계 확인'],thinking:{layer:i%9+1,source:'CURATED_ESTIMATE'},shared:true,submissionsEnabled:true,solveStatus:'UNATTEMPTED'}));
+  if(path==='/api/my/growth')data={layer:4,nextLayer:5,nextSolved:2,required:5,eligibleProblems:7,categories:3,evidence:[7,7,6,5,2,0,0,0,0]};
+  return route.fulfill({json:data});
+ });
+ await page.goto(base+'/#catalog');const catalog=page.getByRole('region',{name:'문제 목록',exact:true}),list=catalog.locator('.catalog-list'),growth=catalog.getByRole('region',{name:'나의 성장 겹'});
+ await expect(list.locator(':scope >li')).toHaveCount(20);await expect(growth).toContainText('4겹');
+ if(width===1280)await page.getByRole('button',{name:'다크 모드로 전환'}).click();
+ if(width===1920)await page.locator('.sidebar-toggle').click();
+ const layout=await catalog.evaluate(n=>{const main=n.querySelector('.catalog-main').getBoundingClientRect(),rail=n.querySelector('.catalog-growth').getBoundingClientRect(),list=n.querySelector('.catalog-list').getBoundingClientRect(),rows=[...n.querySelectorAll('.catalog-list>li')].map(n=>n.getBoundingClientRect());return {mainRight:main.right,mainTop:main.top,railLeft:rail.left,railBottom:rail.bottom,listTop:list.top,listBottom:list.bottom,visible:rows.filter(r=>r.top>=list.top&&r.bottom<=Math.min(list.bottom,innerHeight)).length};});
+ await page.screenshot({path:`/tmp/gamja-desktop-catalog-initial-${width}.png`,fullPage:true});
+ if(width>=1200){expect(layout.mainRight).toBeLessThan(layout.railLeft);expect(layout.listTop).toBeLessThan(400);expect(layout.visible).toBeGreaterThanOrEqual(6);await expect(catalog.getByRole('navigation',{name:'문제 목록 페이지'})).toBeInViewport();
+  await list.evaluate(n=>n.scrollTop=n.scrollHeight);expect(await list.evaluate(n=>n.scrollTop)).toBeGreaterThan(0);
+  await catalog.getByRole('navigation',{name:'문제 목록 페이지'}).getByRole('button',{name:'다음',exact:true}).click();await expect(list.locator('li').first()).toContainText('문제 21');await expect.poll(()=>list.evaluate(n=>n.scrollTop)).toBe(0);
+  await list.evaluate(n=>n.scrollTop=n.scrollHeight);await catalog.getByLabel('분야',{exact:true}).selectOption('문자열');await expect.poll(()=>list.evaluate(n=>n.scrollTop)).toBe(0);await expect(list.locator('li').first()).toContainText('문제 2');
+ }else expect(layout.railBottom).toBeLessThan(layout.mainTop);
+ await page.screenshot({path:`/tmp/gamja-desktop-catalog-${width}.png`,fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
