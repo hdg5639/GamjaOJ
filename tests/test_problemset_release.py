@@ -36,6 +36,11 @@ class ReleaseTest(unittest.TestCase):
   for value in (True,3.5):
    self.review['thinking']['layer']=value
    with self.assertRaisesRegex(ValueError,'Profile range'):self.load()
+ def test_missing_title_cannot_be_published_with_a_passing_receipt(self):
+  for title in ('   ',None,42):
+   with self.subTest(title=title):
+    self.package['title']=title;self.save()
+    with self.assertRaisesRegex(ValueError,'public title'):self.load()
  def test_entire_release_required(self):
   with self.assertRaisesRegex(ValueError,'Entire 358'):stage.stage(self.root,self.source,{})
 if __name__=='__main__':unittest.main()

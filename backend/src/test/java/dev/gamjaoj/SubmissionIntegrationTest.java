@@ -113,6 +113,20 @@ class SubmissionIntegrationTest {
         assertThat(detail.memoryPeakBytes()).isEqualTo(41943040);assertThat(detail.tests().getFirst().memoryPeakBytes()).isEqualTo(41943040);
         mvc.perform(get("/api/submissions/"+saved.id()).with(user(alice))).andExpect(jsonPath("$.memoryPeakBytes").value(41943040)).andExpect(jsonPath("$.tests[0].memoryPeakBytes").value(41943040)).andExpect(jsonPath("$.tests[0].input").doesNotExist());
     }
+    @Test void growthOnlyCountsFinishedOrdinaryExactHashReviewedSolutions() throws Exception {
+        mvc.perform(get("/api/my/growth")).andExpect(status().isUnauthorized());
+        var base=submit(alice,UUID.randomUUID());
+        jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='AC',finished_at=CURRENT_TIMESTAMP WHERE submission_id=?").param(base.id()).update();
+        for(int i=0;i<9;i++){
+            String version="growth-"+UUID.randomUUID();var pack=(com.fasterxml.jackson.databind.node.ObjectNode)JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id='sum-v1'").query(String.class).single());pack.put("version",version);String raw=JudgeJson.canonical(pack),hash=JudgeJson.hash(raw);
+            jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,shared,review_hold,diagnostic_only) SELECT ?,?,?,runtime_image,runner_policy,true,true,?,? FROM problem_version WHERE id='sum-v1'").param(version).param(raw).param(hash).param(i==7).param(i==8).update();
+            jdbc.sql("INSERT INTO problem_thinking_profile(problem_version,package_sha256,layer,insight,implementation,edge_cases,rationale,source) VALUES (?,?,?,2,2,2,'검토 근거',?)").param(version).param(i==6?"0".repeat(64):hash).param(i<5?4:9).param(i==5?"AUTHOR_ESTIMATE":"CURATED_ESTIMATE").update();
+            UUID id=UUID.randomUUID();jdbc.sql("INSERT INTO submission(id,user_id,problem_version,source_code,source_sha256,idempotency_key,runtime_image,runner_policy) SELECT ?,user_id,?,source_code,source_sha256,?,runtime_image,runner_policy FROM submission WHERE id=?").param(id).param(version).param(id).param(base.id()).update();
+            jdbc.sql("INSERT INTO judge_job(submission_id,status,verdict,finished_at) VALUES (?,'FINISHED','AC',CURRENT_TIMESTAMP)").param(id).update();
+        }
+        mvc.perform(get("/api/my/growth").with(user(alice))).andExpect(status().isOk()).andExpect(jsonPath("$.layer").value(4)).andExpect(jsonPath("$.eligibleProblems").value(6)).andExpect(jsonPath("$.excludedProblems").value(2)).andExpect(jsonPath("$.nextLayer").value(5)).andExpect(jsonPath("$.nextSolved").value(0));
+        mvc.perform(get("/api/my/growth").with(user(bob))).andExpect(jsonPath("$.layer").value(0)).andExpect(jsonPath("$.eligibleProblems").value(0));
+    }
     @Test void personalHistoryFiltersBeforePaginationAndExcludesCustomRuns() throws Exception {
         mvc.perform(get("/api/my/summary")).andExpect(status().isUnauthorized());
         var base=submit(alice,UUID.randomUUID());

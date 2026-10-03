@@ -1292,7 +1292,7 @@
   },
   {
     "version": "iamywl-v1-1a31c6e982393f08",
-    "title": "",
+    "title": "뒤집기 가능한 숫자열의 최대곱",
     "category": "슬라이딩 윈도우",
     "upstreamPath": "슬라이딩윈도우/D2_슬라이딩윈도우_뒤집기_가능한_숫자열의_최대곱",
     "upstreamCommit": "3da07507a3842458aa3576db4ec46cd97348d351",
@@ -1315,7 +1315,8 @@
     },
     "adaptations": [
       "Solution.main delegated by Main",
-      "platform runtime instructions replace source-only Java restrictions"
+      "platform runtime instructions replace source-only Java restrictions",
+      "Display title restored from upstream directory; immutable judge package unchanged"
     ]
   },
   {
@@ -1551,7 +1552,7 @@
   },
   {
     "version": "iamywl-v1-1ec45ee7c612e4cf",
-    "title": "",
+    "title": "단순 부모 배열 조회",
     "category": "서로소 집합",
     "upstreamPath": "서로소집합/D2_서로소집합_단순_부모_배열_조회",
     "upstreamCommit": "3da07507a3842458aa3576db4ec46cd97348d351",
@@ -1574,7 +1575,8 @@
     },
     "adaptations": [
       "Solution.main delegated by Main",
-      "platform runtime instructions replace source-only Java restrictions"
+      "platform runtime instructions replace source-only Java restrictions",
+      "Display title restored from upstream directory; immutable judge package unchanged"
     ]
   },
   {
@@ -3899,7 +3901,7 @@
   },
   {
     "version": "iamywl-v1-57913cae9ad8d3b3",
-    "title": "",
+    "title": "탐색 단계수 카운팅",
     "category": "이분 탐색",
     "upstreamPath": "이진탐색/D2_이진탐색_탐색_단계수_카운팅",
     "upstreamCommit": "3da07507a3842458aa3576db4ec46cd97348d351",
@@ -3922,7 +3924,8 @@
     },
     "adaptations": [
       "Solution.main delegated by Main",
-      "platform runtime instructions replace source-only Java restrictions"
+      "platform runtime instructions replace source-only Java restrictions",
+      "Display title restored from upstream directory; immutable judge package unchanged"
     ]
   },
   {
@@ -4069,7 +4072,7 @@
   },
   {
     "version": "iamywl-v1-5b80f541dda82b47",
-    "title": "",
+    "title": "UP DOWN 중앙값 비교",
     "category": "이분 탐색",
     "upstreamPath": "이진탐색/D2_이진탐색_UP_DOWN_중앙값_비교",
     "upstreamCommit": "3da07507a3842458aa3576db4ec46cd97348d351",
@@ -4092,7 +4095,8 @@
     },
     "adaptations": [
       "Solution.main delegated by Main",
-      "platform runtime instructions replace source-only Java restrictions"
+      "platform runtime instructions replace source-only Java restrictions",
+      "Display title restored from upstream directory; immutable judge package unchanged"
     ]
   },
   {
@@ -6560,7 +6564,7 @@
   },
   {
     "version": "iamywl-v1-9a52a20841956906",
-    "title": "",
+    "title": "루트 노드 직접 추적",
     "category": "서로소 집합",
     "upstreamPath": "서로소집합/D2_서로소집합_루트_노드_직접_추적",
     "upstreamCommit": "3da07507a3842458aa3576db4ec46cd97348d351",
@@ -6583,7 +6587,8 @@
     },
     "adaptations": [
       "Solution.main delegated by Main",
-      "platform runtime instructions replace source-only Java restrictions"
+      "platform runtime instructions replace source-only Java restrictions",
+      "Display title restored from upstream directory; immutable judge package unchanged"
     ]
   },
   {
@@ -6732,7 +6737,7 @@
   },
   {
     "version": "iamywl-v1-9f42141349373cc1",
-    "title": "",
+    "title": "1차원 배열 반으로 자르기",
     "category": "분할 정복",
     "upstreamPath": "분할정복/D2_분할정복_1차원_배열_반으로_자르기",
     "upstreamCommit": "3da07507a3842458aa3576db4ec46cd97348d351",
@@ -6755,7 +6760,8 @@
     },
     "adaptations": [
       "Solution.main delegated by Main",
-      "platform runtime instructions replace source-only Java restrictions"
+      "platform runtime instructions replace source-only Java restrictions",
+      "Display title restored from upstream directory; immutable judge package unchanged"
     ]
   },
   {
@@ -8105,7 +8111,7 @@
   },
   {
     "version": "iamywl-v1-c3038b6c78f0ccce",
-    "title": "",
+    "title": "배열 2등분 원소 합",
     "category": "분할 정복",
     "upstreamPath": "분할정복/D2_분할정복_배열_2등분_원소_합",
     "upstreamCommit": "3da07507a3842458aa3576db4ec46cd97348d351",
@@ -8128,7 +8134,8 @@
     },
     "adaptations": [
       "Solution.main delegated by Main",
-      "platform runtime instructions replace source-only Java restrictions"
+      "platform runtime instructions replace source-only Java restrictions",
+      "Display title restored from upstream directory; immutable judge package unchanged"
     ]
   },
   {

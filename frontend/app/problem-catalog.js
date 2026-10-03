@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import SiteNotice from './site-notice';
+import GrowthSummary from './growth-summary';
 import ProblemId,{shortProblemId} from './problem-id';
 import ListPagination from './list-pagination';
 import {ThinkingGuide,thinkingLayers,thinkingSource} from './thinking-difficulty';
 const solveLabels={SOLVED:'해결',ATTEMPTED:'제출했지만 미해결',UNATTEMPTED:'미제출'};
 const levels={UNRATED:'겹 미배정',...Object.fromEntries(thinkingLayers.map(([name],i)=>[String(i+1),`${i+1}겹 · ${name}`]))};
 
-export default function ProblemCatalog({ problems, loaded, error, selectedVersion, locked, onChoose, api, onChanged, home=false, onNavigate }) {
+export default function ProblemCatalog({ problems, loaded, error, selectedVersion, locked, onChoose, api, onChanged, home=false, onNavigate, activity=0 }) {
   const [query,setQuery]=useState(''),[scope,setScope]=useState('all'),[category,setCategory]=useState(''),[difficulty,setDifficulty]=useState(''),[tag,setTag]=useState(''),[solve,setSolve]=useState('');
   const [editing,setEditing]=useState(null),[saving,setSaving]=useState(false),[saveError,setSaveError]=useState(''),[saved,setSaved]=useState('');
   const [page,setPage]=useState(1),[sort,setSort]=useState(''),[editLayer,setEditLayer]=useState('UNRATED');
@@ -23,10 +24,10 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
   useEffect(()=>{ const media=window.matchMedia('(min-width: 801px)'); const sync=()=>setFiltersOpen(media.matches); sync(); media.addEventListener('change',sync); return ()=>media.removeEventListener('change',sync); },[]);
   const filterCount=[category,difficulty,tag,solve,sort].filter(Boolean).length;
   // Held problems leave the shared lists; their owner still sees them under 내가 만든 문제 to review or delete.
-  problems=problems.filter(p=>!p.problemHeld||(p.mine&&scope==='mine'));
+  problems=problems.map(p=>({...p,title:p.title?.trim()||`연습 문제 · ${shortProblemId(p.version)}`})).filter(p=>!p.problemHeld||(p.mine&&scope==='mine'));
   const term=query.trim().toLocaleLowerCase();
   const matches=problems.filter(p=>(scope==='mine'?p.mine:scope==='others'?p.shared&&!p.mine&&p.generated:p.shared!==false)
-    &&(!category||(p.category||'미분류')===category)&&(!difficulty||String(p.thinking?.layer||'UNRATED')===difficulty)&&(!tag||(p.tags||[]).includes(tag))
+    &&(!category||(p.category||'미분류')===category)&&(!difficulty||(difficulty.startsWith('MIN')?(p.thinking?.layer||0)>=Number(difficulty.slice(3))&&['CURATED_ESTIMATE','MODEL_ESTIMATE'].includes(p.thinking?.source):String(p.thinking?.layer||'UNRATED')===difficulty))&&(!tag||(p.tags||[]).includes(tag))
     &&(!solve||(solve==='UNSOLVED'?['UNATTEMPTED','ATTEMPTED'].includes(p.solveStatus):p.solveStatus===solve))
     &&`${p.title} ${p.version} ${shortProblemId(p.version)} ${p.category||''} ${(p.tags||[]).join(' ')}`.toLocaleLowerCase().includes(term)).sort((a,b)=>sort==='asc'?(a.thinking?.layer??10)-(b.thinking?.layer??10):sort==='desc'?(b.thinking?.layer??0)-(a.thinking?.layer??0):0);
   const pageSize=20,pages=Math.max(1,Math.ceil(matches.length/pageSize)),currentPage=Math.min(page,pages);
@@ -44,8 +45,7 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
     }catch(e){setSaveError(e.message);}finally{setSaving(false);}
   }
   return <section className="problem-catalog" aria-label="문제 목록">
-    {home&&<div className="catalog-welcome"><div><span className="eyebrow">YOUR NEXT CHALLENGE</span><h2>오늘 풀 문제를 골라보세요.</h2><p>함께 만든 문제에서 원하는 주제를 찾고, 내 속도로 연습하세요.</p></div>
-      <div className="catalog-entry"><button className="secondary" onClick={()=>onNavigate('diagnostic')}>어디서 시작할지 모르겠다면 · 선택 진단</button></div></div>}
+    {home&&api&&<GrowthSummary api={api} activity={activity} onNavigate={onNavigate} onTarget={layer=>{setScope('all');setCategory('');setTag('');setQuery('');setDifficulty(`MIN${layer}`);setSolve('UNSOLVED');setSort('asc');setFiltersOpen(true);requestAnimationFrame(()=>document.getElementById('catalog-results')?.scrollIntoView({block:'start'}));}}/>}
     <div className="tabs catalog-scopes" role="group" aria-label="문제 공개 범위">
       {[['all','전체 공개 문제'],['mine','내가 만든 문제'],['others','다른 사람의 문제']].map(([id,label])=><button key={id} aria-pressed={scope===id} className={scope===id?'selected':''} onClick={()=>setScope(id)}>{label}</button>)}
     </div>
@@ -56,7 +56,7 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
     </div>
     <div id="catalog-filters" className="catalog-filters" hidden={!filtersOpen}>
       <label>분야<select aria-label="분야" value={category} onChange={e=>setCategory(e.target.value)}><option value="">모든 분야</option>{categories.map(c=><option key={c}>{c}</option>)}</select></label>
-      <label>난이도<select aria-label="난이도" value={difficulty} onChange={e=>setDifficulty(e.target.value)}><option value="">모든 난이도</option>{Object.entries(levels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+      <label>난이도<select aria-label="난이도" value={difficulty} onChange={e=>setDifficulty(e.target.value)}><option value="">모든 난이도</option>{difficulty.startsWith('MIN')&&<option value={difficulty}>{difficulty.slice(3)}겹 이상 · 다음 성장 목표</option>}{Object.entries(levels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
       <label>정렬<select aria-label="난도 정렬" value={sort} onChange={e=>setSort(e.target.value)}><option value="">기본 순서</option><option value="asc">낮은 겹부터</option><option value="desc">높은 겹부터</option></select></label>
       <label>태그<select aria-label="태그" value={tag} onChange={e=>setTag(e.target.value)}><option value="">모든 태그</option>{tags.map(t=><option key={t}>{t}</option>)}</select></label>
       <label>내 풀이 상태<select aria-label="내 풀이 상태" value={solve} onChange={e=>setSolve(e.target.value)}><option value="">모든 상태</option><option value="UNSOLVED">미해결 전체</option>{Object.entries(solveLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
@@ -83,7 +83,7 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
         <ul className="catalog-list">{visible.map(p=><li key={p.version}>
           <div className="catalog-level thinking-level" data-layer={p.thinking?.layer||0}><strong>{p.thinking?`${p.thinking.layer}겹`:'미배정'}</strong><span>{p.thinking?thinkingLayers[p.thinking.layer-1]?.[0]:'검토 전'}</span><small>{p.thinking?thinkingSource(p):''}</small></div>
           <div className="catalog-problem"><h2>{p.title}</h2><ProblemId version={p.version}/>
-            <p className="catalog-tags"><span>{p.category||'미분류'}</span>{(p.tags||[]).map(t=><span key={t}>#{t}</span>)}</p>
+            <p className="catalog-tags"><span>{p.category||'미분류'}</span>{(p.tags||[]).filter(t=>t!==p.category).map(t=><span key={t}>#{t}</span>)}</p>
             <p className="catalog-progress"><strong data-solve={p.solveStatus}>{solveLabels[p.solveStatus]||'풀이 기록 확인 전'}</strong>{p.pendingSubmissions>0&&<span> · 채점 중 {p.pendingSubmissions}건</span>}</p>
             {p.mine&&<span className="catalog-note">내가 만든 문제 · {p.shared?'공개':'비공개'}</span>}
             {p.problemHeld&&<span className="catalog-note catalog-held">검토 보류 중{p.reviewReason?` · ${p.reviewReason}`:''} · 새 풀이는 막혀 있고 삭제할 수 있어요</span>}

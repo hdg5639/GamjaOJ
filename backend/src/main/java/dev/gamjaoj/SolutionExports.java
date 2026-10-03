@@ -151,7 +151,7 @@ class SolutionExports {
                 var report=JudgeJson.parse(r.getString("judge_result_json"));
                 Long wall=ExecutionMetrics.maximum(report,"wall_ms"),memory=ExecutionMetrics.maximum(report,"memory_peak_bytes");
                 if(wall!=null)result.put("maxWallMs",wall);if(memory!=null)result.put("maxMemoryBytes",memory);
-                return result.put("username",r.getString("username")).put("problemVersion",version).put("language",language).put("title",p.path("title").asText(version))
+                return result.put("username",r.getString("username")).put("problemVersion",version).put("language",language).put("title",ProblemTitles.display(p))
                     .put("source",r.getString("source_code")).put("createdAt",r.getObject("created_at",OffsetDateTime.class).toString()).put("finishedAt",r.getObject("finished_at",OffsetDateTime.class).toString())
                     .put("problemUrl",settings.origin()+"/?problem="+ExportRemote.enc(version)+"#practice")
                     .put("filename",language.equals("JAVA")?(r.getString("callable_package")!=null||p.has("api")?"UserSolution.java":"Main.java"):language.equals("CPP")?"Main.cpp":"Main.py");

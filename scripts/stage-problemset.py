@@ -29,6 +29,13 @@ def load(directory,source,review):
  package=json.loads((directory/'package.json').read_text());meta=json.loads((directory/'metadata.json').read_text());v=package['version'];path=meta['upstreamPath'];validate_problem(package)
  if v!='iamywl-v1-'+hashlib.sha256(path.encode()).hexdigest()[:16] or meta['version']!=v or meta['upstreamCommit']!=COMMIT:raise ValueError('Frozen source identity')
  original=(source/path).resolve()
+ title=package.get('title','')
+ if not isinstance(title,str):raise ValueError('Invalid public title')
+ title=title.strip()
+ if not title:
+  overrides=json.loads((ROOT/'backend/src/main/resources/problem-title-overrides.json').read_text())
+  repair=overrides.get(v,{})
+  if repair.get('packageSha256')!=digest(package) or not repair.get('title','').strip():raise ValueError('Missing reviewed public title')
  if not original.is_relative_to(source.resolve()):raise ValueError('Unsafe source path')
  for name in FILES:
   if hashlib.sha256((original/name).read_bytes()).hexdigest()!=meta['sourceHashes'][name]:raise ValueError('Upstream source changed: '+path)
@@ -75,7 +82,8 @@ def stage(root,source,profiles):
   criteria='problem_version='+quote(version)+' AND package_sha256='+quote(values['package_sha256'])+' AND layer='+str(layer)+' AND insight='+str(p['insight'])+' AND implementation='+str(p['implementation'])+' AND edge_cases='+str(p['edgeCases'])+' AND rationale='+quote(p['rationale'])+" AND source='CURATED_ESTIMATE' AND assessment_kind='IMPORT'"
   lines.append('DO $corpus$ BEGIN IF EXISTS (SELECT 1 FROM problem_thinking_profile WHERE problem_version='+quote(version)+') AND NOT EXISTS (SELECT 1 FROM problem_thinking_profile WHERE '+criteria+") THEN RAISE EXCEPTION 'Existing difficulty differs'; END IF; END $corpus$;")
   lines.append('INSERT INTO problem_thinking_profile(problem_version,package_sha256,layer,insight,implementation,edge_cases,rationale,source,assessment_kind) SELECT id,package_sha256,'+numbers+','+quote(p['rationale'])+",'CURATED_ESTIMATE','IMPORT' FROM problem_version WHERE id="+quote(version)+' AND NOT EXISTS(SELECT 1 FROM problem_thinking_profile WHERE problem_version='+quote(version)+');')
-  manifest.append(dict(version=version,title=package['title'],category=category,upstreamPath=meta['upstreamPath'],upstreamCommit=COMMIT,sourceHashes=meta['sourceHashes'],packageSha256=values['package_sha256'],referenceSha256=evidence['referenceHash'],thinking=p,adaptations=meta['adaptations']))
+  title=package['title'].strip() or json.loads((ROOT/'backend/src/main/resources/problem-title-overrides.json').read_text())[version]['title']
+  manifest.append(dict(version=version,title=title,category=category,upstreamPath=meta['upstreamPath'],upstreamCommit=COMMIT,sourceHashes=meta['sourceHashes'],packageSha256=values['package_sha256'],referenceSha256=evidence['referenceHash'],thinking=p,adaptations=meta['adaptations']))
  lines.append('COMMIT;');return '\n'.join(lines)+'\n',manifest
 if __name__=='__main__':
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('root',type=Path);parser.add_argument('--source',type=Path,required=True);parser.add_argument('--profiles',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--manifest',type=Path,required=True);a=parser.parse_args();sql,manifest=stage(a.root,a.source,json.loads(a.profiles.read_text()));a.output.write_text(sql);a.output.chmod(0o600);a.manifest.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n');print('358 verified packages staged; no database changed')
