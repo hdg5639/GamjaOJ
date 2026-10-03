@@ -1,9 +1,20 @@
 /* Translucent chrome; problem text and the editor keep their opaque surfaces. */
-:root { --motion-ease:cubic-bezier(.22,1,.36,1); }
-:root:root:root .header-slot { background:color-mix(in srgb,var(--surface) 72%,transparent); background-image:linear-gradient(115deg,color-mix(in srgb,var(--green) 16%,transparent),transparent 55%,#ffffff08); -webkit-backdrop-filter:blur(24px) saturate(145%); backdrop-filter:blur(24px) saturate(145%); border-bottom:1px solid color-mix(in srgb,var(--ink) 14%,transparent); box-shadow:inset 0 1px 0 #ffffff20,0 3px 18px #00000008; }
-:root:root .app-navigation { background:color-mix(in srgb,var(--sidebar-background) 88%,transparent); background-image:radial-gradient(ellipse at 0 0,color-mix(in srgb,var(--green) 32%,transparent),transparent 65%),linear-gradient(130deg,#ffffff0d,transparent 40%,#ffffff05); -webkit-backdrop-filter:blur(24px) saturate(145%); backdrop-filter:blur(24px) saturate(145%); border-right:1px solid color-mix(in srgb,var(--sidebar-ink) 22%,transparent); box-shadow:inset 1px 0 0 #ffffff0d,4px 0 20px #00000008; overflow-x:hidden; }
-:root:root dialog.modal { background:color-mix(in srgb,var(--surface) 88%,transparent); background-image:linear-gradient(130deg,#ffffff08,transparent 55%); border:1px solid color-mix(in srgb,var(--ink) 18%,transparent); -webkit-backdrop-filter:blur(28px) saturate(135%); backdrop-filter:blur(28px) saturate(135%); box-shadow:inset 0 1px 0 #ffffff20,0 18px 64px #00000026; }
-:root:root dialog.modal::backdrop { background:color-mix(in srgb,var(--canvas) 32%,#00000070); -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px); }
+/* Uniform tinted glass: blur comes from content behind the surface, not painted reflections. */
+:root { --motion-ease:cubic-bezier(.22,1,.36,1); --glass-surface:color-mix(in srgb,var(--surface) 80%,transparent); --relief-light:#ffffff80; --relief-shade:color-mix(in srgb,var(--ink) 10%,transparent); }
+/* Static 24px dot grid: no glow, motion, or extra content layer. */
+:root body { background-color:var(--canvas); background-image:radial-gradient(circle,color-mix(in srgb,var(--ink) 11%,transparent) .7px,transparent .9px); background-size:24px 24px; background-position:12px 12px; }
+:root[data-theme="dark"] { --glass-surface:color-mix(in srgb,var(--surface) 72%,transparent); --relief-light:#ffffff09; --relief-shade:#00000038; }
+:root:root:root .header-slot { background:var(--glass-surface); background-image:none; -webkit-backdrop-filter:blur(24px); backdrop-filter:blur(24px); border-bottom:1px solid color-mix(in srgb,var(--ink) 14%,transparent); box-shadow:inset 0 1px 0 #ffffff14,0 3px 18px #00000008; }
+:root:root .app-navigation { background:color-mix(in srgb,var(--sidebar-background) 88%,transparent); background-image:none; -webkit-backdrop-filter:blur(28px); backdrop-filter:blur(28px); border-right:1px solid color-mix(in srgb,var(--sidebar-ink) 24%,transparent); box-shadow:inset 1px 0 0 #ffffff0d,4px 0 20px #00000008; overflow-x:hidden; }
+:root:root dialog.modal { background:var(--glass-surface); background-image:none; border:1px solid color-mix(in srgb,var(--ink) 20%,transparent); -webkit-backdrop-filter:blur(28px); backdrop-filter:blur(28px); box-shadow:inset 0 1px 0 #ffffff30,inset 0 -1px 0 #ffffff0a,0 18px 64px #00000030; }
+:root:root dialog.modal::backdrop { background:#00000030; -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+/* Sticky headings need their own translucent layer so scrolled text stays readable. */
+:root:root dialog.modal .modal-head { background:color-mix(in srgb,var(--surface) 55%,transparent); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px); }
+:root:root dialog.modal .modal-body { background:transparent; }
+:root:root dialog.modal .appearance-nav { background:color-mix(in srgb,var(--subtle) 32%,transparent); }
+/* Shallow relief on controls only; borders and focus rings still identify actions. */
+:root:root .secondary { box-shadow:2px 2px 5px var(--relief-shade),-2px -2px 5px var(--relief-light); }
+:root:root .secondary:active:not(:disabled),:root:root dialog.modal .appearance-nav button[aria-pressed="true"] { box-shadow:inset 2px 2px 4px var(--relief-shade),inset -2px -2px 4px var(--relief-light); }
 :root:root .growth-summary { background:color-mix(in srgb,var(--subtle) 88%,var(--surface)); border-color:color-mix(in srgb,var(--green) 16%,var(--line)); }
 dialog.modal[open] { animation:modal-enter 180ms var(--motion-ease); }
 .workspace > :is(.catalog-view,.training-view,.diagnostic-view,.practice-view):not([hidden]) { animation:workspace-enter 160ms ease-out; }
@@ -59,7 +70,8 @@ dialog.modal[open] { animation:modal-enter 180ms var(--motion-ease); }
 @media(prefers-reduced-motion:reduce) {
  :root .workspace,:root .workspace *,:root #global-header,:root #global-header *,:root .primary,:root .account-nav button,:root dialog.modal,:root dialog.modal::backdrop { animation:none!important; transition:none!important; scroll-behavior:auto!important; }
 }
-@supports not (backdrop-filter:blur(1px)) {
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) {
  :root:root:root .header-slot,:root:root dialog.modal { background:var(--surface); }
  :root:root .app-navigation { background:var(--sidebar-background); }
+ :root:root dialog.modal .modal-head { background:var(--surface); }
 }

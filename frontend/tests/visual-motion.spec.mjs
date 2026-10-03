@@ -23,8 +23,18 @@ test('reduced motion disables transitions and modal keeps keyboard dismissal and
  await page.emulateMedia({reducedMotion:'reduce'});await open(page);await page.getByRole('button',{name:'사이드바 접기'}).click();await expect(page.locator('.app-navigation')).toHaveCSS('width','64px');expect(await page.locator('.workspace').evaluate(n=>n.getAnimations({subtree:true}).length)).toBe(0);
  const trigger=page.getByRole('button',{name:'화면 설정',exact:true});await trigger.click();const dialog=page.getByRole('dialog',{name:'화면 설정',exact:true});await expect(dialog).toBeVisible();expect(await dialog.evaluate(n=>n.getAnimations().length)).toBe(0);await dialog.press('Escape');await expect(dialog).not.toBeVisible();await expect(trigger).toBeFocused();
 });
-test('custom ocean palette retains translucent header and reflective chrome',async({page})=>{
- await open(page);await page.getByRole('button',{name:'화면 설정',exact:true}).click();const dialog=page.getByRole('dialog',{name:'화면 설정',exact:true});await dialog.getByRole('button',{name:'다크',exact:true}).click();await dialog.getByRole('button',{name:/밤바다/}).click();await dialog.press('Escape');
- await expect(page.locator('.header-slot')).toHaveCSS('background-image',/linear-gradient/);await expect(page.locator('.header-slot')).toHaveCSS('background-color',/\/\s*0\.|rgba\(/);await expect(page.locator('.header-slot')).toHaveCSS('backdrop-filter',/blur/);await expect(page.locator('.app-navigation')).toHaveCSS('background-image',/radial-gradient/);
- await page.getByRole('button',{name:'사이드바 접기'}).click();await expect.poll(async()=>(await page.locator('#global-header').boundingBox()).height).toBe(44);await page.screenshot({path:'/tmp/gamja-glass-refined-custom.png',animations:'disabled'});
+for(const width of [390,1440]) test(`uniform glass surfaces remain translucent in light and custom dark themes at ${width}px`,async({page})=>{
+ await open(page);await page.setViewportSize({width,height:950});
+ const trigger=page.getByRole('button',{name:'화면 설정',exact:true});await trigger.click();const dialog=page.getByRole('dialog',{name:'화면 설정',exact:true});
+ for(const dark of [false,true]) {
+  if(dark){await dialog.getByRole('button',{name:'다크',exact:true}).click();await dialog.getByRole('button',{name:/밤바다/}).click();}
+  for(const surface of [page.locator('.header-slot'),page.locator('.app-navigation'),dialog,dialog.locator('.modal-head')]) {
+   await expect(surface).toHaveCSS('background-image','none');await expect(surface).toHaveCSS('backdrop-filter',/blur/);
+   const alpha=await surface.evaluate(n=>{const ctx=document.createElement('canvas').getContext('2d');ctx.fillStyle=getComputedStyle(n).backgroundColor;ctx.fillRect(0,0,1,1);return ctx.getImageData(0,0,1,1).data[3]/255;});expect(alpha).toBeGreaterThan(.5);expect(alpha).toBeLessThan(.95);
+  }
+  await expect(dialog.locator('.modal-body')).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+  const box=await dialog.boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width);
+  await page.screenshot({path:`/tmp/gamja-glass-modal-${dark?'dark':'light'}-${width}.png`,animations:'disabled'});
+ }
+ await dialog.press('Escape');await expect(dialog).not.toBeVisible();await expect(trigger).toBeFocused();await page.screenshot({path:`/tmp/gamja-glass-sidebar-${width}.png`,animations:'disabled'});
 });
