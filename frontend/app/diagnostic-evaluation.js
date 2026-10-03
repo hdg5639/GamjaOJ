@@ -1,4 +1,5 @@
 'use client';
+import SelectControl from './select-control';
 import {useEffect,useRef,useState} from 'react';
 import DiagnosticCorrection from './diagnostic-correction';
 import DiagnosticPlan from './diagnostic-plan';
@@ -40,7 +41,7 @@ export default function DiagnosticEvaluation({api,session,onOpen,onGeneration,on
     {!ready&&<p className="muted">완료한 문항이 있고 진행 중인 정식 채점이 없을 때 요청할 수 있어요.</p>}
     {error&&<p role="alert" className="notice error">{error}</p>}
     {!loaded&&<p role="status">평가 기록을 불러오고 있어요…</p>}
-    {rows.length>1&&<label className="diagnostic-history-choice">평가 기록<select aria-label="평가 기록" value={row.id} onChange={e=>choose(e.target.value)}>{rows.map((r,i)=><option key={r.id} value={r.id}>{i===0?'최근 · ':''}{r.facts.complete?'종합 결과':'중간 기록'} · {names[r.status]||'상태 확인 중'} · {r.facts.items.filter(item=>item.status!=='OPEN').length}문항{r.createdAt?` · ${new Date(r.createdAt).toLocaleString('ko-KR')}`:` · 기록 ${rows.length-i}`}</option>)}</select></label>}
+    {rows.length>1&&<label className="diagnostic-history-choice">평가 기록<SelectControl aria-label="평가 기록" value={row.id} onChange={e=>choose(e.target.value)}>{rows.map((r,i)=><option key={r.id} value={r.id}>{i===0?'최근 · ':''}{r.facts.complete?'종합 결과':'중간 기록'} · {names[r.status]||'상태 확인 중'} · {r.facts.items.filter(item=>item.status!=='OPEN').length}문항{r.createdAt?` · ${new Date(r.createdAt).toLocaleString('ko-KR')}`:` · 기록 ${rows.length-i}`}</option>)}</SelectControl></label>}
     <nav className="diagnostic-report-index" aria-label="보고서 목차">{[['diagnostic-report-overview','결과 요약'],['diagnostic-report-roadmap','추천 커리큘럼'],...(row?[[`diagnostic-profile-${row.id}`,'분야별 결과']]:[]),...(row?.interpretation?[[`diagnostic-evidence-${row.id}`,'코드 근거']]:[])].map(([id,label])=><button key={id} onClick={()=>{const node=document.getElementById(id);if(node){node.tabIndex=-1;node.scrollIntoView({block:'start'});node.focus({preventScroll:true});}}}>{label}</button>)}</nav>
     <dl id="diagnostic-report-overview" className="diagnostic-result-counts" aria-label="문항 결과 요약">{Object.entries(outcomes).map(([status,label])=><div key={status} data-outcome={status}><dt>{label}</dt><dd>{facts.filter(i=>i.status===status).length}<span>문항</span></dd></div>)}</dl>
     {loaded&&!row&&<div className="diagnostic-report-empty"><h3>{complete?'판정 기록은 준비됐어요':'현재 진행 상황을 남겨 두세요'}</h3><p>{complete?'종합 평가를 요청하면 제출 코드를 바탕으로 분야별 관찰과 다음 연습 방향을 정리합니다.':'중간 기록은 저장 시점의 결과입니다. 저장 후에도 진단을 계속 풀 수 있어요.'}</p></div>}

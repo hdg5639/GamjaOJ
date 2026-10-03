@@ -1,0 +1,25 @@
+import {test,expect} from '@playwright/test';
+const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18788';
+for(const width of [390,1440])test(`shared dropdown arrow, picker and keyboard work at ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:950});
+ await page.route('**/api/**',route=>{const path=new URL(route.request().url()).pathname;let data=[];
+  if(path==='/api/me')data={id:'select-user',nickname:'드롭다운'};
+  if(path==='/api/problems')data=['구현','배열·문자열','너비 우선 탐색'].map((category,i)=>({version:'select-'+i,title:'선택 확인 '+i,category,tags:Array.from({length:45},(_,j)=>'긴 태그 이름 '+j),shared:true,solveStatus:'UNATTEMPTED',submissionsEnabled:true,thinking:{layer:2,source:'CURATED_ESTIMATE'}}));
+  if(path==='/api/my/growth')data={layer:0,nextLayer:1,nextSolved:0,required:5,eligibleProblems:0,categories:0,evidence:Array(9).fill(0)};
+  return route.fulfill({json:data});
+ });
+ await page.goto(base+'/#catalog');const catalog=page.getByRole('region',{name:'문제 목록',exact:true});
+ if(width===390)await catalog.getByRole('button',{name:/^필터/}).click();
+ const category=catalog.getByLabel('분야',{exact:true});await expect(category).toBeVisible();
+ expect(await page.locator('select').evaluateAll(nodes=>nodes.every(n=>n.parentElement.classList.contains('select-control')))).toBe(true);
+ const geometry=await category.evaluate(n=>{const box=n.getBoundingClientRect(),arrow=n.parentElement.querySelector('svg').getBoundingClientRect();return {right:box.right-arrow.right,padding:parseFloat(getComputedStyle(n).paddingRight),center:Math.abs((arrow.top+arrow.bottom)/2-(box.top+box.bottom)/2)};});
+ expect(geometry.right).toBeGreaterThanOrEqual(11);expect(geometry.padding).toBeGreaterThanOrEqual(40);expect(geometry.center).toBeLessThan(1);
+ expect(await page.evaluate(()=>CSS.supports('appearance','base-select'))).toBe(true);
+ await category.click();await page.getByRole('option',{name:'배열·문자열',exact:true}).click();await expect(category).toHaveValue('배열·문자열');await expect(catalog.locator('.catalog-list>li')).toHaveCount(1);
+ await category.focus();await category.press('Space');await category.press('Escape');await expect(category).toHaveValue('배열·문자열');await expect(category).toBeFocused();
+ await category.press('Space');await page.getByRole('option',{name:'모든 분야',exact:true}).click();await expect(catalog.locator('.catalog-list>li')).toHaveCount(3);
+ const tag=catalog.getByLabel('태그',{exact:true});await tag.click();await expect(page.getByRole('option',{name:'긴 태그 이름 44',exact:true})).toHaveCount(1);
+ await page.screenshot({path:`/tmp/gamja-select-picker-${width}.png`});await page.getByRole('option',{name:'긴 태그 이름 44',exact:true}).click();await expect(tag).toHaveValue('긴 태그 이름 44');
+ await page.getByRole('button',{name:'다크 모드로 전환'}).click();await category.click();await page.screenshot({path:`/tmp/gamja-select-dark-${width}.png`});await category.press('Escape');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});

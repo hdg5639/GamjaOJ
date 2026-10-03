@@ -1,4 +1,5 @@
 'use client';
+import SelectControl from './select-control';
 
 import { useEffect, useState } from 'react';
 import SiteNotice from './site-notice';
@@ -55,11 +56,11 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
       <button className="secondary filter-toggle" aria-expanded={filtersOpen} aria-controls="catalog-filters" onClick={()=>setFiltersOpen(!filtersOpen)}>필터{filterCount?` · ${filterCount}`:''} <span aria-hidden="true">{filtersOpen?'−':'+'}</span></button>
     </div>
     <div id="catalog-filters" className="catalog-filters" hidden={!filtersOpen}>
-      <label>분야<select aria-label="분야" value={category} onChange={e=>setCategory(e.target.value)}><option value="">모든 분야</option>{categories.map(c=><option key={c}>{c}</option>)}</select></label>
-      <label>난이도<select aria-label="난이도" value={difficulty} onChange={e=>setDifficulty(e.target.value)}><option value="">모든 난이도</option>{difficulty.startsWith('MIN')&&<option value={difficulty}>{difficulty.slice(3)}겹 이상 · 다음 성장 목표</option>}{Object.entries(levels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
-      <label>정렬<select aria-label="난도 정렬" value={sort} onChange={e=>setSort(e.target.value)}><option value="">기본 순서</option><option value="asc">낮은 겹부터</option><option value="desc">높은 겹부터</option></select></label>
-      <label>태그<select aria-label="태그" value={tag} onChange={e=>setTag(e.target.value)}><option value="">모든 태그</option>{tags.map(t=><option key={t}>{t}</option>)}</select></label>
-      <label>내 풀이 상태<select aria-label="내 풀이 상태" value={solve} onChange={e=>setSolve(e.target.value)}><option value="">모든 상태</option><option value="UNSOLVED">미해결 전체</option>{Object.entries(solveLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+      <label>분야<SelectControl aria-label="분야" value={category} onChange={e=>setCategory(e.target.value)}><option value="">모든 분야</option>{categories.map(c=><option key={c}>{c}</option>)}</SelectControl></label>
+      <label>난이도<SelectControl aria-label="난이도" value={difficulty} onChange={e=>setDifficulty(e.target.value)}><option value="">모든 난이도</option>{difficulty.startsWith('MIN')&&<option value={difficulty}>{difficulty.slice(3)}겹 이상 · 다음 성장 목표</option>}{Object.entries(levels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</SelectControl></label>
+      <label>정렬<SelectControl aria-label="난도 정렬" value={sort} onChange={e=>setSort(e.target.value)}><option value="">기본 순서</option><option value="asc">낮은 겹부터</option><option value="desc">높은 겹부터</option></SelectControl></label>
+      <label>태그<SelectControl aria-label="태그" value={tag} onChange={e=>setTag(e.target.value)}><option value="">모든 태그</option>{tags.map(t=><option key={t}>{t}</option>)}</SelectControl></label>
+      <label>내 풀이 상태<SelectControl aria-label="내 풀이 상태" value={solve} onChange={e=>setSolve(e.target.value)}><option value="">모든 상태</option><option value="UNSOLVED">미해결 전체</option>{Object.entries(solveLabels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</SelectControl></label>
     </div>
     <ThinkingGuide/>
     {saved&&<p className="notice success" role="status">{saved}</p>}
@@ -69,8 +70,8 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
       <label className="check-row"><input type="checkbox" name="shared" defaultChecked={editing.shared}/>다른 회원에게 공개</label>
       <label>분류 이름<input name="category" required maxLength={80} defaultValue={editing.category||'미분류'}/></label>
       <label>분류 태그<input name="tags" defaultValue={(editing.tags||[]).join(', ')} placeholder="쉼표로 구분 · 최대 6개" maxLength={490}/></label>
-      <label>생각의 겹<select aria-label="예상 난이도" name="thinkingLayer" value={editLayer} onChange={e=>setEditLayer(e.target.value)}>{Object.entries(levels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
-      {editLayer!=='UNRATED'&&<><div className="thinking-edit-axes">{[['발상','insight'],['구현','implementation'],['경계','edgeCases']].map(([label,key])=><label key={key}>{label}<select name={key} defaultValue={editing.thinking?.[key]||3}>{[1,2,3,4,5].map(n=><option key={n} value={n}>{n} / 5</option>)}</select></label>)}</div>
+      <label>생각의 겹<SelectControl aria-label="예상 난이도" name="thinkingLayer" value={editLayer} onChange={e=>setEditLayer(e.target.value)}>{Object.entries(levels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</SelectControl></label>
+      {editLayer!=='UNRATED'&&<><div className="thinking-edit-axes">{[['발상','insight'],['구현','implementation'],['경계','edgeCases']].map(([label,key])=><label key={key}>{label}<SelectControl name={key} defaultValue={editing.thinking?.[key]||3}>{[1,2,3,4,5].map(n=><option key={n} value={n}>{n} / 5</option>)}</SelectControl></label>)}</div>
       <label>배정 근거<textarea name="rationale" rows={3} required maxLength={300} defaultValue={editing.thinking?.rationale||''} placeholder="규칙·제약·생각의 부담을 설명해 주세요. 정답 기법이나 해설은 적지 마세요."/></label><p className="muted">근거와 세 축도 공개돼요. 내 자신감과는 별개인 출제자 추정입니다.</p></>}
       {saveError&&<p role="alert" className="notice error">{saveError}</p>}
       <div className="catalog-actions"><button className="primary" disabled={saving}>{saving?'저장 중…':'설정 저장'}</button><button type="button" className="secondary" disabled={saving} onClick={()=>setEditing(null)}>닫기</button></div>

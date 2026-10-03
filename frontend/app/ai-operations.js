@@ -1,4 +1,5 @@
 'use client';
+import SelectControl from './select-control';
 import HybridGeneration from './hybrid-generation';
 import SpecDrafts from './spec-drafts';
 import ProblemReview from './problem-review';
@@ -91,10 +92,10 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
     <div className="generation-section-heading"><h3>어떤 연습을 할까요?</h3><a href="#tag-generation-results">진행·결과로 이동</a></div>
     <p className="draft-help">카테고리와 연습 태그를 선택하세요. 새 소재로 문제와 힌트를 작성합니다.</p>
     {optionsError?<p role="alert" className="notice error">카테고리를 불러오지 못했어요: {optionsError} <button className="secondary" onClick={()=>setOptionsAttempt(n=>n+1)}>카테고리 다시 불러오기</button></p>:!choice&&<p role="status">카테고리와 태그를 불러오고 있어요…</p>}
-    <label>카테고리<select aria-label="카테고리" value={category} disabled={busy||!!pending.current||!choice} onChange={e=>{setCategory(e.target.value);setTags(['basics']);setSourceAnalysisId('');}}>
+    <label>카테고리<SelectControl aria-label="카테고리" value={category} disabled={busy||!!pending.current||!choice} onChange={e=>{setCategory(e.target.value);setTags(['basics']);setSourceAnalysisId('');}}>
       {!choice&&<option value={category}>불러오는 중…</option>}
       {options.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}
-    </select></label>
+    </SelectControl></label>
     <p className="draft-help">{category==='graphs'?'기본은 무방향·비용 1 그래프의 S→T 최단 거리입니다. 방향·가중치를 추가하거나 도달 정점 수·최대 최단 거리 중 하나를 고를 수 있어요.':category==='sequences'?'수열은 선택 조건 → 값 변환 → 집계를 조합합니다. 조건·변환을 선택하지 않으면 전체 값·원래 값을 사용하며, 기본 집계는 합입니다.':'괄호의 순서와 균형을 검사하는 문제를 만듭니다.'} Java · C++ · Python으로 풀 수 있어요.</p>
     <fieldset className="generation-tags" disabled={busy||!!pending.current||!choice} aria-describedby="generation-tags-help">
       <legend>연습 태그</legend>
@@ -119,10 +120,10 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
         </li>)}</ul>}
       </div>}
     </div>
-    <div className="generation-personalization"><label>반영할 풀이 분석<select aria-label="반영할 풀이 분석" value={sourceAnalysisId} disabled={busy||!!pending.current} onChange={e=>setSourceAnalysisId(e.target.value)}>
+    <div className="generation-personalization"><label>반영할 풀이 분석<SelectControl aria-label="반영할 풀이 분석" value={sourceAnalysisId} disabled={busy||!!pending.current} onChange={e=>setSourceAnalysisId(e.target.value)}>
       <option value="">분석 없이 연습 포인트로 만들기</option>
       {learning.map((item,index)=><option key={item.id} value={item.id}>{index+1}. {item.summary.slice(0,80)}</option>)}
-    </select></label>
+    </SelectControl></label>
     {sourceAnalysisId&&<p className="draft-help">{learning.find(item=>item.id===sourceAnalysisId)?.summary}</p>}
     <p className="draft-help">선택 사항 · 저장된 분석을 힌트·해설에 반영합니다. 추가 분석 비용은 없어요.</p>
     {!learning.length&&<p className="draft-help">제출 기록에서 {resolved?.title||'선택한 문제'} 풀이 분석을 완료하면 여기서 선택할 수 있어요.</p>}

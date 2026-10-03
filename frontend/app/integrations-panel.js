@@ -1,4 +1,5 @@
 'use client';
+import SelectControl from './select-control';
 import {useEffect,useState} from 'react';
 import {shortProblemId} from './problem-id';
 const names={GITHUB:'GitHub',NOTION:'Notion'};
@@ -27,12 +28,12 @@ function Destination({connection:c,api,onChange}){
    {c.target&&<p className="export-current">저장 위치: <a href={c.target.url} target="_blank" rel="noopener noreferrer">{c.target.label}</a>{c.provider==='GITHUB'&&` · ${c.target.private?'비공개':'공개'} 저장소`}{c.provider==='NOTION'&&` · ${c.target.kind==='notion_table'?'풀이 표':c.target.kind==='notion_table_parent'?'페이지 안의 풀이 표':'개별 풀이 페이지'}`}</p>}
    <div className="export-search"><label>{c.provider==='GITHUB'?'저장소 검색':'페이지·표 검색'}<input value={search} onChange={e=>setSearch(e.target.value)} maxLength={100} placeholder="이름으로 검색"/></label><button type="button" className="secondary" disabled={busy} onClick={find}>{busy?'확인 중…':'목록 불러오기'}</button></div>
    {loaded&&!targets.length&&<p className="muted">접근 가능한 위치가 없어요. 앱에 공유한 저장소나 페이지를 확인해 주세요.</p>}
-   <label>저장 위치<select value={selected} onChange={e=>{setSelected(e.target.value);setBranch(targets.find(t=>t.id===e.target.value)?.branch||'');}} required disabled={busy}>
+   <label>저장 위치<SelectControl value={selected} onChange={e=>{setSelected(e.target.value);setBranch(targets.find(t=>t.id===e.target.value)?.branch||'');}} required disabled={busy}>
     <option value="">위치를 선택하세요</option>{c.target&&!targets.some(t=>t.id===(c.target.repo||c.target.id))&&<option value={c.target.repo||c.target.id}>{c.target.label}</option>}
     {targets.map(t=><option key={t.id} value={t.id}>{t.label}{c.provider==='GITHUB'?` (${t.privateTarget?'비공개':'공개'})`:''}</option>)}
-   </select></label>
+   </SelectControl></label>
    {c.provider==='GITHUB'&&<div className="export-fields"><label>브랜치<input value={branch} onChange={e=>setBranch(e.target.value)} maxLength={200} placeholder="저장소의 기본 브랜치"/></label><label>저장 폴더<input value={prefix} onChange={e=>setPrefix(e.target.value)} maxLength={120} pattern="[A-Za-z0-9_/-]+" required/></label></div>}
-   {c.provider==='GITHUB'&&<><label>정리 방식<select value={layout} onChange={e=>setLayout(e.target.value)} disabled={busy}><option value="problem-v1">문제별 정리 · 백준허브 스타일</option><option value="legacy">사용자·문제·언어별 정리</option></select></label><p className="muted">저장 경로: <code>{prefix||'GamjaOJ'}/{layout==='problem-v1'?'Easy/문제ID. 제목/Main.java':'사용자/문제ID/JAVA/Main.java'}</code><br/>{layout==='problem-v1'?'같은 문제의 Java·C++·Python 코드를 한 폴더에서 관리하고, README에 성능·분류·제출 일자를 기록해요.':'사용자·문제·언어별 폴더에 코드와 기본 문제 정보를 기록해요.'}</p></>}
+   {c.provider==='GITHUB'&&<><label>정리 방식<SelectControl value={layout} onChange={e=>setLayout(e.target.value)} disabled={busy}><option value="problem-v1">문제별 정리 · 백준허브 스타일</option><option value="legacy">사용자·문제·언어별 정리</option></SelectControl></label><p className="muted">저장 경로: <code>{prefix||'GamjaOJ'}/{layout==='problem-v1'?'Easy/문제ID. 제목/Main.java':'사용자/문제ID/JAVA/Main.java'}</code><br/>{layout==='problem-v1'?'같은 문제의 Java·C++·Python 코드를 한 폴더에서 관리하고, README에 성능·분류·제출 일자를 기록해요.':'사용자·문제·언어별 폴더에 코드와 기본 문제 정보를 기록해요.'}</p></>}
    {c.provider==='GITHUB'&&targets.find(t=>t.id===selected)?.privateTarget===false&&<p className="muted">공개 저장소에 올린 코드는 누구나 볼 수 있어요.</p>}
    {c.provider==='NOTION'&&<p className="muted">페이지를 선택하면 첫 풀이 저장 때 ‘GamjaOJ 풀이’ 표를 만들어요. 기존 표를 선택하면 필요한 열만 추가해요. 문제·언어·결과·링크·통과 시각을 기록하고, 행을 열면 코드와 내 회고를 볼 수 있어요.</p>}
    {!c.target&&<label className="export-toggle"><input type="checkbox" checked={automatic} onChange={e=>setAutomatic(e.target.checked)}/>앞으로 통과한 풀이 자동 저장</label>}

@@ -1,4 +1,5 @@
 'use client';
+import SelectControl from './select-control';
 import {useEffect,useRef,useState} from 'react';
 import Pager,{usePage} from './pager';
 import DiagnosticPlan from './diagnostic-plan';
@@ -83,7 +84,7 @@ export default function LearningTracks({api,userId,visible,initialEvaluation,onO
   {!loaded&&<p role="status">학습 계획을 불러오는 중…</p>}
   <div className="learning-workspace-top">
    <section className="learning-plan-overview" aria-label="계획 선택과 진행도">
-    {track?<><label>학습 계획 선택<select aria-label="학습 계획 선택" value={track.evaluationId} onChange={e=>{setSelected(e.target.value);setFocused('');paging.setPage(0);setManual(null);}}>{tracks.map(t=><option key={t.evaluationId} value={t.evaluationId}>{bankTitle(t.bankId)} · {new Date(t.createdAt).toLocaleDateString('ko-KR')} · 목표 {t.steps.length}개</option>)}</select></label>
+    {track?<><label>학습 계획 선택<SelectControl aria-label="학습 계획 선택" value={track.evaluationId} onChange={e=>{setSelected(e.target.value);setFocused('');paging.setPage(0);setManual(null);}}>{tracks.map(t=><option key={t.evaluationId} value={t.evaluationId}>{bankTitle(t.bankId)} · {new Date(t.createdAt).toLocaleDateString('ko-KR')} · 목표 {t.steps.length}개</option>)}</SelectControl></label>
      <div className="learning-progress"><strong>{completed} / {steps.length} 목표 훈련 확인 완료</strong><progress aria-label="계획 목표 진행도" value={completed} max={steps.length||1}/><small>정답 제출 후 학습 확인까지 마친 목표예요.</small></div>
      <ol className="learning-flow" aria-label="훈련 진행 순서"><li aria-current={phase===1?'step':undefined}>1. 문제 선택</li><li aria-current={phase===2?'step':undefined}>2. 풀이·제출</li><li aria-current={phase===3?'step':undefined}>3. 마무리·학습 확인</li></ol>
      <p className="muted">아래 목록에서 문제를 골라 시작하세요. 준비 중인 문제는 자동 생성·검증이 끝나면 열려요.</p>

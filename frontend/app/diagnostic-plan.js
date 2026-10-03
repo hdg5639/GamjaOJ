@@ -1,4 +1,5 @@
 'use client';
+import SelectControl from './select-control';
 import {useRef,useState} from 'react';
 export default function DiagnosticPlan({api,row,index,onOpen,onGeneration,sourceKind="CODE_OBSERVATION"}) {
   const [options,setOptions]=useState(null),[plans,setPlans]=useState([]),[goal,setGoal]=useState(''),[selected,setSelected]=useState({}),[rule,setRule]=useState({});
@@ -36,7 +37,7 @@ export default function DiagnosticPlan({api,row,index,onOpen,onGeneration,source
         {plans.map(plan=><div key={plan.id}><h4>{plan.roundNumber||1}회차 · {plan.goal||'확인할 수 없는 학습 계획'}</h4>
           {plan.status==='READY'&&<div>
             {!plan.generationId?<>
-              {options.rules?.length>0&&<div className="diagnostic-rule-generation"><label>검증된 규칙으로 바로 만들기<select value={rule[plan.id]||''} disabled={busy} onChange={e=>setRule({...rule,[plan.id]:e.target.value})}><option value="">규칙을 선택하세요</option>{[...options.rules].sort((a,b)=>(options.matchingRules||[]).includes(b.id)-(options.matchingRules||[]).includes(a.id)).map(r=><option key={r.id} value={r.id}>{(options.matchingRules||[]).includes(r.id)?'[진단 분야 일치] ':''}{r.label}</option>)}</select></label>
+              {options.rules?.length>0&&<div className="diagnostic-rule-generation"><label>검증된 규칙으로 바로 만들기<SelectControl value={rule[plan.id]||''} disabled={busy} onChange={e=>setRule({...rule,[plan.id]:e.target.value})}><option value="">규칙을 선택하세요</option>{[...options.rules].sort((a,b)=>(options.matchingRules||[]).includes(b.id)-(options.matchingRules||[]).includes(a.id)).map(r=><option key={r.id} value={r.id}>{(options.matchingRules||[]).includes(r.id)?'[진단 분야 일치] ':''}{r.label}</option>)}</SelectControl></label>
                 <p className="muted">이 목표와 규칙이 맞는지는 직접 확인해 주세요. [진단 분야 일치]는 분야 이름이 같다는 뜻이며 검증된 추천이 아닙니다. 규칙을 고정해 새 본문으로 만들고, 모든 실행 검증과 최종 검토를 통과해야 풀 수 있습니다{options.rules.find(r=>r.id===rule[plan.id])?.verifiedReference?' · 검증된 정답 코드를 다시 사용합니다':''}.</p>
                 <button className="secondary" disabled={busy||!rule[plan.id]} onClick={()=>action(plan,'generate',{ruleVersionId:rule[plan.id]})}>선택한 규칙으로 문제 생성</button></div>}
               <p>맞는 문제가 없다면 확정한 목표로 새 문제 초안을 요청할 수 있어요. 생성 모델을 사용하며, 초안 확인과 기존 검증 단계를 거쳐야 풀 수 있습니다.</p><button className="secondary" disabled={busy} onClick={()=>action(plan,'generate')}>이 목표로 맞춤 문제 생성 요청</button></>:
@@ -50,7 +51,7 @@ export default function DiagnosticPlan({api,row,index,onOpen,onGeneration,source
             <p className="muted">문제는 다음 회차에서 직접 선택하거나 별도로 생성합니다. 같은 문제 반복은 새로운 문제에서의 실력 향상 근거가 아닙니다.</p>
             <button className="secondary" disabled={busy} onClick={()=>action(plan,'next-round',{reviewHash:options.reviewHash})}>최신 의견 확인 · 다음 회차 준비</button>
           </div>}
-          {plan.status==='READY'?<><label>직접 고를 연습 문제<select value={selected[plan.id]||''} disabled={busy} onChange={e=>setSelected({...selected,[plan.id]:e.target.value})}><option value="">문제를 선택하세요</option>{options.problems.map(p=><option key={p.version} value={p.version}>{p.title}</option>)}</select></label>
+          {plan.status==='READY'?<><label>직접 고를 연습 문제<SelectControl value={selected[plan.id]||''} disabled={busy} onChange={e=>setSelected({...selected,[plan.id]:e.target.value})}><option value="">문제를 선택하세요</option>{options.problems.map(p=><option key={p.version} value={p.version}>{p.title}</option>)}</SelectControl></label>
             <p className="muted">현재 풀 수 있는 일반 문제 목록입니다. 이 목표와의 적합성이 자동 검증된 추천은 아닙니다.</p>
             {selected[plan.id]&&<p className="diagnostic-statement">{options.problems.find(p=>p.version===selected[plan.id])?.statement}</p>}
             <button className="primary" disabled={busy||!selected[plan.id]} onClick={()=>start(plan)}>선택한 문제로 훈련 시작</button></>:
