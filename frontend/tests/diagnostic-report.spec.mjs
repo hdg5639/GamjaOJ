@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {expectSurfaceTint} from './surface-helpers.mjs';
 const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18788';
 for(const width of [390,768,1710])test(`diagnostic report history and evidence at ${width}`,async({page})=>{
   await page.setViewportSize({width,height:1000});
@@ -13,7 +14,8 @@ for(const width of [390,768,1710])test(`diagnostic report history and evidence a
     });
     expect(geometry.padding).toBeGreaterThanOrEqual(16);
     expect(geometry.inset).toBeGreaterThanOrEqual(16);
-    expect(geometry.background).toBe('rgb(24, 36, 58)');
+    await expectSurfaceTint(page.locator('.diagnostic-panel'),[24,36,58]);
+    await expect(page.locator('.diagnostic-panel')).toHaveCSS('backdrop-filter',/blur/);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   };
   const items=['PASSED','EXHAUSTED','PASSED','SKIPPED'].map((status,i)=>({id:`i${i}`,itemId:`i${i}`,position:i,category:i<2?'implementation':'graph',difficulty:i%2?'MEDIUM':'EASY',status,attempts:status==='EXHAUSTED'?5:status==='SKIPPED'?0:1,pending:0}));
@@ -35,7 +37,7 @@ for(const width of [390,768,1710])test(`diagnostic report history and evidence a
   await page.goto(base);await page.getByRole('button',{name:'선택 진단',exact:true}).click();
   await expect(page.getByRole('button',{name:'선택한 20문항 시작'})).toBeVisible();
   await checkPanel();
-  await expect(page.locator('.diagnostic-panel fieldset')).toHaveCSS('background-color','rgb(34, 51, 77)');
+  await expectSurfaceTint(page.locator('.diagnostic-panel fieldset'),[34,51,77]);
   await page.screenshot({path:`/tmp/gamjaoj-diagnostic-selection-${width}.png`,fullPage:true});
   await page.getByText('지난 진단',{exact:true}).click();await page.getByRole('button',{name:'4문항 · 완료'}).click();
   await expect(page.getByRole('heading',{name:'진단 결과',exact:true})).toBeVisible();
@@ -58,7 +60,7 @@ for(const width of [390,768,1710])test(`diagnostic report history and evidence a
   await expect(page.getByRole('dialog',{name:'진단 기록'})).toBeVisible();await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog',{name:'진단 기록'})).toBeHidden();
   await page.evaluate(()=>document.documentElement.dataset.theme='dark');
-  await expect.poll(()=>page.getByRole('button',{name:'다른 진단 보기',exact:true}).evaluate(el=>getComputedStyle(el).backgroundColor===getComputedStyle(document.querySelector('.diagnostic-report')).backgroundColor)).toBe(true);
+  await expectSurfaceTint(page.getByRole('button',{name:'다른 진단 보기',exact:true}),[24,36,58]);
   await page.getByRole('heading',{name:'진단 결과',exact:true}).scrollIntoViewIfNeeded();
   await page.screenshot({path:`/tmp/gamjaoj-diagnostic-report-dark-${width}.png`,fullPage:true});
 });

@@ -38,6 +38,10 @@ for(const width of [390,1440]) test(`uniform glass surfaces remain translucent i
   await dialog.getByLabel('화면 배경 HEX',{exact:true}).fill(dark?'#171b2b':'#f1efe9');
   await expect.poll(()=>page.locator('body').evaluate(n=>getComputedStyle(n).backgroundImage)).not.toBe(previousWash);
   await expect(page.locator('body')).toHaveCSS('background-color',dark?'rgb(23, 27, 43)':'rgb(241, 239, 233)');
+  const edge=dialog.locator('.appearance-color').first(),oldEdge=await edge.evaluate(n=>getComputedStyle(n).borderBottomColor);
+  await dialog.getByLabel('테두리 HEX',{exact:true}).fill('#887766');
+  await expect.poll(()=>edge.evaluate(n=>getComputedStyle(n).borderBottomColor)).not.toBe(oldEdge);
+
 
   const box=await dialog.boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width);
   await page.screenshot({path:`/tmp/gamja-glass-modal-${dark?'dark':'light'}-${width}.png`,animations:'disabled'});

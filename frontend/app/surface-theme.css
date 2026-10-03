@@ -1,0 +1,75 @@
+/* Shared material system. Keep layout, semantic states, code and console colors independent. */
+:root {
+ --glass-surface:color-mix(in srgb,var(--surface) 72%,transparent);
+ --glass-panel:color-mix(in srgb,var(--surface) 62%,transparent);
+ --relief-light:color-mix(in srgb,var(--surface) 65%,transparent);
+ --relief-shade:color-mix(in srgb,var(--ink) 10%,transparent);
+ --surface-raised:4px 4px 10px var(--relief-shade),-4px -4px 10px var(--relief-light);
+ --surface-inset:inset 2px 2px 5px var(--relief-shade),inset -2px -2px 5px var(--relief-light);
+ --surface-edge:color-mix(in srgb,var(--line) 32%,transparent);
+ --canvas-wash:linear-gradient(135deg,var(--canvas) 0%,color-mix(in srgb,var(--canvas) 92%,var(--green)) 48%,color-mix(in srgb,var(--canvas) 68%,var(--subtle)) 100%);
+}
+:root[data-theme="dark"] { --relief-light:color-mix(in srgb,var(--ink) 5%,transparent); --relief-shade:#00000038; }
+:root body { background-color:var(--canvas); background-image:var(--canvas-wash); background-size:100% 100%; background-attachment:fixed; }
+
+/* Structural dividers stay quiet across every page; preserve warnings and code-specific borders. */
+:root:root:root:root :where(.workspace :is(section,article,aside,header,footer,div,ul,ol,li,table,td,th,fieldset,details,summary):not(.app-navigation):not(.app-navigation *):not(.code-editor *):not(.run-console *):not(.notice):not(.error):not(.remove-confirm):not(.catalog-remove),dialog.modal :is(section,div,header,footer,table,td,th,fieldset):not(.notice):not(.error)) { border-color:var(--surface-edge); }
+/* Navigation blends into the canvas; thin painted dividers no longer outline the shell. */
+:root:root:root .header-slot { background:color-mix(in srgb,var(--surface) 60%,transparent); background-image:none; border-bottom:1px solid transparent; -webkit-backdrop-filter:blur(24px); backdrop-filter:blur(24px); box-shadow:0 5px 20px var(--relief-shade); }
+:root:root:root .app-navigation { background:color-mix(in srgb,var(--sidebar-background) 82%,transparent); background-image:none; border-right:1px solid transparent; -webkit-backdrop-filter:blur(28px); backdrop-filter:blur(28px); box-shadow:5px 0 22px var(--relief-shade); overflow-x:hidden; }
+:root:root:root .workspace-nav button { border-color:transparent; box-shadow:3px 3px 7px #00000015,-3px -3px 7px #ffffff03; }
+:root:root:root .workspace-nav button.active { background:color-mix(in srgb,var(--sidebar-active) 92%,transparent); color:var(--sidebar-active-ink); box-shadow:inset 2px 2px 5px #00000018,inset -2px -2px 5px #ffffff0d; }
+
+/* Page boards, lists and supporting panels share real translucency, not opaque painted cards. */
+:root:root:root :is(.practice-grid,.diagnostic-workspace > article,.card,.catalog-list,.catalog-welcome,.catalog-edit,.catalog-empty,.growth-summary,.diagnostic-panel:not([data-solving="true"]),.diagnostic-report,.followup-panel,.session-panel,.training-panel,.learning-tracks,.ai-operations,.generation-main,.generation-side,.spec-draft-editor,.problem-review,.settings-section,.onboard-card,.rule-card) {
+ background:var(--glass-panel); border-color:transparent;
+ -webkit-backdrop-filter:blur(22px); backdrop-filter:blur(22px);
+ box-shadow:inset 1px 1px 0 var(--relief-light),6px 6px 20px var(--relief-shade),-4px -4px 14px var(--relief-light);
+}
+:root:root:root :is(.catalog-filters,.diagnostic-panel fieldset,.diagnostic-profile-card,.diagnostic-plan,.diagnostic-result-tools,.training-current,.training-detail,.my-column-head,.submit-console) { background:color-mix(in srgb,var(--subtle) 38%,transparent); border-color:transparent; box-shadow:var(--surface-inset); }
+/* Preserve dense lists: quiet separators and hover feedback, without a card around each row. */
+:root:root:root :is(.catalog-list > li,.my-records > li,.training-record-list > li,.diagnostic-profile-list .diagnostic-profile-card,.category-list > li) { border-color:var(--surface-edge); }
+:root:root:root :is(.catalog-list > li:hover,.my-submission:hover,.training-record-row:hover,.learning-problem-row:hover,.diagnostic-session-list button:hover) { background:color-mix(in srgb,var(--surface) 30%,transparent); }
+
+:root:root:root :is(.practice-grid .result-dock,.diagnostic-panel[data-solving="true"]) { background:transparent; border-color:transparent; }
+/* Neutral buttons inherit the nearby surface and rely on relief rather than a visible stroke. */
+:root:root:root :is(.secondary,.appearance-preset,.category-scopes button,.confidence-options button,.list-pagination button,.tool-pop > summary,.solving-layout-choice > button,.pane-order-preview > button),:root:root:root dialog.modal button:not(.primary) {
+ background:color-mix(in srgb,var(--surface) 48%,transparent); border-color:transparent; box-shadow:var(--surface-raised);
+}
+:root:root:root .primary { border-color:transparent; box-shadow:var(--surface-raised); }
+:root:root:root :is(.secondary,.primary,.appearance-preset,.category-scopes button,.confidence-options button,.list-pagination button):active:not(:disabled),:root:root:root dialog.modal button:active:not(:disabled) { box-shadow:var(--surface-inset); }
+:root:root:root :is(button[aria-pressed="true"]:not(.activity-day):not(.my-submission),button[aria-selected="true"],.list-pagination button[aria-current="page"],.training-hub-tabs button[aria-current="page"]) { border-color:transparent; box-shadow:var(--surface-inset); }
+:root:root:root .list-pagination button[aria-current="page"] { background:color-mix(in srgb,var(--green) 12%,var(--surface)); color:var(--green); font-weight:750; }
+:root:root:root :is(.secondary,.primary,.appearance-preset,.list-pagination button):disabled,:root:root:root dialog.modal button:disabled { box-shadow:none; }
+:root:root:root :is(.generation-modes,.workspace-tools,.side-tabs,.appearance-mode,.appearance-nav) { border-color:transparent; background:color-mix(in srgb,var(--subtle) 30%,transparent); box-shadow:var(--surface-inset); }
+:root:root:root :is(.generation-modes,.workspace-tools,.side-tabs,.my-tabs,.training-hub-tabs) button { border-color:transparent; }
+
+:root:root:root :is(.catalog-scope,.my-tabs,.training-hub-tabs,.generation-modes,.workspace-tools,.side-tabs,.layout-toolbar,.result-tabs) button { border-color:transparent; border-radius:8px; }
+/* Forms keep their focus rings and error indicators; code/console use their own theme palettes. */
+:root:root:root :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),textarea,select):not(.code-editor *):not(.run-console *) {
+ background:color-mix(in srgb,var(--surface) 56%,transparent); color:var(--ink); border-color:transparent; box-shadow:var(--surface-inset);
+}
+:root:root:root [aria-invalid="true"] { border-color:var(--danger); }
+:root:root:root .select-control > select:hover:not(:disabled) { border-color:transparent; background:color-mix(in srgb,var(--surface) 72%,transparent); }
+:root:root:root :is(input,textarea,select,button,summary):focus-visible { outline:2px solid var(--green); outline-offset:3px; }
+
+/* Every functional dialog and popover uses the same soft edge and material. */
+:root:root:root :is(dialog.modal,.tool-pop-panel,.pane-order-editor,.pane-order-options) {
+ background:var(--glass-surface); background-image:none; border-color:transparent;
+ -webkit-backdrop-filter:blur(28px); backdrop-filter:blur(28px);
+ box-shadow:inset 1px 1px 0 var(--relief-light),8px 12px 32px var(--relief-shade),-6px -6px 24px var(--relief-light),0 18px 64px #00000026;
+}
+:root:root:root dialog.modal::backdrop { background:#00000030; -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+:root:root:root dialog.modal .modal-head { background:color-mix(in srgb,var(--surface) 55%,transparent); border-bottom-color:transparent; -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px); box-shadow:0 3px 10px var(--relief-shade); }
+:root:root:root dialog.modal .modal-body { background:transparent; }
+:root:root:root :is(.appearance-color,.appearance-nav,.appearance-preview-window,.preview-window-bar,.growth-footer,.training-hub-tabs,.learning-track-choice,.settings-navigation,.activity-calendar,.learning-balance,.learning-continuation,.learning-revisit,.my-stats,.generation-job,.my-submission-detail,.diagnostic-fact-table th,.diagnostic-fact-table td) { border-color:var(--surface-edge); }
+:root .preview-window-bar { background-image:var(--canvas-wash); }
+@supports (appearance:base-select) {
+ :root:root:root .select-control > select::picker(select) { background:var(--glass-surface); border-color:transparent; -webkit-backdrop-filter:blur(24px); backdrop-filter:blur(24px); box-shadow:var(--surface-raised),0 8px 24px var(--relief-shade); }
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) {
+ :root { --glass-panel:var(--surface); --glass-surface:var(--surface); }
+ :root:root:root :is(.header-slot,dialog.modal,.tool-pop-panel,.pane-order-editor,.pane-order-options,.card,.catalog-list,.growth-summary,.diagnostic-panel,.diagnostic-report,.training-panel,.learning-tracks,.generation-main,.generation-side,.settings-section) { background:var(--surface); }
+ :root:root:root .app-navigation { background:var(--sidebar-background); }
+ :root:root:root dialog.modal .modal-head { background:var(--surface); }
+}

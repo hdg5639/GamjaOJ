@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {expectSurfaceTint} from './surface-helpers.mjs';
 const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18788';
 async function open(page){
  await page.route('**/api/**',async route=>{
@@ -60,8 +61,8 @@ test('app palettes are separate for light and dark, remembered, and resettable',
  await dialog.getByLabel('패널 배경 HEX',{exact:true}).fill('#445566');
  await dialog.getByLabel('사이드바 배경 HEX',{exact:true}).fill('#123456');
  await expect(page.locator('body')).toHaveCSS('background-color','rgb(17, 34, 51)');
- await expect(page.locator('.practice-grid')).toHaveCSS('background-color','rgb(68, 85, 102)');
- await expect(page.locator('.app-navigation')).toHaveCSS('background-color','rgb(18, 52, 86)');
+ await expectSurfaceTint(page.locator('.practice-grid'),[68,85,102]);
+ await expectSurfaceTint(page.locator('.app-navigation'),[18,52,86]);
  await dialog.getByRole('button',{name:'다크',exact:true}).click();await dialog.getByLabel('화면 배경 HEX',{exact:true}).fill('#334455');
  await dialog.getByRole('button',{name:'닫기',exact:true}).click();
  await expect(page.getByRole('button',{name:'라이트 모드로 전환',exact:true})).toBeVisible();
