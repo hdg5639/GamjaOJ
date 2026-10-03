@@ -70,7 +70,10 @@ for(const width of [390,820,1710])test(`training records search, replay and navi
   await page.locator('.training-hub-view').evaluate(el=>el.scrollTo(0,0));
   await page.screenshot({path:`/tmp/gamja-training-active-${width}.png`,fullPage:true});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await expect(page.getByRole('dialog',{name:'훈련 마무리'})).toHaveCSS('background-color','rgb(24, 36, 58)');
+  const finishDialog=page.getByRole('dialog',{name:'훈련 마무리'});
+  await expect(finishDialog).toHaveCSS('backdrop-filter',/blur/);
+  const tint=await finishDialog.evaluate(n=>{const c=document.createElement('canvas').getContext('2d');c.fillStyle=getComputedStyle(n).backgroundColor;c.fillRect(0,0,1,1);return [...c.getImageData(0,0,1,1).data];});
+  expect(tint.slice(0,3)).toEqual([24,36,58]);expect(tint[3]).toBeGreaterThan(150);expect(tint[3]).toBeLessThan(240);
   await panel.getByRole('button',{name:'훈련 마치기'}).click();
   await expect(panel.getByRole('button',{name:'같은 훈련 요청 다시 확인'})).toBeEnabled();
   await page.reload();
