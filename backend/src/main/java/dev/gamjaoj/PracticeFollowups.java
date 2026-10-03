@@ -75,7 +75,7 @@ class PracticeFollowups {
     private List<Candidate> candidates(UUID owner,String origin,String contract,String focus,UUID id,UUID roundId,boolean requested){
         // Free-form output is eligible only when it was generated for this exact confirmed goal.
         return jdbc.sql("SELECT id,package_json FROM problem_version p WHERE ready=true AND diagnostic_only=false AND review_hold=false AND (owner_id IS NULL OR owner_id=? OR shared=true) AND id<>? AND NOT EXISTS (SELECT 1 FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.user_id=? AND s.problem_version=p.id AND s.run_input IS NULL AND j.verdict='AC') ORDER BY id")
-                .param(owner).param(origin).param(owner).query((r,n)->new Candidate(r.getString(1),JudgeJson.parse(r.getString(2)).path("title").asText(),JudgeJson.parse(r.getString(2)).path("statement").asText())).list().stream().filter(p->{
+                .param(owner).param(origin).param(owner).query((r,n)->new Candidate(r.getString(1),ProblemTitles.display(JudgeJson.parse(r.getString(2))),JudgeJson.parse(r.getString(2)).path("statement").asText())).list().stream().filter(p->{
                     // Same registered rule version, or a free-form fallback generated for this exact round.
                     if(rule(contract))return contract.equals(template(p.version()))||(requested&&p.version().equals("experimental-check-"+roundId));
                     if(contract==null)return (requested&&p.version().equals("experimental-check-"+roundId)) || jdbc.sql("SELECT count(*) FROM practice_followup_attempt WHERE followup_id=? AND ?=CONCAT('experimental-check-',CAST(generation_id AS VARCHAR(36)))").param(id).param(p.version()).query(Integer.class).single()>0;

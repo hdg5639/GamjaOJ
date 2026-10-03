@@ -2,7 +2,7 @@ export function cachedApi(request, now = Date.now) {
   const entries = new Map();
   let epoch = 0;
   const clear = () => { epoch++; entries.clear(); };
-  const eligible = path => /^\/api\/(?:my\/(?:summary|problems)|problems|integrations)(?:\?.*)?$/.test(path);
+  const eligible = path => /^\/api\/(?:my\/(?:summary|problems|growth)|problems|integrations)(?:\?.*)?$/.test(path);
   const api = async (path, options = {}) => {
     const {fresh, ...networkOptions} = options;
     const method = (options.method || 'GET').toUpperCase();

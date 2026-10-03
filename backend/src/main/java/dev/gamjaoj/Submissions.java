@@ -72,7 +72,7 @@ public class Submissions {
                     JsonNode data = JudgeJson.parse(row.getString("package_json"));
                     var metadata=ProblemCatalogMetadata.read(row);
                     // Explicit public fields only: never serialize a private problem package.
-                    return new Problem(row.getString("id"), data.path("title").asText(), data.path("statement").asText(),
+                    return new Problem(row.getString("id"), ProblemTitles.display(data), data.path("statement").asText(),
                             data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText(),
                             examples(data, row.getString("examples_json")), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),ThinkingDifficulty.read(row),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options(row.getString("time_limits_json")).stream().filter(l->!data.has("api")||l.id().equals("JAVA")).toList(),data.has("api")?data.path("api"):null);
                 }).list();
