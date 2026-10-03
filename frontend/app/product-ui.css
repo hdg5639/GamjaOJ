@@ -71,7 +71,6 @@ input,select,textarea { border-color:#ccd9d3; }
 .catalog-tags span { background:#f0f4f2; border-radius:4px; font-size:11px; padding:2px 6px; }
 .catalog-progress { font-size:11px; margin:0; }
 .catalog-actions button { min-height:40px; }
-.catalog-list .catalog-actions button:last-child { color:var(--green); border-color:#a8cbbb; background:#f5fbf7; }
 .catalog-edit { border-radius:12px; background:white; }
 .catalog-empty { text-align:center; padding:48px 20px; background:white; border:1px dashed #c1d3c9; border-radius:12px; }
 .diagnostic-panel,.followup-panel,.session-panel,.ai-operations { background:white; border:1px solid var(--line); border-radius:12px; }

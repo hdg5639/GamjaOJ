@@ -36,6 +36,8 @@
 :root:root:root :is(.secondary,.appearance-preset,.category-scopes button,.confidence-options button,.list-pagination button,.tool-pop > summary,.solving-layout-choice > button,.pane-order-preview > button),:root:root:root dialog.modal button:not(.primary) {
  background:color-mix(in srgb,var(--surface) 48%,transparent); border-color:transparent; box-shadow:var(--surface-raised);
 }
+:root:root:root .catalog-play { color:var(--green); }
+:root[data-theme="dark"]:not([data-custom-colors="true"]) .catalog-play { color:var(--success); }
 :root:root:root .primary { border-color:transparent; box-shadow:var(--surface-raised); }
 :root:root:root :is(.secondary,.primary,.appearance-preset,.category-scopes button,.confidence-options button,.list-pagination button):active:not(:disabled),:root:root:root dialog.modal button:active:not(:disabled) { box-shadow:var(--surface-inset); }
 :root:root:root :is(button[aria-pressed="true"]:not(.activity-day):not(.my-submission),button[aria-selected="true"],.list-pagination button[aria-current="page"],.training-hub-tabs button[aria-current="page"]) { border-color:transparent; box-shadow:var(--surface-inset); }
