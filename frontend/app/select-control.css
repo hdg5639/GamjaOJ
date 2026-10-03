@@ -13,6 +13,7 @@
 .diagnostic-history-choice .select-control { flex:1; max-width:560px; }
 @supports (appearance:base-select) {
  :root .select-control > select, .select-control > select::picker(select) { appearance:base-select; }
+ .select-control > select { align-items:center; }
  .select-control > select::picker-icon { display:none; }
  .select-control > select::picker(select) { background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:4px; margin-block:5px; min-inline-size:anchor-size(width); max-inline-size:calc(100vw - 24px); max-block-size:min(320px,60dvh); overflow:auto; box-shadow:0 5px 16px #0002; }
  .select-control option { min-height:38px; padding:8px 12px; gap:10px; line-height:1.5; white-space:normal; overflow-wrap:anywhere; border-radius:3px; cursor:pointer; }
