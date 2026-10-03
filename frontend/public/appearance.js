@@ -1,4 +1,4 @@
-// Shared by the pre-paint bootstrap and the settings UI. No external fonts or requests.
+// Shared by the pre-paint bootstrap and the settings UI. Web fonts are self-hosted.
 (function () {
   var key = 'gamjaoj-appearance-v1', root = document.documentElement;
   var groups = {
@@ -31,8 +31,8 @@
   };
   var fonts = {
     system: ['시스템 고정폭','ui-monospace, SFMono-Regular, Consolas, monospace'],
-    consolas: ['Consolas','Consolas, ui-monospace, monospace'],
-    menlo: ['Menlo','Menlo, ui-monospace, monospace'],
+    consolas: ['Consolas (기기 설치)','Consolas, ui-monospace, monospace'],
+    menlo: ['Menlo (기기 설치)','Menlo, ui-monospace, monospace'],
     jetbrains: ['JetBrains Mono','"JetBrains Mono", ui-monospace, monospace'],
     fira: ['Fira Code','"Fira Code", ui-monospace, monospace'],
     d2coding: ['D2Coding','D2Coding, ui-monospace, monospace'],

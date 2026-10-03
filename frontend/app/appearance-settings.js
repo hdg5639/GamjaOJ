@@ -39,6 +39,13 @@ function LivePreview({fontSize}) {
 
 export default function AppearanceSettings() {
   const [open,setOpen]=useState(false),[prefs,setPrefs]=useState(null),[mode,setMode]=useState('light'),[tab,setTab]=useState('ui');
+  const [localFontAvailable,setLocalFontAvailable]=useState(null);
+  useEffect(()=>{
+    let live=true;setLocalFontAvailable(null);
+    const name=prefs?.font==='custom'?prefs.customFont:prefs?.font==='consolas'?'Consolas':prefs?.font==='menlo'?'Menlo':null;
+    if(name)new FontFace('GamjaLocalFontCheck',`local(${JSON.stringify(name)})`).load().then(()=>{if(live)setLocalFontAvailable(true);}).catch(()=>{if(live)setLocalFontAvailable(false);});
+    return ()=>{live=false;};
+  },[prefs?.font,prefs?.customFont]);
   useEffect(()=>{
     const update=()=>{setPrefs(window.GamjaAppearance.get());setMode(document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light');};
     update();window.addEventListener('gamjaoj-appearance',update);
@@ -80,7 +87,8 @@ export default function AppearanceSettings() {
           <label>에디터 글꼴<SelectControl aria-label="에디터 글꼴" value={prefs.font} onChange={e=>save({...prefs,font:e.target.value})}>{Object.entries(api.fonts).map(([id,[label]])=><option key={id} value={id}>{label}</option>)}</SelectControl></label>
           {prefs.font==='custom'&&<label>설치된 글꼴 이름<input aria-label="설치된 글꼴 이름" maxLength={80} value={prefs.customFont} onChange={e=>save({...prefs,customFont:e.target.value})}/></label>}
           <label className="appearance-size-label"><span>글자 크기 <output>{prefs.fontSize}px</output></span><input type="range" aria-label="에디터 글자 크기" min="10" max="28" value={prefs.fontSize} onChange={e=>save({...prefs,fontSize:Number(e.target.value)})}/></label>
-          <small>기기에 설치된 글꼴을 사용해요.</small>
+          <small>JetBrains Mono·Fira Code·D2Coding은 설치 없이 사용할 수 있어요. Consolas·Menlo와 직접 입력한 글꼴은 기기에 설치되어 있어야 해요.</small>
+          {localFontAvailable===false&&<p role="status" className="draft-help">선택한 글꼴을 기기에서 찾지 못해 시스템 고정폭 글꼴로 표시하고 있어요. 설치 없이 쓰려면 JetBrains Mono·Fira Code·D2Coding을 선택해 주세요.</p>}
         </section>}
         {colorGroups[tab].map(([title,ids])=><section className="appearance-color-group" key={title}><h5>{title}</h5><div className="appearance-colors">{ids.map(id=>{
           const [,label,light,dark]=api.groups[tab].find(field=>field[0]===id);

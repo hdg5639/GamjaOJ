@@ -185,7 +185,8 @@ export default function CodeEditor({ id = 'source', label = 'Main.java', languag
   useEffect(() => {
     const measure=()=>editor.current?.requestMeasure();
     window.addEventListener('gamjaoj-appearance',measure);
-    return ()=>window.removeEventListener('gamjaoj-appearance',measure);
+    document.fonts.addEventListener('loadingdone',measure);
+    return ()=>{window.removeEventListener('gamjaoj-appearance',measure);document.fonts.removeEventListener('loadingdone',measure);};
   }, []);
   useEffect(() => {
     editor.current?.dispatch({ effects: keys.current.reconfigure(vim ? vimMode({ status: true }) : []) });

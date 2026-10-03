@@ -84,3 +84,6 @@
 .appearance-dialog .modal-body { padding:0; }
 .appearance-preview .preview-editor pre,.appearance-preview .preview-terminal pre { background:transparent; border:0; border-radius:0; color:inherit; }
 .appearance-dialog .modal-head { background:var(--surface); z-index:2; }
+@font-face { font-family:'JetBrains Mono'; src:url('/fonts/jetbrains-mono-regular.woff2') format('woff2'); font-weight:400; font-style:normal; font-display:swap; }
+@font-face { font-family:'Fira Code'; src:url('/fonts/fira-code-regular.woff2') format('woff2'); font-weight:400; font-style:normal; font-display:swap; }
+@font-face { font-family:'D2Coding'; src:url('/fonts/d2coding-regular.woff2') format('woff2'); font-weight:400; font-style:normal; font-display:swap; }
