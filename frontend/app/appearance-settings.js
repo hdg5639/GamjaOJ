@@ -66,6 +66,11 @@ export default function AppearanceSettings() {
     }
     save(next);
   }
+  function saveColor(id,value) {
+    // Read the active mode at the event: a mode switch can precede React's observer update.
+    const target=tab==='ui'?(document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light'):tab;
+    const current=api.get();save({...current,[target]:{...current[target],[id]:value}});
+  }
   const group=tab==='ui'?mode:tab;
   return <><button type="button" className="secondary appearance-toggle" aria-label="화면 설정" title="색상·에디터 글꼴 설정" onClick={()=>setOpen(true)}>
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7 1.5 1.5 0 0 1 .7-2.8H17a4 4 0 0 0 4-4C21 6.4 17 3 12 3Z"/><circle cx="7.5" cy="10" r=".7"/><circle cx="10" cy="6.8" r=".7"/><circle cx="14" cy="6.8" r=".7"/><circle cx="17" cy="9.5" r=".7"/></svg>
@@ -77,7 +82,7 @@ export default function AppearanceSettings() {
     </nav>
     <div className="appearance-content">
       <div className="appearance-section-heading"><div><h4>{{ui:'화면 색상',editor:'코드 에디터',console:'실행 터미널'}[tab]}</h4><p>{{ui:'배경부터 작은 강조색까지, 원하는 분위기로.',editor:'글꼴과 코드 색상을 읽기 편하게 조절하세요.',console:'입력과 실행 결과를 또렷하게 구분하세요.'}[tab]}</p></div>
-        {tab==='ui'&&<div className="appearance-mode" role="group" aria-label="색상 모드">{[['light','라이트'],['dark','다크']].map(([id,label])=><button key={id} type="button" aria-pressed={mode===id} onClick={()=>{document.documentElement.setAttribute('data-theme',id);try{localStorage.setItem('gamjaoj-theme',id);}catch{}}}>{label}</button>)}</div>}
+        {tab==='ui'&&<div className="appearance-mode" role="group" aria-label="색상 모드">{[['light','라이트'],['dark','다크']].map(([id,label])=><button key={id} type="button" aria-pressed={mode===id} onClick={()=>{setMode(id);document.documentElement.setAttribute('data-theme',id);try{localStorage.setItem('gamjaoj-theme',id);}catch{}}}>{label}</button>)}</div>}
       </div>
       <div className="appearance-presets" role="group" aria-label="색상 프리셋">{[['default','기본 테마','매일 편안하게'],['paper','밝은 코드','가볍고 선명하게'],['ocean','밤바다','차분한 푸른빛']].map(([id,label,description])=><button key={id} type="button" className="appearance-preset" data-preset={id} onClick={()=>preset(id)}>
         <span className="preset-thumbnail" aria-hidden="true"><span className="preset-side"/><span className="preset-code"><i/><i/><i/></span><span className="preset-terminal"/></span><strong>{label}</strong><small>{description}</small>
@@ -102,7 +107,7 @@ export default function AppearanceSettings() {
         </section>}
         {colorGroups[tab].map(([title,ids])=><section className="appearance-color-group" key={title}><h5>{title}</h5><div className="appearance-colors">{ids.map(id=>{
           const [,label,light,dark]=api.groups[tab].find(field=>field[0]===id);
-          return <ColorField key={group+id} name={label} value={prefs[group][id]||(mode==='dark'&&dark?dark:light)} onChange={value=>save({...prefs,[group]:{...prefs[group],[id]:value}})}/>;
+          return <ColorField key={group+id} name={label} value={prefs[group][id]||(mode==='dark'&&dark?dark:light)} onChange={value=>saveColor(id,value)}/>;
         })}</div></section>)}
         <button type="button" className="appearance-reset-section" onClick={()=>save({...prefs,[group]:{}})}>이 영역 색상 초기화</button>
         <p className="appearance-storage-note">이 브라우저에 저장돼요. 화면 색상은 라이트·다크별로, 에디터와 터미널은 공통으로 적용됩니다.</p>

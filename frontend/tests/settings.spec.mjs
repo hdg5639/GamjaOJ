@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {expectSurfaceTint} from './surface-helpers.mjs';
 const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18788';
 
 for(const width of [360,768,1440])test(`settings navigation preserves edits and recovers failed profile saves at ${width}`,async({page})=>{
@@ -49,6 +50,6 @@ for(const width of [360,768,1440])test(`settings navigation preserves edits and 
  if(width===1440){
   await page.getByRole('button',{name:'다크 모드로 전환'}).click();await settings.getByRole('link',{name:'풀이 자동 저장',exact:true}).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
-  await expect.poll(()=>page.locator('.export-search .secondary').first().evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(22, 30, 28)');await page.screenshot({path:'/tmp/gamja-settings-dark.png',fullPage:true});
+  await expectSurfaceTint(page.locator('.export-search .secondary').first(),[22,30,28]);await page.screenshot({path:'/tmp/gamja-settings-dark.png',fullPage:true});
  }
 });

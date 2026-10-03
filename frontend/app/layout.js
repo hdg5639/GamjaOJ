@@ -4,6 +4,7 @@ import './dark.css';
 import './appearance.css';
 import './select-control.css';
 import './visual-motion.css';
+import './surface-theme.css';
 
 export const metadata = {
   title: 'GamjaOJ · 나의 알고리즘 연습장',
