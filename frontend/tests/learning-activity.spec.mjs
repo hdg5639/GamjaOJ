@@ -37,6 +37,11 @@ for(const width of [390,820,1440])test(`grass, personal reflection and explicit 
  const today=my.getByRole('button',{name:'2026-10-02 정답 0문제',exact:true});await today.focus();await today.press('ArrowUp');
  await expect(my.getByRole('button',{name:'2026-10-01 정답 3문제',exact:true})).toBeFocused();
  await expect(my.getByText('배열·문자열에 도전이 많이 모였어요.',{exact:false})).toBeVisible();expect(state.posts()).toBe(0);
+ const box=async name=>my.getByRole('region',{name,exact:true}).boundingBox();
+ const [growth,grass,balance,next,records]=await Promise.all(['나의 성장 겹','풀이 잔디','유형 균형','다음 학습','문제와 제출 기록'].map(box));
+ if(width>=1100){expect(growth.x+growth.width).toBeLessThan(grass.x);expect(Math.abs(growth.y-grass.y)).toBeLessThan(2);expect(balance.x).toBe(growth.x);expect(next.x).toBe(grass.x);expect(Math.abs(balance.y-next.y)).toBeLessThan(2);expect(balance.y).toBeGreaterThanOrEqual(growth.y+growth.height);expect(records.width).toBeGreaterThan(grass.width);}
+ else {expect(grass.y).toBeGreaterThanOrEqual(growth.y+growth.height);expect(balance.y).toBeGreaterThanOrEqual(grass.y+grass.height);expect(next.y).toBeGreaterThanOrEqual(balance.y+balance.height);}
+ expect(records.y).toBeGreaterThanOrEqual(Math.max(balance.y+balance.height,next.y+next.height));
  await page.screenshot({path:`/tmp/gamja-learning-overview-${width}.png`,fullPage:true});
  if(width===1440){await page.getByRole('button',{name:'다크 모드로 전환'}).click();await expect.poll(()=>page.evaluate(()=>getComputedStyle(document.querySelector('.activity-calendar-grid .level-0')).backgroundColor===getComputedStyle(document.querySelector('.activity-legend .level-0')).backgroundColor)).toBe(true);await page.screenshot({path:'/tmp/gamja-learning-overview-dark.png',fullPage:true});await page.getByRole('button',{name:'라이트 모드로 전환'}).click();}
  await my.getByRole('button',{name:'기억할 풀이 풀이 돌아보기'}).click();
@@ -56,6 +61,7 @@ for(const width of [390,820,1440])test(`grass, personal reflection and explicit 
 test('learning fetch failure stays distinct from an empty calendar',async({page})=>{
  await fixture(page);await page.route('**/api/my/learning',route=>route.fulfill({status:503,json:{message:'기록 조회 실패'}}));await page.goto(base+'/#mypage');
  await expect(page.getByRole('region',{name:'마이페이지',exact:true}).getByRole('alert')).toContainText('학습 기록을 불러오지 못했어요');await expect(page.locator('.activity-calendar-grid')).toHaveCount(0);
+ await expect(page.getByRole('region',{name:'나의 성장 겹',exact:true})).toContainText('첫 겹을 쌓는 중');await expect(page.locator('.my-stats')).toContainText('정식 제출');
 });
 for(const width of [390,1440])test(`many learning categories stay compact and remain reachable at ${width}`,async({page})=>{
  await page.setViewportSize({width,height:1000});
@@ -70,6 +76,6 @@ for(const width of [390,1440])test(`many learning categories stay compact and re
   expect(new Set(names).size).toBe(count);names.forEach(n=>seen.add(n));
  }
  expect(seen.size).toBe(36);await balance.getByRole('button',{name:'도전한 유형 13'}).click();await expect(rows.first()).toContainText('유형 00');
- await expect(balance.getByRole('button',{name:'처음 보는 그래프 풀기'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await expect(page.getByRole('region',{name:'다음 학습'}).getByRole('button',{name:'처음 보는 그래프 풀기'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await balance.screenshot({path:`/tmp/gamja-category-overview-${width}.png`,animations:'disabled'});
 });

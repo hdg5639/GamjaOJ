@@ -4,7 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import {confidenceLabels} from './problem-reflection';
 import ListPagination from './list-pagination';
 
-export default function LearningActivity({api,userId,activity,refresh,onChoose}){
+export default function LearningActivity({api,userId,activity,refresh,onChoose,growth,stats}){
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[selected,setSelected]=useState(null);
  const scroll=useRef(null);
  const [categoryScope,setCategoryScope]=useState('practiced'),[categoryPage,setCategoryPage]=useState(1);
@@ -12,8 +12,7 @@ export default function LearningActivity({api,userId,activity,refresh,onChoose})
  useEffect(()=>{setData(null);setSelected(null);},[userId]);
  useEffect(()=>{let live=true;setBusy(true);setError('');api('/api/my/learning').then(result=>{if(live&&Array.isArray(result.days)){setData(result);setSelected(result.days.at(-1));}}).catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setBusy(false);});return()=>{live=false;};},[api,userId,activity,refresh]);
  useEffect(()=>{if(scroll.current)scroll.current.scrollLeft=scroll.current.scrollWidth;},[data]);
- if(error)return <section className="learning-activity"><p role="alert" className="notice error">학습 기록을 불러오지 못했어요: {error}</p></section>;
- if(!data)return <p className="muted" role="status">{busy?'학습 기록을 불러오는 중…':'학습 기록이 아직 없어요.'}</p>;
+ if(error||!data)return <div className="learning-activity my-learning-layout" aria-busy={busy}>{growth}<div className="learning-overview-status">{error?<p role="alert" className="notice error">학습 기록을 불러오지 못했어요: {error}</p>:<p className="muted" role="status">{busy?'학습 기록을 불러오는 중…':'학습 기록이 아직 없어요.'}</p>}{stats}</div></div>;
  const pad=(new Date(data.start+'T00:00:00Z').getUTCDay()+6)%7;
  const cells=[...Array(pad).fill(null),...data.days];
  const months=data.days.flatMap((day,i)=>i===0||day.date.endsWith('-01')?[{label:`${Number(day.date.slice(5,7))}월`,column:Math.floor((i+pad)/7)+1}]:[]);
@@ -22,7 +21,8 @@ export default function LearningActivity({api,userId,activity,refresh,onChoose})
  const untouched=data.categories.filter(c=>c.attempted===0).sort((a,b)=>a.category.localeCompare(b.category,'ko'));
  const categories=categoryScope==='practiced'?practiced:untouched;
  const categoryPages=Math.max(1,Math.ceil(categories.length/6)),currentCategoryPage=Math.min(categoryPage,categoryPages);
- return <div className="learning-activity" aria-busy={busy}>
+ return <div className="learning-activity my-learning-layout" aria-busy={busy}>
+  {growth}
   <section className="activity-calendar" aria-label="풀이 잔디">
    <div className="learning-section-heading"><h3>풀이 잔디</h3><p className="muted">최근 1년 · 한국 시간</p></div>
    <p className="activity-summary">활동한 날 <strong>{data.activeDays}일</strong><span>현재 연속 <strong>{data.currentStreak}일</strong></span><span>최장 연속 <strong>{data.longestStreak}일</strong></span></p>
@@ -35,16 +35,18 @@ export default function LearningActivity({api,userId,activity,refresh,onChoose})
   <section className="learning-balance" aria-label="유형 균형">
    <div className="learning-section-heading"><h3>유형도 골고루</h3><p className="muted">최근 90일 · 서로 다른 도전 문제 {data.practicedProblems}개</p></div>
    <p>{data.dominantCategory?`${data.dominantCategory}에 도전이 많이 모였어요. 다른 유형도 한 문제씩 섞어 봐요.`:data.practicedProblems?'최근 도전한 분야를 보고, 덜 풀어본 유형을 골랐어요.':'익숙한 분야부터 시작하고, 다른 유형도 조금씩 섞어 봐요.'}</p>
-   <div className="learning-balance-layout"><div className="category-overview">
+   <div className="category-overview">
     <nav className="category-scopes" aria-label="유형 분포 범위">{[['practiced','도전한 유형',practiced.length],['untouched','아직 안 푼 유형',untouched.length]].map(([key,label,count])=><button type="button" key={key} aria-pressed={categoryScope===key} onClick={()=>{setCategoryScope(key);setCategoryPage(1);}}>{label} <span>{count}</span></button>)}</nav>
     <p className="category-range muted" role="status">{categories.length?`${categories.length}개 유형 · ${(currentCategoryPage-1)*6+1}–${Math.min(currentCategoryPage*6,categories.length)}번째`:'최근 90일 기준'}</p>
     <div className="category-distribution" aria-label="분야별 도전 분포">{categories.slice((currentCategoryPage-1)*6,currentCategoryPage*6).map(c=><div key={c.category}><span>{c.category}</span><div className="category-bar" aria-hidden="true"><i style={{width:`${c.attempted/max*100}%`}}/></div><small>{categoryScope==='practiced'?`도전 ${c.attempted} · 정답 ${c.solved}`:`문제 ${c.available??0}개`}</small></div>)}</div>
     {!categories.length&&<p className="muted">{categoryScope==='practiced'?'최근 90일 동안 도전한 유형이 없어요. 아직 안 푼 유형에서 시작해 보세요.':'모든 유형에 도전했어요.'}</p>}
     <ListPagination page={currentCategoryPage} pages={categoryPages} onChange={setCategoryPage} label="유형 분포 페이지"/>
    </div>
-    <div className="learning-next"><h4>다른 유형도 풀어보기</h4>{data.explore.length?<ul>{data.explore.map(p=><li key={p.version}><div><strong>{p.title}</strong><small>{p.category} · {thinkingLabel(p)}</small><p>{p.reason}</p></div><button className="secondary" onClick={()=>onChoose(p.version)} aria-label={`${p.title} 풀기`}>풀어보기</button></li>)}</ul>:<p className="muted">지금 선택할 수 있는 새로운 문제가 없어요.</p>}</div>
-   </div>
   </section>
+  <section className="learning-continuation" aria-label="다음 학습">
+   {stats}
+   <div className="learning-next"><h3>다른 유형도 풀어보기</h3>{data.explore.length?<ul>{data.explore.map(p=><li key={p.version}><div><strong>{p.title}</strong><small>{p.category} · {thinkingLabel(p)}</small><p>{p.reason}</p></div><button className="secondary" onClick={()=>onChoose(p.version)} aria-label={`${p.title} 풀기`}>풀어보기</button></li>)}</ul>:<p className="muted">지금 선택할 수 있는 새로운 문제가 없어요.</p>}</div>
   {!!data.revisit.length&&<section className="learning-revisit" aria-label="다시 풀 문제"><h3>다시 풀어볼까요?</h3><ul>{data.revisit.map(p=><li key={p.version}><div><strong>{p.title}</strong><small>{p.category} · {confidenceLabels[p.confidence]}</small></div><button className="secondary" onClick={()=>onChoose(p.version)} aria-label={`${p.title} 다시 풀기`}>다시 풀기</button></li>)}</ul></section>}
+  </section>
  </div>;
 }
