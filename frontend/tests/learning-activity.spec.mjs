@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18789';
 function calendar(){const end=new Date('2026-10-02T00:00:00Z');return Array.from({length:365},(_,i)=>{const date=new Date(end);date.setUTCDate(date.getUTCDate()-364+i);return {date:date.toISOString().slice(0,10),solved:i>350?i%4:0};});}
-async function fixture(page){
+async function fixture(page,categories){
  let reflection={problemVersion:'v1',submissionId:null,latestAcceptedSubmissionId:'s1',confidence:null,note:''},task=null,failSave=false,posts=0;
  const problem={version:'v1',title:'기억할 풀이',statement:'입력의 합을 구해요.',sampleInput:'1',sampleOutput:'1',submissionsEnabled:true,category:'배열·문자열'};
  await page.route('**/api/**',async route=>{
@@ -9,6 +9,7 @@ async function fixture(page){
   if(url.pathname==='/api/me')data={id:'learning-user',username:'learner',nickname:'감자'};
   if(url.pathname==='/api/problems')data=[problem,{...problem,version:'v2',title:'처음 보는 그래프',category:'너비 우선 탐색'}];
   if(url.pathname==='/api/my/summary')data={submitted:8,attemptedProblems:5,solvedProblems:1};
+  if(url.pathname==='/api/my/growth')data={layer:0,nextLayer:1,nextSolved:1,required:5,eligibleProblems:1,categories:1,evidence:[1,0,0,0,0,0,0,0,0]};
   if(url.pathname==='/api/my/problems')data={total:1,items:[{...problem,attempts:8,accepted:1,lastSubmitted:'2026-10-02T00:00:00Z',confidence:reflection.confidence,reflectionNote:reflection.note}]};
   if(url.pathname==='/api/my/learning')data={start:'2025-10-03',end:'2026-10-02',timezone:'Asia/Seoul',days:calendar(),activeDays:10,currentStreak:2,longestStreak:5,practicedProblems:5,dominantCategory:'배열·문자열',categories:[{category:'배열·문자열',attempted:5,solved:1},{category:'너비 우선 탐색',attempted:0,solved:0}],explore:[{version:'v2',title:'처음 보는 그래프',category:'너비 우선 탐색',difficulty:'EASY',reason:'최근 90일 동안 도전하지 않은 분야예요.'}],revisit:reflection.confidence==='REVISIT'?[{...problem,confidence:'REVISIT'}]:[]};
   if(url.pathname==='/api/my/reflections'){
@@ -24,6 +25,7 @@ async function fixture(page){
    if(req.method()==='POST'){posts++;const body=req.postDataJSON();expect(body.strong).toBe(false);expect(body.kind).toBe('ANALYSIS');expect(body.question).toContain('코드 품질 회고');task={id:'review1',kind:'ANALYSIS',status:'COMPLETED',model:'gpt-6-luna',effort:'low',result:{summary:'합산 과정은 명확해요.',observations:['반복문은 O(N), 저장 공간은 O(1)이에요.'],nextSteps:['경계 입력을 혼자 다시 확인해 보세요.'],uncertainty:'다음에 혼자 풀 수 있는지는 직접 확인해 주세요.'}};data=task;}
    else data=task?[task]:[];
   }
+  if(url.pathname==='/api/my/learning'&&categories)data.categories=categories;
   await route.fulfill({json:data});
  });
  return {fail(value){failSave=value;},posts:()=>posts};
@@ -54,4 +56,20 @@ for(const width of [390,820,1440])test(`grass, personal reflection and explicit 
 test('learning fetch failure stays distinct from an empty calendar',async({page})=>{
  await fixture(page);await page.route('**/api/my/learning',route=>route.fulfill({status:503,json:{message:'기록 조회 실패'}}));await page.goto(base+'/#mypage');
  await expect(page.getByRole('region',{name:'마이페이지',exact:true}).getByRole('alert')).toContainText('학습 기록을 불러오지 못했어요');await expect(page.locator('.activity-calendar-grid')).toHaveCount(0);
+});
+for(const width of [390,1440])test(`many learning categories stay compact and remain reachable at ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:1000});
+ const categories=Array.from({length:36},(_,i)=>({category:`유형 ${String(i).padStart(2,'0')}`,attempted:i<13?13-i:0,solved:i<13?1:0,available:4}));
+ await fixture(page,categories);await page.goto(base+'/#mypage');
+ const balance=page.getByRole('region',{name:'유형 균형'}),rows=balance.locator('.category-distribution >div');
+ await expect(balance.getByRole('button',{name:'도전한 유형 13'})).toHaveAttribute('aria-pressed','true');await expect(rows).toHaveCount(6);await expect(rows.first()).toContainText('유형 00');
+ const seen=new Set();
+ for(const [scope,count,pages] of [['도전한 유형 13',13,3],['아직 안 푼 유형 23',23,4]]){
+  await balance.getByRole('button',{name:scope}).click();await expect(balance.locator('.category-range')).toContainText('1–6번째');
+  const names=[];for(let p=0;p<pages;p++){expect(await rows.count()).toBeLessThanOrEqual(6);names.push(...await rows.locator(':scope >span').allTextContents());if(p<pages-1)await balance.getByRole('navigation',{name:'유형 분포 페이지'}).getByRole('button',{name:'다음',exact:true}).click();}
+  expect(new Set(names).size).toBe(count);names.forEach(n=>seen.add(n));
+ }
+ expect(seen.size).toBe(36);await balance.getByRole('button',{name:'도전한 유형 13'}).click();await expect(rows.first()).toContainText('유형 00');
+ await expect(balance.getByRole('button',{name:'처음 보는 그래프 풀기'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await balance.screenshot({path:`/tmp/gamja-category-overview-${width}.png`,animations:'disabled'});
 });

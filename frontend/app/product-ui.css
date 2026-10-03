@@ -873,6 +873,14 @@ footer .footer-line { display:flex; justify-content:space-between; gap:16px; }
 .category-distribution { display:flex; flex-direction:column; gap:9px; }
 .category-distribution > div { display:grid; grid-template-columns:minmax(100px,1fr) minmax(40px,1fr) auto; gap:10px; align-items:center; font-size:12px; }
 .category-distribution small { color:var(--muted); white-space:nowrap; }
+.category-overview { min-width:0; }
+.category-scopes { display:flex; flex-wrap:wrap; gap:6px; }
+.category-scopes button { background:transparent; color:var(--muted); border:1px solid var(--line); padding:7px 10px; font-size:12px; }
+.category-scopes button[aria-pressed="true"] { background:var(--subtle); color:var(--ink); border-color:var(--green); }
+.category-scopes span { margin-left:4px; font-variant-numeric:tabular-nums; }
+.category-range { margin:10px 0; font-size:11px; }
+.category-overview .list-pagination { flex-wrap:wrap; gap:6px; margin-top:14px; }
+.category-overview .list-pagination button { padding:5px 8px; font-size:11px; }
 .category-bar { background:var(--subtle); height:6px; overflow:hidden; border-radius:2px; }
 .category-bar i { display:block; height:100%; background:var(--green); }
 .learning-next h4 { margin:0 0 8px; }
