@@ -15,14 +15,14 @@ for(const width of [390,820,1440])test(`growth connects real progress to compact
  });
  await page.goto(base);if(width===820)await page.getByRole('button',{name:'다크 모드로 전환'}).click();
  const catalog=page.getByRole('region',{name:'문제 목록',exact:true}),summary=catalog.getByRole('region',{name:'나의 성장 겹'}),rows=catalog.locator('.catalog-list>li');
- await expect(summary).toContainText('4겹 · 이어붙이기');await expect(summary.getByRole('progressbar')).toHaveAttribute('value','2');await expect(rows).toHaveCount(20);await expect(rows.first()).toContainText('연습 문제 ·');
+ await expect(summary).toContainText('4겹 · 이어붙이기');await expect(summary.getByRole('progressbar')).toHaveAttribute('value','2');await expect(rows).toHaveCount(10);await expect(rows.first()).toContainText('연습 문제 ·');
  const heights=await rows.evaluateAll(nodes=>nodes.slice(1).map(n=>n.getBoundingClientRect().height));expect(Math.max(...heights)).toBeLessThan(width===390?125:95);
  await summary.getByText('성장 겹은 어떻게 정해지나요?').click();await expect(summary).toContainText('같은 문제의 반복 제출은 한 번');await summary.getByText('성장 겹은 어떻게 정해지나요?').click();
  await page.screenshot({path:`/tmp/gamja-growth-${width}.png`,fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
- await summary.getByRole('button',{name:/다음 겹 문제 찾아보기/}).click();await expect(catalog.getByLabel('난이도',{exact:true})).toHaveValue('MIN5');await expect(rows).toHaveCount(15);
- await expect(rows.locator('.catalog-progress')).toHaveText(Array(15).fill('미제출'));await expect(rows.filter({hasText:'9겹'})).toHaveCount(3);await expect(rows.filter({hasText:'성장 연습 8'})).toHaveCount(0);
- await catalog.getByRole('button',{name:'검색 초기화',exact:true}).click();await expect(rows).toHaveCount(20);
+ await summary.getByRole('button',{name:/다음 겹 문제 찾아보기/}).click();await expect(catalog.getByLabel('난이도',{exact:true})).toHaveValue('MIN5');await expect(rows).toHaveCount(10);
+ await expect(rows.locator('.catalog-progress')).toHaveText(Array(10).fill('미제출'));await expect(catalog.locator('#catalog-results')).toContainText('검색 결과 15개');await expect(rows.filter({hasText:'성장 연습 8'})).toHaveCount(0);
+ await catalog.getByRole('button',{name:'검색 초기화',exact:true}).click();await expect(rows).toHaveCount(10);
  await summary.getByRole('button',{name:'내 풀이 기록',exact:true}).click();await expect(page.getByRole('region',{name:'마이페이지',exact:true}).getByRole('region',{name:'나의 성장 겹'})).toContainText('4겹 · 이어붙이기');
 });
 test('growth failure can retry without inventing a tier',async({page})=>{

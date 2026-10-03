@@ -1300,6 +1300,11 @@ dialog.modal.my-record-dialog { max-width:1180px; width:calc(100vw - 48px); }
 .problem-catalog .catalog-actions button { min-height:34px; padding:5px 9px; font-size:11px; }
 .problem-catalog .catalog-remove { grid-column:1/-1; }
 .catalog-main,.catalog-growth { min-width:0; }
+.catalog-result-toolbar { display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; gap:8px 16px; margin:12px 0; }
+.catalog-result-toolbar .catalog-results { margin:0; flex:1; min-width:0; }
+.catalog-page-size { display:flex; align-items:center; gap:8px; margin:0; font-size:11px; white-space:nowrap; }
+.catalog-page-size .select-control { width:88px; }
+:root .catalog-page-size select { min-height:34px; padding-block:5px; }
 @media(min-width:1200px) {
  .workspace:is([data-screen="home"],[data-screen="catalog"]) > .workspace-heading { padding-block:16px; }
  .problem-catalog.catalog-layout { display:grid; grid-template-columns:minmax(0,1fr) 280px; align-items:start; gap:0 24px; max-width:none; }
@@ -1323,9 +1328,8 @@ dialog.modal.my-record-dialog { max-width:1180px; width:calc(100vw - 48px); }
  .catalog-main .catalog-filters { padding:10px 12px; gap:10px; border-radius:6px; }
  .catalog-main .catalog-rating-note { margin:4px 0 8px; }
  .catalog-main .catalog-rating-note summary { padding:2px 0; }
- .catalog-main .catalog-list { max-height:max(280px,calc(100dvh - 480px)); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
  .catalog-main .catalog-list > li { grid-template-columns:64px minmax(0,1fr) auto; gap:6px 12px; padding:9px 12px; }
- .catalog-main .catalog-results { margin:4px 0 8px; }
+ .catalog-main .catalog-result-toolbar { margin:4px 0 10px; }
 }
 @media(max-width:1000px) {
  .growth-summary { gap:14px 20px; padding:16px 18px 10px; }

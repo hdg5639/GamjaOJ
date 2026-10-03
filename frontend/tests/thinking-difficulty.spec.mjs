@@ -15,11 +15,11 @@ for(const width of [390,820,1710])test(`reasoning levels filter across pages, so
   await route.fulfill({json:data});
  });
  await page.goto(base);if(width===820)await page.getByRole('button',{name:'다크 모드로 전환'}).click();const catalog=page.getByRole('region',{name:'문제 목록',exact:true}),rows=catalog.locator('.catalog-list>li');
- await expect(rows).toHaveCount(20);
+ await expect(rows).toHaveCount(10);
  if(width<=800)await catalog.getByRole('button',{name:/^필터/}).click();
  await catalog.getByLabel('난도 정렬').selectOption('desc');await expect(rows.first()).toContainText('8겹');
  await catalog.getByLabel('난이도',{exact:true}).selectOption('6');await expect(rows).toHaveCount(5);await expect(rows.first()).toContainText('상태 만들기');
- await catalog.getByRole('button',{name:'검색 초기화',exact:true}).click();await expect(rows).toHaveCount(20);
+ await catalog.getByRole('button',{name:'검색 초기화',exact:true}).click();await expect(rows).toHaveCount(10);
  await catalog.getByLabel('난이도',{exact:true}).selectOption('UNRATED');await expect(rows).toHaveCount(1);await expect(rows.first()).toContainText('생각 연습 42');
  await catalog.getByRole('button',{name:'검색 초기화',exact:true}).click();
  await catalog.getByText('생각의 겹 · 난도 기준 보기',{exact:true}).click();await expect(catalog.locator('.thinking-guide ol li')).toHaveCount(9);await expect(catalog.locator('.thinking-guide')).toContainText('내 전체 정식 제출의 AC');
