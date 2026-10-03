@@ -33,6 +33,12 @@ for(const width of [390,1440]) test(`uniform glass surfaces remain translucent i
    const alpha=await surface.evaluate(n=>{const ctx=document.createElement('canvas').getContext('2d');ctx.fillStyle=getComputedStyle(n).backgroundColor;ctx.fillRect(0,0,1,1);return ctx.getImageData(0,0,1,1).data[3]/255;});expect(alpha).toBeGreaterThan(.5);expect(alpha).toBeLessThan(.95);
   }
   await expect(dialog.locator('.modal-body')).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+  await expect(page.locator('body')).toHaveCSS('background-image',/linear-gradient/);
+  const previousWash=await page.locator('body').evaluate(n=>getComputedStyle(n).backgroundImage);
+  await dialog.getByLabel('화면 배경 HEX',{exact:true}).fill(dark?'#171b2b':'#f1efe9');
+  await expect.poll(()=>page.locator('body').evaluate(n=>getComputedStyle(n).backgroundImage)).not.toBe(previousWash);
+  await expect(page.locator('body')).toHaveCSS('background-color',dark?'rgb(23, 27, 43)':'rgb(241, 239, 233)');
+
   const box=await dialog.boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width);
   await page.screenshot({path:`/tmp/gamja-glass-modal-${dark?'dark':'light'}-${width}.png`,animations:'disabled'});
  }
