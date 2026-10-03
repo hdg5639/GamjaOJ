@@ -29,7 +29,7 @@ for(const width of [390,1440])test(`enrollment, persisted retry, session switch 
  await course.locator('.course-catalog>li').first().getByRole('button',{name:'코스 살펴보기'}).click();const preview=page.getByRole('dialog',{name:'처음부터 쌓는 알고리즘'});await expect(preview).toContainText('선형 자료구조');await preview.getByRole('button',{name:'이 코스로 훈련하기'}).click();
  await expect(course.getByRole('heading',{name:'나의 훈련 코스'})).toBeVisible();await expect(course.getByRole('progressbar',{name:'코스 정답 진도'})).toHaveAttribute('value','0');
  await expect(course.locator('.learning-problem-list li')).toHaveCount(5);await expect(course.getByRole('button',{name:'직접 훈련 시작',exact:true})).toBeVisible();
- await course.locator('.learning-problem-list li').nth(1).getByRole('button').click();await expect(course.getByRole('heading',{name:'올바른 괄호쌍',exact:true})).toBeFocused();
+ await course.locator('.learning-problem-list li').nth(1).getByRole('button').click();await expect(course.getByRole('heading',{name:'올바른 괄호쌍',exact:true})).toBeFocused();await expect(course.getByRole('heading',{name:'올바른 괄호쌍',exact:true})).toBeInViewport();
  await course.getByRole('button',{name:'훈련 시작',exact:true}).click();await expect(course.getByRole('button',{name:'같은 코스 요청 다시 확인'})).toBeEnabled();
  await page.reload();await tab().click();await course.getByRole('button',{name:'같은 코스 요청 다시 확인'}).click();await expect.poll(()=>keys.length).toBe(2);expect(keys[0]).toBe(keys[1]);expect(bodies[0]).toEqual(bodies[1]);expect(bodies[0].position).toBe(1);
  await expect(page.locator('#problem-title')).toHaveText('올바른 괄호쌍');await page.getByRole('button',{name:'훈련 기록',exact:true}).click();await expect(course.getByRole('button',{name:'훈련 마무리',exact:true})).toBeVisible();

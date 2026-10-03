@@ -17,13 +17,13 @@ export default function TrainingCourses({api,userId,visible,sessions=[],onSessio
  const steps=track?.steps||[],next=steps.find(s=>s.sessionId===active?.id)||steps.find(s=>s.available&&!s.solved)||steps.find(s=>s.available)||steps[0];
  const chosen=steps.find(s=>s.position===focused)||next;
  const paging=usePage(steps,5),coursePaging=usePage(catalog.filter(c=>kind==='전체'||c.course.kind===kind),6);
- function select(id){setSelected(id);setFocused(null);paging.setPage(0);setBrowsing(false);try{localStorage.setItem(choiceKey,id);}catch{}}
+ function select(id){setSelected(id);setFocused(null);paging.setPage(0);setBrowsing(false);try{localStorage.setItem(choiceKey,id);}catch{}requestAnimationFrame(()=>{document.querySelector('.training-hub-view')?.scrollTo({top:0});document.getElementById('course-workspace-heading')?.focus({preventScroll:true});});}
  function clearPending(){setPending(null);try{sessionStorage.removeItem(storageKey);}catch{}}
  async function execute(attempt){if(lock.current||locked)return;lock.current=true;setBusy(true);setError('');setPending(attempt);try{sessionStorage.setItem(storageKey,JSON.stringify(attempt));}catch{}
   try{
    const result=await api(attempt.path,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':attempt.key},body:JSON.stringify(attempt.body)});
    clearPending();setSwitching(null);setPreview(null);
-   if(attempt.kind==='enroll')select(result.enrollmentId);
+   if(attempt.kind==='enroll'){setEnrollments(values=>[result,...values.filter(v=>v.enrollmentId!==result.enrollmentId)]);select(result.enrollmentId);}
    await refresh();onSessionsChange(await api('/api/training-sessions'));
    if(attempt.kind==='start'){
     setFocused(attempt.body.position);
@@ -36,10 +36,10 @@ export default function TrainingCourses({api,userId,visible,sessions=[],onSessio
  }
  function enroll(view){const mine=enrollments.find(e=>e.course.id===view.course.id&&e.course.revision===view.course.revision);if(mine){select(mine.enrollmentId);setPreview(null);return;}execute({kind:'enroll',key:crypto.randomUUID(),path:'/api/training-courses/enrollments',body:{courseId:view.course.id,revision:view.course.revision}});}
  function start(step,finishNote=''){execute({kind:'start',key:crypto.randomUUID(),path:`/api/training-courses/enrollments/${track.enrollmentId}/start`,body:{position:step.position,activeSessionId:active?.id||null,note:finishNote}});}
- function choose(step){setFocused(step.position);requestAnimationFrame(()=>document.getElementById('course-selected-heading')?.focus({preventScroll:true}));}
+ function choose(step){setFocused(step.position);requestAnimationFrame(()=>{document.querySelector(window.matchMedia('(max-width:900px)').matches?'.training-courses .learning-current-problem':'.training-courses .learning-workspace-top')?.scrollIntoView({block:'nearest'});document.getElementById('course-selected-heading')?.focus({preventScroll:true});});}
  const disabled=busy||locked||!!pending;
  return <section className="training-courses" aria-label="훈련 코스">
-  <header className="training-section-heading"><div><h2>{browsing?'훈련 코스 고르기':'나의 훈련 코스'}</h2><p className="muted">{browsing?'목표와 선행 지식에 맞는 코스를 골라 단계별로 연습해요.':'정답 제출로 진도를 쌓고, 원하는 문제를 골라 이어서 풀어요.'}</p></div><div className="training-tool-actions">{enrollments.length>0&&<button className="secondary" onClick={()=>setBrowsing(!browsing)}>{browsing?'내 코스 이어가기':'다른 코스 고르기'}</button>}</div></header>
+  <header className="training-section-heading"><div><h2 id="course-workspace-heading" tabIndex={-1}>{browsing?'훈련 코스 고르기':'나의 훈련 코스'}</h2><p className="muted">{browsing?'목표와 선행 지식에 맞는 코스를 골라 단계별로 연습해요.':'정답 제출로 진도를 쌓고, 원하는 문제를 골라 이어서 풀어요.'}</p></div><div className="training-tool-actions">{enrollments.length>0&&<button className="secondary" onClick={()=>setBrowsing(!browsing)}>{browsing?'내 코스 이어가기':'다른 코스 고르기'}</button>}</div></header>
   {error&&<p role="alert" className="notice error">{error}</p>}{pending&&<button className="secondary" disabled={busy||locked} onClick={()=>execute(pending)}>같은 코스 요청 다시 확인</button>}
   {!loaded?<p role="status">훈련 코스를 불러오는 중…</p>:browsing?<>
    <div className="course-filter"><label>훈련 목적<SelectControl value={kind} onChange={e=>{setKind(e.target.value);coursePaging.setPage(0);}}>{['전체','입문','목표 대비','알고리즘 집중'].map(k=><option key={k}>{k}</option>)}</SelectControl></label><span className="muted">기존 문제로 구성 · AI 생성 없이 바로 준비</span></div>
