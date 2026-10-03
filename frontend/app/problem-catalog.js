@@ -96,7 +96,7 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
             {!p.submissionsEnabled&&!p.problemHeld&&<span className="catalog-note">채점 준비 중 · 코드 작성 가능</span>}</div>
           <div className="catalog-actions">{p.mine&&api&&!p.problemHeld&&<button className="secondary" disabled={saving} onClick={()=>{setEditing(p);setEditLayer(String(p.thinking?.layer||'UNRATED'));setSaveError('');setSaved('');requestAnimationFrame(()=>document.querySelector('.catalog-edit input')?.focus());}}>공개·분류 설정</button>}
           {p.mine&&api&&<button className="secondary" disabled={saving} onClick={()=>{setRemoving(p.version);setSaved('');setSaveError('');}}>삭제</button>}
-          <button className="secondary" disabled={locked} aria-label={`${p.title} · ${p.version} ${selectedVersion===p.version?'이어서 풀기':'풀기'}`} onClick={()=>onChoose(p.version)}>{p.problemHeld?'기록 보기':selectedVersion===p.version?'이어서 풀기':'풀기'}</button></div>
+          <button className="secondary catalog-play" disabled={locked} aria-label={`${p.title} · ${p.version} ${selectedVersion===p.version?'이어서 풀기':'풀기'}`} onClick={()=>onChoose(p.version)}>{p.problemHeld?'기록 보기':selectedVersion===p.version?'이어서 풀기':'풀기'}</button></div>
           {removing===p.version&&<div className="notice catalog-remove" role="group" aria-label={`${p.title} 삭제 확인`}>
             <p>이 문제를 삭제할까요? 이 문제에 대한 내 제출·훈련 기록도 함께 삭제되고 되돌릴 수 없어요. 다른 회원이 이미 푼 문제라면 목록에서만 내려가고 그들의 기록은 유지돼요.</p>
             {saveError&&!editing&&<p role="alert" className="notice error">{saveError}</p>}
