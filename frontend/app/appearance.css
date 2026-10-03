@@ -41,6 +41,11 @@
 .appearance-color > input { font:11px ui-monospace,monospace; padding:6px; border-radius:6px; }.appearance-color > input[aria-invalid=true] { border-color:var(--danger); }
 .appearance-fonts { display:grid; gap:12px; }.appearance-fonts label { font-size:12px; }.appearance-fonts small,.appearance-storage-note { font-size:11px; color:var(--muted); line-height:1.7; }
 .appearance-size-label span { display:flex; justify-content:space-between; }.appearance-fonts input[type=range] { accent-color:var(--green); padding:0; }
+.appearance-font-downloads { font-size:12px; }
+.appearance-font-downloads summary { cursor:pointer; color:var(--green); padding:4px 0; }
+.appearance-font-downloads ul { list-style:none; padding:0; margin:8px 0 12px; display:grid; gap:8px; }
+.appearance-font-downloads a { color:var(--green); text-decoration:underline; text-underline-offset:3px; }
+.appearance-font-downloads small { display:block; margin-top:3px; }
 .appearance-reset-section { font-size:12px; background:transparent; }.appearance-preview { position:sticky; top:16px; min-width:0; }
 .appearance-preview-caption { display:flex; justify-content:space-between; font-size:9px; letter-spacing:1px; color:var(--muted); margin-bottom:10px; }.preview-live-dot { color:var(--success); letter-spacing:0; }
 .appearance-preview-window { border:1px solid var(--line); border-radius:10px; overflow:hidden; box-shadow:0 8px 26px #0000000a; }

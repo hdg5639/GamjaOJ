@@ -88,6 +88,16 @@ export default function AppearanceSettings() {
           {prefs.font==='custom'&&<label>설치된 글꼴 이름<input aria-label="설치된 글꼴 이름" maxLength={80} value={prefs.customFont} onChange={e=>save({...prefs,customFont:e.target.value})}/></label>}
           <label className="appearance-size-label"><span>글자 크기 <output>{prefs.fontSize}px</output></span><input type="range" aria-label="에디터 글자 크기" min="10" max="28" value={prefs.fontSize} onChange={e=>save({...prefs,fontSize:Number(e.target.value)})}/></label>
           <small>JetBrains Mono·Fira Code·D2Coding은 설치 없이 사용할 수 있어요. Consolas·Menlo와 직접 입력한 글꼴은 기기에 설치되어 있어야 해요.</small>
+          <details className="appearance-font-downloads"><summary>공식 다운로드·설치 안내</summary>
+            <ul>
+              <li><a href="https://www.jetbrains.com/lp/mono/" target="_blank" rel="noopener noreferrer">JetBrains Mono 다운로드 ↗</a></li>
+              <li><a href="https://github.com/tonsky/FiraCode/releases" target="_blank" rel="noopener noreferrer">Fira Code 다운로드 ↗</a></li>
+              <li><a href="https://github.com/naver/d2-coding-font/releases" target="_blank" rel="noopener noreferrer">D2Coding 다운로드 ↗</a></li>
+              <li><a href="https://learn.microsoft.com/en-us/typography/font-list/consolas" target="_blank" rel="noopener noreferrer">Consolas 공식 안내 ↗</a><small>별도 다운로드 없이 지원되는 Microsoft 제품에 포함돼요.</small></li>
+              <li><a href="https://support.apple.com/en-us/108939" target="_blank" rel="noopener noreferrer">Menlo · macOS 포함 글꼴 안내 ↗</a></li>
+            </ul>
+            <small>다운로드한 압축 파일을 풀고 TTF·OTF 글꼴 파일을 설치한 뒤, 페이지를 새로고침해 주세요. <a href="https://support.apple.com/guide/font-book/install-and-validate-fonts-fntbk1000/mac" target="_blank" rel="noopener noreferrer">Mac 글꼴 설치 방법 ↗</a></small>
+          </details>
           {localFontAvailable===false&&<p role="status" className="draft-help">선택한 글꼴을 기기에서 찾지 못해 시스템 고정폭 글꼴로 표시하고 있어요. 설치 없이 쓰려면 JetBrains Mono·Fira Code·D2Coding을 선택해 주세요.</p>}
         </section>}
         {colorGroups[tab].map(([title,ids])=><section className="appearance-color-group" key={title}><h5>{title}</h5><div className="appearance-colors">{ids.map(id=>{
