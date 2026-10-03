@@ -7,9 +7,17 @@
  --surface-raised:4px 4px 10px var(--relief-shade),-4px -4px 10px var(--relief-light);
  --surface-inset:inset 2px 2px 5px var(--relief-shade),inset -2px -2px 5px var(--relief-light);
  --surface-edge:color-mix(in srgb,var(--line) 32%,transparent);
- --canvas-wash:linear-gradient(135deg,var(--canvas) 0%,color-mix(in srgb,var(--canvas) 92%,var(--green)) 48%,color-mix(in srgb,var(--canvas) 68%,var(--subtle)) 100%);
+ /* Broad, overlapping aurora ribbons; the canvas remains the dominant color. */
+ --aurora-main:color-mix(in srgb,var(--green) 16%,transparent);
+ --aurora-cool:color-mix(in srgb,var(--green) 11%,transparent);
+ --aurora-warm:color-mix(in srgb,var(--green) 9%,transparent);
+ --canvas-wash:radial-gradient(ellipse 80% 55% at 76% 4%,var(--aurora-main) 0%,transparent 72%),radial-gradient(ellipse 70% 65% at 12% 54%,var(--aurora-cool) 0%,transparent 74%),radial-gradient(ellipse 80% 60% at 85% 94%,var(--aurora-warm) 0%,transparent 76%),linear-gradient(145deg,var(--canvas),color-mix(in srgb,var(--canvas) 85%,var(--subtle)));
 }
 :root[data-theme="dark"] { --relief-light:color-mix(in srgb,var(--ink) 5%,transparent); --relief-shade:#00000038; }
+/* Neighboring hues follow even a custom accent; older engines retain the tonal fallback. */
+@supports (color:oklch(from red l c calc(h + 1))) {
+ :root { --aurora-cool:color-mix(in srgb,oklch(from var(--green) l c calc(h + 65)) 11%,transparent); --aurora-warm:color-mix(in srgb,oklch(from var(--green) l c calc(h - 45)) 9%,transparent); }
+}
 :root body { background-color:var(--canvas); background-image:var(--canvas-wash); background-size:100% 100%; background-attachment:fixed; }
 
 /* Structural dividers stay quiet across every page; preserve warnings and code-specific borders. */
