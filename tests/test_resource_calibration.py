@@ -1,5 +1,7 @@
 import hashlib,importlib.util,json,tempfile,unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 def load(name,file):
  s=importlib.util.spec_from_file_location(name,Path(__file__).resolve().parents[1]/'scripts'/file);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
@@ -25,6 +27,18 @@ class CalibrationTests(unittest.TestCase):
    self.assertFalse(stage.stage(jobs,root/'reports',root/'proof',root/'out'))
    self.assertFalse((root/'out/resource-release.sql').exists())
    self.assertEqual('INCOMPLETE',json.loads((root/'out/release-review.json').read_text())['status'])
+ def test_allowed_reference_sets_budget_and_must_pass_exact_proposal(self):
+  for reject in [False,True]:
+   with self.subTest(reject=reject),tempfile.TemporaryDirectory() as folder:
+    root=Path(folder);out=root/'out';out.mkdir();path=root/'job.json'
+    job={'version':'allowed-v1','packageHash':'package','problem':{'tests':[{'id':'max'}]},'references':{'CPP':'primary'},'allowedReferences':{'CPP':[{'name':'ordered tree','source':'allowed'}]}}
+    path.write_text(json.dumps(job));audit=cal.Calibration(SimpleNamespace(output=out,drivers=root/'drivers'));calls=[]
+    def run(language,source,plan,limits):
+     calls.append((source,dict(limits)))
+     return {'verdict':'WA' if reject and source=='allowed' and limits['testWallSeconds']!=20 else 'AC','tests':[{'id':'max','wall_ms':1000 if source=='allowed' else 100,'memory_peak_bytes':70*1048576 if source=='allowed' else 1048576,'memory_measurement':'cgroup-peak-observed'}]}
+    with patch.object(audit,'run',side_effect=run):audit.measure(path,'CPP')
+    record=json.loads((out/'allowed-v1-CPP.json').read_text());self.assertEqual({'testWallSeconds':1.55,'memoryMb':96},record['proposal']);self.assertEqual('FAILED' if reject else 'MEASURED',record['status'])
+    self.assertIn(('allowed',record['proposal']),calls);self.assertEqual(1,len(record['qualifiedAlternates']))
  def complete_fixture(self,root):
   jobs=root/'jobs';jobs.mkdir();reports=root/'reports';reports.mkdir();proof=root/'proof';proof.mkdir()
   job={'version':'test-v1','packageHash':'package','oldLimits':None,'problem':{'tests':[{'id':'sample'},{'id':'max'}]},'intent':{},'references':{l:'reference '+l for l in ['JAVA','CPP','PYTHON']}}
@@ -44,13 +58,15 @@ class CalibrationTests(unittest.TestCase):
    (reports/'test-v1-CPP.json').unlink()
    self.assertFalse(stage.stage(jobs,reports,proof,root/'out'));self.assertFalse((root/'out/resource-release.sql').exists())
  def test_signed_certificate_cannot_hide_missing_case_changed_profile_or_missing_slow_witness(self):
-  for failure in ['case','profile','contract','slow','plan']:
+  for failure in ['case','profile','contract','slow','plan','alternate']:
    with self.subTest(failure=failure),tempfile.TemporaryDirectory() as folder:
     root=Path(folder);jobs,reports,proof=self.complete_fixture(root);p=reports/'test-v1-CPP.json';r=json.loads(p.read_text());c=json.loads((proof/'test-v1.json').read_text())
     if failure=='case':r['qualified']['tests'].pop()
     elif failure=='profile':r['qualified']['execution_profile']['memoryMb']+=16
     elif failure=='contract':r['executionContract']['files']['runner/judge.py']='stale'
     elif failure=='plan':r['qualified']['problem_sha256']='another plan with the same case IDs'
+    elif failure=='alternate':
+     path=jobs/'test-v1.json';job=json.loads(path.read_text());job['allowedReferences']={'CPP':[{'name':'ordered tree','source':'unmeasured'}]};path.write_text(json.dumps(job))
     else:c.update(inefficientApproaches=['quadratic scan']);c['languageEvidence']['CPP']['inefficientWitnessSeparated']=True
     p.write_text(json.dumps(r));c['languageEvidence']['CPP']['measurementHash']=stage.digest(r);(proof/'test-v1.json').write_text(json.dumps(c))
     self.assertFalse(stage.stage(jobs,reports,proof,root/'out'));self.assertFalse((root/'out/resource-release.sql').exists())
