@@ -49,8 +49,27 @@ class GitHubSolutionLayoutTest {
         restarted.publish("GITHUB","token",target(),payload(),saved,state->{},()->{});assertThat(writes).hasSize(2);
         restarted.publish("GITHUB","token",target(),payload(),saved,state->{},()->{});assertThat(writes).hasSize(2);
         var changed=payload().put("title","변경된 제목").put("difficulty","HARD").put("source","updated code");
+        changed.set("thinking",obj().put("layer",5).put("name","뒤집어보기"));
         restarted.publish("GITHUB","token",target(),changed,saved,state->{},()->{});
         assertThat(writes).hasSize(4).allMatch(path->path.contains("/Easy/sum-v1."));
+    }
+    @Test void freshLayerExportWritesReadmeAndCodeToLayerFolder(){
+        ExportHttp http=mock(ExportHttp.class);var remote=new ExportRemote(new ExportSettings(new MockEnvironment()),http);
+        var p=payload();p.set("thinking",obj().put("layer",1).put("name","그대로"));var writes=new ArrayList<String>();
+        when(http.request(anyString(),anyString(),anyMap(),nullable(JsonNode.class))).thenAnswer(call->{
+            String method=call.getArgument(0),url=call.getArgument(1);
+            if(url.endsWith("/repos/owner/repo"))return obj().put("id",123);
+            if(method.equals("GET"))throw new Failure("TARGET_NOT_FOUND",false);
+            assertThat(method).isEqualTo("PUT");writes.add(url);
+            if(url.endsWith("/README.md")){
+                var body=call.getArgument(3,JsonNode.class);
+                assertThat(new String(Base64.getDecoder().decode(body.path("content").asText()),StandardCharsets.UTF_8)).contains("# [1겹 · 그대로]");
+            }
+            return obj();
+        });
+        var state=obj();remote.publish("GITHUB","token",target(),p,state,s->{},()->{});
+        assertThat(state.path("githubFolder").asText()).isEqualTo("GamjaOJ/1겹/sum-v1. 두 수의 합");
+        assertThat(writes).hasSize(2).allMatch(url->url.contains("/GamjaOJ/1%EA%B2%B9/")).noneMatch(url->url.contains("/Easy/"));
     }
     @Test void existingUnownedFolderAndStaleFenceNeverOverwriteFiles(){
         ExportHttp http=mock(ExportHttp.class);var remote=new ExportRemote(new ExportSettings(new MockEnvironment()),http);

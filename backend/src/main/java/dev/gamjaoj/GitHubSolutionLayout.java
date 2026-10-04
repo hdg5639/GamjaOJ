@@ -17,20 +17,25 @@ final class GitHubSolutionLayout {
     static String rating(JsonNode payload){
         if(!payload.has("thinking"))return difficulty(payload); // Historical queued exports retain their snapshot.
         var t=payload.path("thinking");
-        return t.has("layer")?t.path("layer").asInt()+"겹 · "+t.path("name").asText():"겹 미배정";
+        return t.hasNonNull("layer")?t.path("layer").asInt()+"겹 · "+t.path("name").asText():"겹 미배정";
     }
     static String ratingDetails(JsonNode payload){
         if(!payload.has("thinking"))return difficulty(payload)+switch(payload.path("difficultySource").asText()){
             case "TEMPLATE_ESTIMATE" -> " (템플릿 추정)";case "AUTHOR_ESTIMATE" -> " (출제자 설정)";default -> "";
         };
         var t=payload.path("thinking");
-        return rating(payload)+(t.has("layer")?" ("+("CURATED_ESTIMATE".equals(t.path("source").asText())?"검토 추정":"출제자 추정")+")\n\n발상 "+t.path("insight").asInt()+"/5 · 구현 "+t.path("implementation").asInt()+"/5 · 경계 "+t.path("edgeCases").asInt()+"/5\n\n"+markdown(t.path("rationale").asText()):"");
+        return rating(payload)+(t.hasNonNull("layer")?" ("+("CURATED_ESTIMATE".equals(t.path("source").asText())?"검토 추정":"출제자 추정")+")\n\n발상 "+t.path("insight").asInt()+"/5 · 구현 "+t.path("implementation").asInt()+"/5 · 경계 "+t.path("edgeCases").asInt()+"/5\n\n"+markdown(t.path("rationale").asText()):"");
+    }
+    static String ratingFolder(JsonNode payload){
+        if(!payload.has("thinking"))return difficulty(payload); // Preserve pre-upgrade queued snapshots.
+        var layer=payload.path("thinking").path("layer");
+        return layer.isIntegralNumber()&&layer.asInt()>=1&&layer.asInt()<=9?layer.asInt()+"겹":"겹 미배정";
     }
     static String folder(JsonNode target,JsonNode payload){
         if(!target.path("layout").asText().equals("problem-v1"))return target.path("prefix").asText()+"/"+payload.path("username").asText()+"/"+payload.path("problemVersion").asText()+"/"+payload.path("language").asText();
         String version=payload.path("problemVersion").asText();
         if(!version.matches("[A-Za-z0-9_.-]{1,80}")||version.equals(".")||version.equals(".."))throw new ExportRemote.Failure("INVALID_TARGET",false);
-        return target.path("prefix").asText()+"/"+difficulty(payload)+"/"+version+". "+safeTitle(payload.path("title").asText(),238-version.length());
+        return target.path("prefix").asText()+"/"+ratingFolder(payload)+"/"+version+". "+safeTitle(payload.path("title").asText(),238-version.length());
     }
     static String safeTitle(String title,int budget){
         String normalized=Normalizer.normalize(title,Normalizer.Form.NFC);

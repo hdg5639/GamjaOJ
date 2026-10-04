@@ -9,7 +9,7 @@ import static dev.gamjaoj.ExportRemote.*;
 /** Database rows reuse the existing delivery checkpoint, lease fence and managed-code contract. */
 final class NotionTables {
     static final String NAME="GamjaOJ 풀이", MARKER="GamjaOJ accepted solutions table v1";
-    static final Map<String,String> COLUMNS=Map.of("언어","select","결과","select","문제 링크","url","통과 시각","date","GamjaOJ ID","rich_text","실행 시간 (ms)","number","최대 메모리 (MiB)","number");
+    static final Map<String,String> COLUMNS=Map.of("생각의 겹","select","언어","select","결과","select","문제 링크","url","통과 시각","date","GamjaOJ ID","rich_text","실행 시간 (ms)","number","최대 메모리 (MiB)","number");
     final ExportRemote remote;
     NotionTables(ExportRemote remote){this.remote=remote;}
     JsonNode api(String token,String method,String path,JsonNode body){return remote.api("NOTION",token,method,path,body);}
@@ -84,6 +84,7 @@ final class NotionTables {
             switch(name){
                 case "실행 시간 (ms)" -> {if(payload.hasNonNull("maxWallMs"))value.put("number",payload.path("maxWallMs").asLong());else value.putNull("number");}
                 case "최대 메모리 (MiB)" -> {if(payload.hasNonNull("maxMemoryBytes"))value.put("number",payload.path("maxMemoryBytes").asLong()/1048576.0);else value.putNull("number");}
+                case "생각의 겹" -> value.putObject("select").put("name",GitHubSolutionLayout.rating(payload));
                 case "언어" -> value.putObject("select").put("name",payload.path("language").asText());
                 case "결과" -> value.putObject("select").put("name","AC");
                 case "문제 링크" -> value.put("url",payload.path("problemUrl").asText());
