@@ -25,6 +25,20 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(20, helper.profile['testWallSeconds'])
             self.assertEqual(12, runner.profile['testWallSeconds'])
 
+    def test_callable_adapters_require_matching_language_and_safe_source_file(self):
+        from runner.judge import LANGUAGES
+        for language, extension in [('JAVA','java'),('CPP','cpp'),('PYTHON','py')]:
+            plan={'version':'native-callable','output_policy':'RUN_ONLY','tests':[{'id':'custom-input','input':'[]','output':''}],
+                  'callable':{'format':language+'_CALLABLE_V1','sourceFile':'UserSolution.'+extension,'driver':'trusted driver'}}
+            validate_problem(plan)
+            with tempfile.TemporaryDirectory() as state:
+                other='PYTHON' if language!='PYTHON' else 'CPP'
+                report=Runner(LANGUAGES[other]['image'],state).judge(b'source',plan)
+                self.assertEqual('IE',report['verdict'])
+                self.assertIn('Callable language mismatch',report['error'])
+            plan['callable']['sourceFile']='../Main.'+extension
+            with self.assertRaises(ValueError):validate_problem(plan)
+
     def test_run_contract_is_not_a_judge_verdict(self):
         result = {"stdout": b"anything", "limit": None, "exit_code": 0, "oom_killed": False}
         self.assertEqual("OK", classify(result, None))

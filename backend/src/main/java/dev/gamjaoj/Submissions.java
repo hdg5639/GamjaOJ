@@ -74,7 +74,7 @@ public class Submissions {
                     // Explicit public fields only: never serialize a private problem package.
                     return new Problem(row.getString("id"), ProblemTitles.display(data), data.path("statement").asText(),
                             data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText(),
-                            examples(data, row.getString("examples_json")), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),ThinkingDifficulty.read(row),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options(row.getString("time_limits_json")).stream().filter(l->!data.has("api")||l.id().equals("JAVA")).toList(),data.has("api")?data.path("api"):null);
+                            examples(data, row.getString("examples_json")), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),ThinkingDifficulty.read(row),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options(row.getString("time_limits_json")),data.has("api")?CallablePrograms.publicBundle(data.path("api")):null);
                 }).list();
     }
 
@@ -116,7 +116,6 @@ public class Submissions {
                 .param(user).query(Integer.class).single() >= 3)
             throw new AccountException(429, "진행 중인 채점이 끝나면 다시 제출해 주세요.");
         var problemData=JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id=?").param(request.problemVersion()).query(String.class).single());
-        if(problemData.has("api")&&!language.equals("JAVA"))throw new AccountException(400,"이 API 문제는 Java로 제출해 주세요.");
         boolean diagnosticProblem=jdbc.sql("SELECT diagnostic_only FROM problem_version WHERE id=?").param(request.problemVersion()).query(Boolean.class).single();
         if(diagnosticProblem != (request.diagnosticItemId()!=null) || (request.diagnosticItemId()!=null && request.sessionId()!=null))
             throw new AccountException(409,"진단 문항은 현재 진단에서 제출해 주세요.");
@@ -144,7 +143,7 @@ public class Submissions {
         if (input != null || problemData.has("api")) {
             var plan = input==null?(com.fasterxml.jackson.databind.node.ObjectNode)problemData.deepCopy():JudgeJson.JSON.createObjectNode().put("version", request.problemVersion()).put("output_policy", "RUN_ONLY");
             if(input!=null)plan.putArray("tests").addObject().put("id", "custom-input").put("input", input).put("output", "");
-            if(problemData.has("api"))plan.set("callable",problemData.path("api"));
+            if(problemData.has("api"))plan.set("callable",NativeCallablePrograms.bundle(problemData.path("api").path("api"),language));
             String json = JudgeJson.canonical(plan);
             if(input==null)jdbc.sql("UPDATE submission SET callable_package=?,callable_package_sha256=? WHERE id=?").param(json).param(JudgeJson.hash(json)).param(id).update();
             else jdbc.sql("UPDATE submission SET run_input=?,run_package=?,run_package_sha256=? WHERE id=?")
