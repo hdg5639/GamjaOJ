@@ -3,6 +3,17 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.*;
 import static org.assertj.core.api.Assertions.*;
 class NativeCallableProgramsTest {
+ @Test void exportPrivateAuditAdaptersWhenOperatorInventoryIsProvided() throws Exception {
+  String inventory=System.getenv("GAMJAOJ_RESOURCE_INVENTORY");if(inventory==null)return;
+  Path path=Path.of(inventory),out=path.getParent().resolve("drivers");Files.createDirectories(out);
+  try(var lines=Files.lines(path)) {
+   for(String line:lines.toList()) {
+    var row=JudgeJson.parse(line);if(!row.path("package").has("api"))continue;
+    var bundle=CallablePrograms.publicBundle(row.path("package").path("api"));
+    Files.writeString(out.resolve(row.path("version").asText()+".json"),bundle.toString());
+   }
+  }
+ }
  @Test void allTypedAdaptersAreRebuiltForOldPackages() throws Exception {
   var api=JudgeJson.parse("""
   {"mode":"MULTI_API","methods":[

@@ -11,19 +11,21 @@ from runner.judge import Runner, EXECUTION_CONTRACT, COMPILE_COMMAND, LANGUAGES,
 
 
 class ExecutionContractTests(unittest.TestCase):
-    def test_only_bounded_wall_budget_can_vary_and_it_drives_sandbox_timeout(self):
+    def test_only_bounded_wall_and_memory_budgets_can_vary_and_drive_sandbox_limits(self):
         base = LANGUAGES['PYTHON']
         for changes in ({'testWallSeconds': 0}, {'testWallSeconds': 21}, {'testWallSeconds': True},
-                        {'testWallSeconds': 1.5}, {'memoryMb': 999}, {'testCommand': ['unsafe']}, {'extra': 1}):
+                        {'testWallSeconds': 0.1001}, {'memoryMb': 999}, {'memoryMb': True}, {'testCommand': ['unsafe']}, {'extra': 1}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 checked_profile(base | changes, 'PYTHON', base['image'])
         state=json.dumps(dict(Running=False,Error='',ExitCode=0,OOMKilled=False)).encode()
-        with tempfile.TemporaryDirectory() as directory, patch('runner.judge.docker',return_value=state), patch('runner.judge.capture') as capture:
+        with tempfile.TemporaryDirectory() as directory, patch('runner.judge.docker',return_value=state) as docker, patch('runner.judge.capture') as capture:
             capture.return_value=dict(limit=None,client_exit=0,stdout=b'',stderr=b'',wall_ms=1)
             runner=Runner(base['image'],directory)
-            runner.profile=checked_profile(base | {'testWallSeconds': 2},'PYTHON',base['image'])
+            runner.profile=checked_profile(base | {'testWallSeconds': 0.35, 'memoryMb': 64},'PYTHON',base['image'])
             runner.sandbox(Path(directory),runner.profile['testCommand'])
-            self.assertEqual((2,65536),capture.call_args.args[-2:])
+            self.assertEqual((0.35,65536),capture.call_args.args[-2:])
+            args=docker.call_args_list[0].args
+            self.assertEqual('64m',args[args.index('--memory')+1])
             runner.sandbox(Path(directory),runner.profile['compileCommand'],compile_phase=True)
             self.assertEqual(30,capture.call_args.args[-2])
 

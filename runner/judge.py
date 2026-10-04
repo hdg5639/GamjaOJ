@@ -31,13 +31,16 @@ RUN_POLICY = "java8-run-v1"
 LANGUAGES = EXECUTION_CONTRACT["languages"]
 
 def checked_profile(profile, language, image):
-    """Only a bounded per-problem wall budget may differ from the pinned executable policy."""
+    """Server-owned bounded execution time/memory; compiler/commands/images remain pinned."""
     base = LANGUAGES.get(language)
     if not isinstance(profile, dict) or base is None:
         raise ValueError("Unsupported language execution snapshot")
     seconds = profile.get('testWallSeconds')
-    if (type(seconds) is not int or not 1 <= seconds <= 20
-            or profile != base | {'testWallSeconds': seconds} or profile['image'] != image):
+    memory = profile.get('memoryMb')
+    if (type(seconds) not in (int, float) or not 0.1 <= seconds <= 20
+            or abs(seconds * 1000 - round(seconds * 1000)) > 0.00001
+            or type(memory) is not int or not 32 <= memory <= base['memoryMb']
+            or profile != base | {'testWallSeconds': seconds, 'memoryMb': memory} or profile['image'] != image):
         raise ValueError("Unsupported language execution snapshot")
     return dict(profile)
 

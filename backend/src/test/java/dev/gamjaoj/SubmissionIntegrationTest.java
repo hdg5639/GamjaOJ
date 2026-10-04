@@ -74,17 +74,20 @@ class SubmissionIntegrationTest {
         } finally {jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id='sum-v1'").param(previous).param(JudgeJson.hash(previous)).update();}
     }
     @Test void problemLimitsReachCatalogQueueAndRemainFrozenAcrossRetries() {
-        String limits=ProblemTimeLimitsTest.limits(2,1,4);
+        String limits="{\"JAVA\":0.75,\"CPP\":0.35,\"PYTHON\":0.5,\"analysis\":\"Measured test fixture\",\"memory\":{\"JAVA\":192,\"CPP\":64,\"PYTHON\":64}}";
         try {
             jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id='sum-v1'").param(limits).update();
             var catalog=submissions.problems(alice).stream().filter(p->p.version().equals("sum-v1")).findFirst().orElseThrow();
-            assertThat(catalog.languages()).extracting(LanguageProfiles.Option::timeLimitMs).containsExactly(2000,1000,4000);
+            assertThat(catalog.languages()).extracting(LanguageProfiles.Option::timeLimitMs).containsExactly(750,350,500);
+            assertThat(catalog.languages()).extracting(LanguageProfiles.Option::memoryMb).containsExactly(192,64,64);
             UUID key=UUID.randomUUID();var saved=submit(alice,key);
             jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id='sum-v1'").param(ProblemTimeLimitsTest.limits(4,2,6)).update();
-            assertThat(submit(alice,key).execution().timeLimitMs()).isEqualTo(2000);
+            assertThat(submit(alice,key).execution().timeLimitMs()).isEqualTo(750);
+            assertThat(submit(alice,key).execution().memoryMb()).isEqualTo(192);
             var task=queue.claim(UUID.randomUUID()).orElseThrow();
             assertThat(task.submissionId()).isEqualTo(saved.id());
-            assertThat(task.executionProfile().path("testWallSeconds").asInt()).isEqualTo(2);
+            assertThat(task.executionProfile().path("testWallSeconds").asDouble()).isEqualTo(0.75);
+            assertThat(task.executionProfile().path("memoryMb").asInt()).isEqualTo(192);
         } finally {jdbc.sql("UPDATE problem_version SET time_limits_json=NULL WHERE id='sum-v1'").update();}
     }
     @Autowired TransientRuns transientRuns;

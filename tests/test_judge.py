@@ -39,6 +39,15 @@ class ContractTests(unittest.TestCase):
             plan['callable']['sourceFile']='../Main.'+extension
             with self.assertRaises(ValueError):validate_problem(plan)
 
+    def test_calibrated_memory_and_millisecond_limits_keep_sandbox_commands_pinned(self):
+        from runner.judge import LANGUAGES, checked_profile
+        base=LANGUAGES['CPP']
+        profile=base | {'testWallSeconds':0.35,'memoryMb':64}
+        self.assertEqual(profile,checked_profile(profile,'CPP',base['image']))
+        for change in [{'testWallSeconds':float('nan')},{'testWallSeconds':0.0001},{'testWallSeconds':0.3501},
+                       {'memoryMb':31},{'memoryMb':257},{'memoryMb':True},{'compileMemoryMb':64},{'testCommand':['sh']}]:
+            with self.assertRaises(ValueError):checked_profile(profile | change,'CPP',base['image'])
+
     def test_run_contract_is_not_a_judge_verdict(self):
         result = {"stdout": b"anything", "limit": None, "exit_code": 0, "oom_killed": False}
         self.assertEqual("OK", classify(result, None))

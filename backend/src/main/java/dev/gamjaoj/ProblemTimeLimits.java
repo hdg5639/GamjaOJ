@@ -29,10 +29,19 @@ final class ProblemTimeLimits {
     static final List<String> LANGUAGES=List.of("JAVA","CPP","PYTHON");
     static JsonNode parse(String json) {return json==null?null:validate(JudgeJson.parse(json));}
     static JsonNode validate(JsonNode limits) {
-        HybridArtifacts.fields(limits,"JAVA","CPP","PYTHON","analysis");
+        if(limits.has("memory"))HybridArtifacts.fields(limits,"JAVA","CPP","PYTHON","analysis","memory");
+        else HybridArtifacts.fields(limits,"JAVA","CPP","PYTHON","analysis");
         for(String language:LANGUAGES) {
             var n=limits.path(language);
-            HybridArtifacts.require(n.isIntegralNumber()&&n.canConvertToInt()&&n.asInt()>=1&&n.asInt()<=20,"INVALID_TIME_LIMITS");
+            HybridArtifacts.require(n.isNumber()&&Double.isFinite(n.asDouble())&&n.asDouble()>=0.1&&n.asDouble()<=20&&Math.abs(n.asDouble()*1000-Math.rint(n.asDouble()*1000))<0.00001,"INVALID_TIME_LIMITS");
+        }
+        if(limits.has("memory")) {
+            HybridArtifacts.fields(limits.path("memory"),"JAVA","CPP","PYTHON");
+            for(String language:LANGUAGES) {
+                var n=limits.path("memory").path(language);
+                int ceiling=LanguageProfiles.profile(language).path("memoryMb").asInt();
+                HybridArtifacts.require(n.isIntegralNumber()&&n.canConvertToInt()&&n.asInt()>=32&&n.asInt()<=ceiling,"INVALID_MEMORY_LIMITS");
+            }
         }
         HybridArtifacts.text(limits.path("analysis"),6000);
         return limits;
@@ -47,8 +56,8 @@ final class ProblemTimeLimits {
     }
     static String reviewed(JsonNode review,long maximumMs,int javaCeilingSeconds) {
         var limits=validate(review.path("timeLimits"));
-        HybridArtifacts.require(limits.path("JAVA").asInt()<=javaCeilingSeconds,"TIME_LIMIT_WITNESS_CEILING");
-        HybridArtifacts.require(maximumMs>0&&maximumMs*2<=limits.path("JAVA").asLong()*1000,"TIME_LIMIT_REFERENCE_MARGIN");
+        HybridArtifacts.require(limits.path("JAVA").asDouble()<=javaCeilingSeconds,"TIME_LIMIT_WITNESS_CEILING");
+        HybridArtifacts.require(maximumMs>0&&maximumMs*2<=limits.path("JAVA").asDouble()*1000,"TIME_LIMIT_REFERENCE_MARGIN");
         return JudgeJson.canonical(limits);
     }
     /** Trusted templates have no free model proposal. Cross-language budgets are estimates. */

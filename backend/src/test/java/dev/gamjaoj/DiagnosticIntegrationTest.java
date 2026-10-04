@@ -400,14 +400,17 @@ class DiagnosticIntegrationTest {
         assertThat(report.facts().path("items").get(1).path("skipReason").asText()).isEqualTo("SESSION_ENDED");
     }
     @Test void diagnosticFreezesLimitsAtStartIncludingPublicDisplayAndLaterSubmission() {
-        jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id=?").param(ProblemTimeLimitsTest.limits(2,1,4)).param(bank+"-0").update();
+        jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id=?").param("{\"JAVA\":0.75,\"CPP\":0.35,\"PYTHON\":0.5,\"analysis\":\"Measured test fixture\",\"memory\":{\"JAVA\":192,\"CPP\":64,\"PYTHON\":64}}").param(bank+"-0").update();
         var diagnostic=start();var q=diagnostic.current();
-        assertThat(q.languages()).extracting(LanguageProfiles.Option::timeLimitMs).containsExactly(2000,1000,4000);
+        assertThat(q.languages()).extracting(LanguageProfiles.Option::timeLimitMs).containsExactly(750,350,500);
+        assertThat(q.languages()).extracting(LanguageProfiles.Option::memoryMb).containsExactly(192,64,64);
         jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id=?").param(ProblemTimeLimitsTest.limits(5,3,8)).param(q.problemVersion()).update();
         var saved=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(q.problemVersion(),SOURCE,null,q.itemId(),"PYTHON"));
-        assertThat(saved.execution().timeLimitMs()).isEqualTo(4000);
+        assertThat(saved.execution().timeLimitMs()).isEqualTo(500);
+        assertThat(saved.execution().memoryMb()).isEqualTo(64);
         var task=queue.claim(UUID.randomUUID()).orElseThrow();
-        assertThat(task.executionProfile().path("testWallSeconds").asInt()).isEqualTo(4);
+        assertThat(task.executionProfile().path("testWallSeconds").asDouble()).isEqualTo(0.5);
+        assertThat(task.executionProfile().path("memoryMb").asInt()).isEqualTo(64);
     }
     @Test void alignmentMigrationUpdatesOpenSessionsButPreservesAdmittedExecution() throws Exception {
         var diagnostic=start();var q=diagnostic.current();

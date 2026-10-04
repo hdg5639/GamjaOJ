@@ -16,12 +16,16 @@ final class LanguageProfiles {
     static JsonNode profile(String language,String limitsJson) {
         var p=(com.fasterxml.jackson.databind.node.ObjectNode)profile(language);
         var limits=ProblemTimeLimits.parse(limitsJson);
-        if(limits!=null)p.put("testWallSeconds",limits.path(normalize(language)).asInt());
+        if(limits!=null) {
+            var seconds=limits.path(normalize(language));
+            if(seconds.isIntegralNumber())p.put("testWallSeconds",seconds.asInt());else p.put("testWallSeconds",seconds.asDouble());
+            if(limits.has("memory"))p.put("memoryMb",limits.path("memory").path(normalize(language)).asInt());
+        }
         return p;
     }
     static Option option(JsonNode profile) {
         return new Option(profile.path("language").asText(),profile.path("label").asText(),profile.path("sourceFile").asText(),
-                profile.path("testWallSeconds").asInt()*1000,profile.path("memoryMb").asInt());
+                (int)Math.round(profile.path("testWallSeconds").asDouble()*1000),profile.path("memoryMb").asInt());
     }
     static List<Option> options() { return List.of(option(profile("JAVA")),option(profile("CPP")),option(profile("PYTHON"))); }
     static List<Option> options(String limitsJson) {

@@ -31,12 +31,21 @@ class ProblemTimeLimitsTest {
         timing.put("javaSeconds",12);
         assertThatThrownBy(()->HybridRulePackage.parse("wrong-timing",p)).hasMessage("RULE_TIMING_EVIDENCE");
     }
+    @Test void measuredMillisecondBudgetsAndMemoryAreBoundedAndReachTheProfile() {
+        var resource=JudgeJson.parse(limits(2,1,3));((com.fasterxml.jackson.databind.node.ObjectNode)resource).put("CPP",0.35).putObject("memory").put("JAVA",192).put("CPP",64).put("PYTHON",64);
+        var p=LanguageProfiles.profile("CPP",resource.toString());
+        assertThat(p.path("memoryMb").asInt()).isEqualTo(64);
+        assertThat(p.path("compileMemoryMb")).isEqualTo(LanguageProfiles.profile("CPP").path("compileMemoryMb"));
+        assertThat(LanguageProfiles.option(p).timeLimitMs()).isEqualTo(350);
+        ((com.fasterxml.jackson.databind.node.ObjectNode)resource.path("memory")).put("CPP",257);
+        assertThatThrownBy(()->ProblemTimeLimits.parse(resource.toString())).hasMessage("INVALID_MEMORY_LIMITS");
+    }
     @Test void limitsAffectOnlyWallBudgetAndRejectInvalidOrUnsafeProposals() {
         var base=LanguageProfiles.profile("PYTHON");var proposed=LanguageProfiles.profile("PYTHON",limits(2,1,4));
         assertThat(proposed.path("testWallSeconds").asInt()).isEqualTo(4);
         var restored=proposed.deepCopy();((com.fasterxml.jackson.databind.node.ObjectNode)restored).set("testWallSeconds",base.path("testWallSeconds"));
         assertThat(restored).isEqualTo(base);
-        for(String raw:java.util.List.of(limits(0,1,2),limits(2,21,3),"{\"JAVA\":2}",limits(2,1,3).replace("\"CPP\":1","\"CPP\":1.5")))
+        for(String raw:java.util.List.of(limits(0,1,2),limits(2,21,3),"{\"JAVA\":2}",limits(2,1,3).replace("\"CPP\":1","\"CPP\":0.0001")))
             assertThatThrownBy(()->ProblemTimeLimits.parse(raw)).isInstanceOf(HybridArtifacts.Invalid.class);
         var review=GenerationRequirementsTest.accepted();review.set("timeLimits",JudgeJson.parse(limits(2,1,3)));
         assertThat(ProblemTimeLimits.reviewed(review,1000)).isEqualTo(limits(2,1,3));
