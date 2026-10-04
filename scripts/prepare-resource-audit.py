@@ -54,6 +54,10 @@ def prepare(root,inventory,output):
    if not additions or set(additions)-{'JAVA','CPP','PYTHON'} or any(not isinstance(s,str) or not s.strip() for s in additions.values()):raise ValueError('invalid authored references: '+v)
    sources={**sources,**additions}
   if row.get('slow'):slow[v]={**slow.get(v,{}),'JAVA':row['slow']}
+  if authored.get('slowReferences'):
+   witnesses=authored['slowReferences']
+   if set(witnesses)-{'JAVA','CPP','PYTHON'} or any(not isinstance(s,str) or not s.strip() for s in witnesses.values()):raise ValueError('invalid inefficient references: '+v)
+   slow[v]={**slow.get(v,{}),**witnesses}
   for l in missing:
    if l not in sources:missing[l]+=1
   job=dict(version=v,packageHash=row['packageHash'],problem=pack,oldLimits=row['limits'],diagnostic=row['diagnostic'],references=sources,slow=slow.get(v,{}),intent=intent.get(v,pack.get('semantics',{})))
@@ -61,8 +65,12 @@ def prepare(root,inventory,output):
   witness=output.parent/'witness-overrides'/(v+'.json')
   if witness.exists():
    evidence=json.loads(witness.read_text())
-   if evidence.get('packageHash')!=row['packageHash'] or not evidence.get('tests') or not evidence.get('review'):raise ValueError('stale or incomplete audit witnesses: '+v)
-   job.update(auditTests=evidence['tests'],auditReview=evidence['review'])
+   if evidence.get('packageHash')!=row['packageHash'] or not (evidence.get('tests') or evidence.get('generated')) or not evidence.get('review'):raise ValueError('stale or incomplete audit witnesses: '+v)
+   job.update(auditTests=evidence.get('tests',[]),auditReview=evidence['review'])
+   if evidence['review'].get('efficiencyRequired') is True:job['intent']['efficiencyRequired']=True
+   if evidence.get('generated'):
+    if pack.get('generated'):raise ValueError('audit generator cannot replace an existing problem generator: '+v)
+    job['auditGenerated']=evidence['generated']
   write(output/(v+'.json'),job);jobs.append(dict(version=v,packageHash=row['packageHash'],languages=list(sources),generated=bool(pack.get('generated')),callable='api' in pack,diagnostic=row['diagnostic']))
  summary=dict(total=len(jobs),missing=missing,problems=jobs)
  write(output.parent/'coverage.json',summary);print(canonical(dict(total=len(jobs),missing=missing)))
