@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from runner.judge import Runner,LANGUAGES,checked_profile,CompileCache,GeneratedCache
 from runner.execution_contract import contract
+from scripts.resource_evidence import complete_qualification
 
 def canonical(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(value):return hashlib.sha256(canonical(value).encode()).hexdigest()
@@ -36,9 +37,36 @@ def worst_plan(plan,report):
  if not result['tests']:result['tests']=plan['tests'][:1]
  return result
 
+class AuditCompileCache(CompileCache):
+ """Operator-only inventory scope; production cache admission is unchanged.
+ Successful builds are reusable, while test execution and verdicts never are.
+ """
+ def __init__(self,scopes):super().__init__();self.scopes=scopes
+ def key(self,version,image,source):
+  if version not in self.scopes:return None
+  profile=next((p for p in LANGUAGES.values() if p['image']==image),None)
+  if profile is None:return None
+  return (version,self.scopes[version],image,tuple(profile['compileCommand']),hashlib.sha256(source).hexdigest())
+
 class Calibration:
  def __init__(self,args):
-  self.args=args;self.cache=CompileCache();self.generated=GeneratedCache();self.execution=contract()
+  scopes={}
+  for path in getattr(args,'jobs',Path('/nonexistent')).glob('*.json'):
+   job=json.loads(path.read_text());scopes[job['version']]=job['packageHash']
+  self.args=args;self.cache=AuditCompileCache(scopes);self.generated=GeneratedCache();self.execution=contract()
+ def reusable(self,job,language,plan,record):
+  source_hash=hashlib.sha256(job['references'][language].encode()).hexdigest()
+  if record.get('status')!='MEASURED' or record.get('executionContract')!=self.execution or record.get('packageHash')!=job['packageHash'] or record.get('sourceHash')!=source_hash:return False
+  try:
+   proposal=budget(language,record['maxWallMs'],record['maxMemoryBytes'])
+   if proposal!=record.get('proposal') or not complete_qualification(record.get('qualified',{}),language,source_hash,plan,LANGUAGES[language]|proposal):return False
+   allowed=job.get('allowedReferences',{}).get(language,[]);qualified=record.get('qualifiedAlternates',[])
+   if len(allowed)!=len(qualified) or any(item.get('name')!=alternative['name'] or item.get('sourceHash')!=hashlib.sha256(alternative['source'].encode()).hexdigest() or not complete_qualification(item.get('qualified',{}),language,item['sourceHash'],plan,LANGUAGES[language]|proposal) for alternative,item in zip(allowed,qualified)):return False
+   witness=job.get('slow',{}).get(language);slow=record.get('slow',{})
+   if slow.get('sourceHash')!=(hashlib.sha256(witness.encode()).hexdigest() if witness else None):return False
+   if witness and (slow.get('small',{}).get('verdict')!='AC' or (job.get('intent',{}).get('efficiencyRequired') and slow.get('large',{}).get('verdict') not in ('TLE','MLE'))):return False
+   return True
+  except (KeyError,TypeError,ValueError):return False
  def run(self,language,source,plan,limits):
   with tempfile.TemporaryDirectory(prefix='gamja-resource-audit-') as directory:
    runner=Runner(LANGUAGES[language]['image'],directory);runner.profile=checked_profile(LANGUAGES[language]|limits,language,runner.image)
@@ -51,10 +79,10 @@ class Calibration:
   plan['tests'].extend(copy.deepcopy(job.get('auditTests',[])))
   if 'api' in plan:
    bundles=json.loads((self.args.drivers/(version+'.json')).read_text());plan['callable']=bundles['languages'][language]
-  fingerprint=digest(dict(job=job,language=language,driver=plan.get('callable'),contract=self.execution))
+  fingerprint=digest(dict(version=version,packageHash=job['packageHash'],plan=plan,language=language,source=source,allowed=job.get('allowedReferences',{}).get(language,[]),slow=job.get('slow',{}).get(language),intent=job.get('intent',{}),contract=self.execution))
   out=self.args.output/(version+'-'+language+'.json')
   saved=json.loads(out.read_text()) if out.exists() else {}
-  if saved.get('fingerprint')==fingerprint and saved.get('status')=='MEASURED':return version,language,'REUSED'
+  if self.reusable(job,language,plan,saved):return version,language,'REUSED'
   record=dict(version=version,language=language,fingerprint=fingerprint,packageHash=job['packageHash'],sourceHash=hashlib.sha256(source.encode()).hexdigest(),executionContract=self.execution,status='RUNNING',scope='fixed corpus plus declared generated witnesses; not exhaustive worst-case proof',reports=[])
   write(out,record)
   try:
