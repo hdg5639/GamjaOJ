@@ -7,6 +7,16 @@ def digest(v):return hashlib.sha256(canonical(v).encode()).hexdigest()
 def write(path,value):
  temporary=path.with_suffix('.tmp');temporary.write_text(canonical(value)+'\n');temporary.replace(path)
 
+def callable_learner_java(source):
+ # Hybrid authoring artifacts are executable Main bundles; the pinned callable Runner
+ # supplies its own Main.java. Preserve only the preceding learner implementation.
+ marker=re.search(r'^public class Main\s*\{',source,re.MULTILINE)
+ if marker:
+  learner=source[:marker.start()].rstrip()+'\n'
+  if not re.search(r'\bclass\s+UserSolution\b',learner):raise ValueError('callable artifact missing learner class')
+  return learner
+ return source
+
 def prepare(root,inventory,output):
  refs={};slow={};intent={}
  for folder in (root/'docs/basic-pool-v1-production/problems').iterdir():
@@ -61,6 +71,9 @@ def prepare(root,inventory,output):
   for l in missing:
    if l not in sources:missing[l]+=1
   job=dict(version=v,packageHash=row['packageHash'],problem=pack,oldLimits=row['limits'],diagnostic=row['diagnostic'],references=sources,slow=slow.get(v,{}),intent=intent.get(v,pack.get('semantics',{})))
+  if 'api' in pack:
+   job['references']={l:callable_learner_java(s) if l=='JAVA' else s for l,s in job['references'].items()}
+   job['slow']={l:callable_learner_java(s) if l=='JAVA' else s for l,s in job['slow'].items()}
   if authored.get('allowedReferences'):job['allowedReferences']=authored['allowedReferences']
   witness=output.parent/'witness-overrides'/(v+'.json')
   if witness.exists():
