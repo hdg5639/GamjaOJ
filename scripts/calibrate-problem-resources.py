@@ -19,7 +19,7 @@ def budget(language,wall_ms,memory_bytes):
  floor={'JAVA':0.75,'CPP':0.25,'PYTHON':0.35}[language]
  seconds=round(max(floor,math.ceil((wall_ms*1.5+50)/50)*0.05),3)
  memory=max({'JAVA':192,'CPP':32,'PYTHON':48}[language],math.ceil((memory_bytes/1048576*1.2+8)/16)*16)
- if seconds>60 or memory>LANGUAGES[language]['memoryMb']:raise ValueError('reference exceeds bounded calibration capacity')
+ if seconds>180 or memory>LANGUAGES[language]['memoryMb']:raise ValueError('reference exceeds bounded calibration capacity')
  return dict(testWallSeconds=seconds,memoryMb=memory)
 
 

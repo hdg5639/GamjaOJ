@@ -45,7 +45,7 @@ class ProblemTimeLimitsTest {
         assertThat(proposed.path("testWallSeconds").asInt()).isEqualTo(4);
         var restored=proposed.deepCopy();((com.fasterxml.jackson.databind.node.ObjectNode)restored).set("testWallSeconds",base.path("testWallSeconds"));
         assertThat(restored).isEqualTo(base);
-        for(String raw:java.util.List.of(limits(0,1,2),limits(2,61,3),"{\"JAVA\":2}",limits(2,1,3).replace("\"CPP\":1","\"CPP\":0.0001")))
+        for(String raw:java.util.List.of(limits(0,1,2),limits(2,181,3),"{\"JAVA\":2}",limits(2,1,3).replace("\"CPP\":1","\"CPP\":0.0001")))
             assertThatThrownBy(()->ProblemTimeLimits.parse(raw)).isInstanceOf(HybridArtifacts.Invalid.class);
         var review=GenerationRequirementsTest.accepted();review.set("timeLimits",JudgeJson.parse(limits(2,1,3)));
         assertThat(ProblemTimeLimits.reviewed(review,1000)).isEqualTo(limits(2,1,3));
@@ -56,8 +56,8 @@ class ProblemTimeLimitsTest {
         assertThat(JudgeJson.parse(ProblemTimeLimits.measured(600)).path("PYTHON").asInt()).isEqualTo(8);
     }
     @Test void measuredLongBudgetReachesCatalogWithoutChangingAuthoringDefaults() {
-        var profile=LanguageProfiles.profile("PYTHON",limits(2,1,60));
-        assertThat(LanguageProfiles.option(profile).timeLimitMs()).isEqualTo(60000);
+        var profile=LanguageProfiles.profile("PYTHON",limits(2,1,180));
+        assertThat(LanguageProfiles.option(profile).timeLimitMs()).isEqualTo(180000);
         assertThat(profile.path("testCommand")).isEqualTo(LanguageProfiles.profile("PYTHON").path("testCommand"));
         assertThat(profile.path("compileWallSeconds")).isEqualTo(LanguageProfiles.profile("PYTHON").path("compileWallSeconds"));
         assertThat(ProblemTimeLimits.PROFILING_SECONDS).isEqualTo(20);

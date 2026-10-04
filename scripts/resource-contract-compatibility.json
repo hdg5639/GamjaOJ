@@ -3,6 +3,24 @@
   "migrations": [
     {
       "from": "3134b1ca6116413efd960ef77320994ebe1bf308c34eb55779548168d50f120c",
+      "to": "ef40f1aa738219e09851b19bbe5f11708f7ae69fa6f41f80faf449202621985b",
+      "kind": "test-wall-ceiling-only-20-to-180",
+      "oldJudgeHash": "62aafe1136991933893ed60449194995197068ccdc5d3b232727fefeeafb8786",
+      "newJudgeHash": "7b19bfa3745c1c3bf0b8857694b2097743d29c342fa33ca5b64f49d0df349be4",
+      "maximumLegacySeconds": 20,
+      "maximumCurrentSeconds": 180
+    },
+    {
+      "from": "de075ae3b95049e059754e99c7ce7e89b8970d2c6760d0307898551439a5ef93",
+      "to": "ef40f1aa738219e09851b19bbe5f11708f7ae69fa6f41f80faf449202621985b",
+      "kind": "test-wall-ceiling-only-60-to-180",
+      "oldJudgeHash": "11c28aa9817ae9b94ca2e04b00030101411424d253d00b188207e864db9f4d91",
+      "newJudgeHash": "7b19bfa3745c1c3bf0b8857694b2097743d29c342fa33ca5b64f49d0df349be4",
+      "maximumLegacySeconds": 60,
+      "maximumCurrentSeconds": 180
+    },
+    {
+      "from": "3134b1ca6116413efd960ef77320994ebe1bf308c34eb55779548168d50f120c",
       "to": "de075ae3b95049e059754e99c7ce7e89b8970d2c6760d0307898551439a5ef93",
       "kind": "test-wall-ceiling-only-20-to-60",
       "oldJudgeHash": "62aafe1136991933893ed60449194995197068ccdc5d3b232727fefeeafb8786",

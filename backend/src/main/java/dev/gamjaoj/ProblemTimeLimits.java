@@ -7,7 +7,7 @@ import java.util.List;
 final class ProblemTimeLimits {
     // Infrastructure safety ceiling, not a problem-design target or a published default.
     static final int PROFILING_SECONDS=20;
-    static final int MEASURED_LIMIT_CEILING_SECONDS=60;
+    static final int MEASURED_LIMIT_CEILING_SECONDS=180;
     static int calibratedJavaSeconds(long maximumMs) {
         HybridArtifacts.require(maximumMs>0,"TIME_LIMIT_EVIDENCE_MISSING");
         HybridArtifacts.require(maximumMs<=PROFILING_SECONDS*500L,"TIME_LIMIT_CAPACITY_EXCEEDED");

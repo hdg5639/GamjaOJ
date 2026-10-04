@@ -44,17 +44,17 @@ def profiling_seconds(job, language):
     windows = job.get('auditProfilingSeconds', {})
     if not isinstance(windows, dict) or set(windows) - {'JAVA', 'CPP', 'PYTHON'}:
         raise ValueError('invalid audit profiling windows')
-    if any(type(seconds) is not int or not 20 <= seconds <= 60 for seconds in windows.values()):
-        raise ValueError('audit profiling window must be bounded20..60 seconds')
+    if any(type(seconds) is not int or not 20 <= seconds <= 180 for seconds in windows.values()):
+        raise ValueError('audit profiling window must be bounded20..180 seconds')
     return windows.get(language, 20)
 
 
 def compatible_execution_evidence(record, target):
-    """Retain original provenance for one audited validation-only widening.
+    """Retain original provenance for explicitly approved validation-only widenings.
 
     No source/settings/runtime migration is inferred. The approved hash pair has
     identical images, commands, sandbox settings, and all files except a literal
-    checked_profile ceiling20->60. Only original profiles<=20 remain reusable.
+    checked_profile ceiling. Reports retain their original contract and must stay within the original ceiling.
     """
     source = record.get('executionContract')
     if source == target:
@@ -64,8 +64,12 @@ def compatible_execution_evidence(record, target):
     migrations = json.loads((Path(__file__).with_name('resource-contract-compatibility.json')).read_text())['migrations']
     approved = next((m for m in migrations if m['from'] == digest(source)
                      and m['to'] == digest(target)
-                     and m['kind'] == 'test-wall-ceiling-only-20-to-60'), None)
-    if not approved or approved.get('maximumLegacySeconds') != 20 or source.get('format') != target.get('format'):
+                     and m['kind'] in ('test-wall-ceiling-only-20-to-60','test-wall-ceiling-only-20-to-180','test-wall-ceiling-only-60-to-180')), None)
+    if not approved or source.get('format') != target.get('format'):
+        return False
+    old_ceiling=approved.get('maximumLegacySeconds')
+    new_ceiling=approved.get('maximumCurrentSeconds',60)
+    if (old_ceiling,new_ceiling) not in ((20,60),(20,180),(60,180)) or approved['kind'] != f'test-wall-ceiling-only-{old_ceiling}-to-{new_ceiling}':
         return False
     if source.get('languages') != target.get('languages') or source.get('profile') != target.get('profile'):
         return False
@@ -75,9 +79,11 @@ def compatible_execution_evidence(record, target):
     if old_files['runner/judge.py'] != approved['oldJudgeHash'] or new_files['runner/judge.py'] != approved['newJudgeHash']:
         return False
     current_judge = (Path(__file__).resolve().parents[1] / 'runner/judge.py').read_bytes()
-    if (current_judge.count(b'0.1 <= seconds <= 60') != 1
+    current_literal=f'0.1 <= seconds <= {new_ceiling}'.encode()
+    previous_literal=f'0.1 <= seconds <= {old_ceiling}'.encode()
+    if (current_judge.count(current_literal) != 1
             or hashlib.sha256(current_judge).hexdigest() != approved['newJudgeHash']
-            or hashlib.sha256(current_judge.replace(b'0.1 <= seconds <= 60', b'0.1 <= seconds <= 20', 1)).hexdigest() != approved['oldJudgeHash']):
+            or hashlib.sha256(current_judge.replace(current_literal,previous_literal,1)).hexdigest() != approved['oldJudgeHash']):
         return False
     reports = list(record.get('reports', [])) + [record.get('qualified', {})]
     reports += [a.get('qualified', {}) for a in record.get('qualifiedAlternates', [])]
