@@ -58,6 +58,20 @@ class NotionTablesTest {
         when(http.request(eq("POST"),endsWith("/query"),anyMap(),any())).thenReturn(list());
         assertThatThrownBy(()->remote.publish("NOTION","token",target(),payload(),obj().put("creating",true),s->{},()->{})).hasMessage("DELIVERY_UNCERTAIN");
     }
+    @Test void layerColumnUsesTheSameRatingAsGithubAndUpgradesExistingTables(){
+        var legacy=source();((ObjectNode)legacy.path("properties")).remove("생각의 겹");
+        when(http.request(eq("GET"),endsWith("/data_sources/source"),anyMap(),isNull())).thenReturn(legacy,source());
+        when(http.request(eq("PATCH"),endsWith("/data_sources/source"),anyMap(),any())).thenAnswer(c->{
+            var additions=c.getArgument(3,JsonNode.class).path("properties");
+            assertThat(additions.size()).isEqualTo(1);
+            assertThat(additions.path("생각의 겹").has("select")).isTrue();return source();
+        });
+        var table=new NotionTables(remote);var prepared=table.prepare("token","source");
+        var p=payload().put("difficulty","EASY");p.set("thinking",obj().put("layer",1).put("name","그대로"));
+        assertThat(table.properties(prepared,p,identity()).path("id-생각의 겹").path("select").path("name").asText()).isEqualTo("1겹 · 그대로");
+        p.putNull("thinking");
+        assertThat(table.properties(prepared,p,identity()).path("id-생각의 겹").path("select").path("name").asText()).isEqualTo("겹 미배정");
+    }
     @Test void existingTableAddsOnlyMissingColumnsAndRejectsConflictingTypes(){
         var existing=source();((ObjectNode)existing.path("properties")).remove("언어");existing.withObject("/properties").putObject("개인 메모").put("id","note").put("type","rich_text");
         when(http.request(eq("GET"),endsWith("/data_sources/source"),anyMap(),isNull())).thenReturn(existing,source());

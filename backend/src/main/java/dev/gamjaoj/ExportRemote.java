@@ -146,7 +146,7 @@ class ExportRemote {
             }
         }
         if(!compact)putFile(token,repo,branch,folder+"/"+payload.path("filename").asText(),payload.path("source").asText(),payload,fence);
-        String readme="# "+payload.path("title").asText().replace('\n',' ')+"\n\n- 문제: "+payload.path("problemUrl").asText()+"\n- 언어: "+payload.path("language").asText()+"\n- 결과: AC\n- 통과 시각: "+payload.path("finishedAt").asText()+"\n- 최대 실행 시간: "+ExecutionMetrics.time(payload)+"\n- 최대 메모리: "+ExecutionMetrics.memory(payload)+"\n\n메모리는 호스트 관측 컨테이너 cgroup 최고 사용량 (런타임·파일 캐시 포함)입니다.\n\nGamjaOJ에서 자동으로 관리하는 풀이 기록입니다.\n";
+        String readme="# "+payload.path("title").asText().replace('\n',' ')+"\n\n- 문제: "+payload.path("problemUrl").asText()+"\n- 언어: "+payload.path("language").asText()+"\n- 결과: AC\n- 생각의 겹: "+GitHubSolutionLayout.rating(payload)+"\n- 통과 시각: "+payload.path("finishedAt").asText()+"\n- 최대 실행 시간: "+ExecutionMetrics.time(payload)+"\n- 최대 메모리: "+ExecutionMetrics.memory(payload)+"\n\n메모리는 호스트 관측 컨테이너 cgroup 최고 사용량 (런타임·파일 캐시 포함)입니다.\n\nGamjaOJ에서 자동으로 관리하는 풀이 기록입니다.\n";
         if(compact)readme=GitHubSolutionLayout.readme(payload);
         putFile(token,repo,branch,folder+"/README.md",readme,payload,fence);
         if(compact)putFile(token,repo,branch,folder+"/"+payload.path("filename").asText(),payload.path("source").asText(),payload,fence);
