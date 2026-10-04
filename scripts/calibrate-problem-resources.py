@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from runner.judge import Runner,LANGUAGES,checked_profile,CompileCache,GeneratedCache
 from runner.execution_contract import contract
-from scripts.resource_evidence import complete_qualification,audit_plan
+from scripts.resource_evidence import complete_qualification,audit_plan,worst_plan,complete_measurement
 
 def canonical(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(value):return hashlib.sha256(canonical(value).encode()).hexdigest()
@@ -22,20 +22,6 @@ def budget(language,wall_ms,memory_bytes):
  if seconds>20 or memory>LANGUAGES[language]['memoryMb']:raise ValueError('reference exceeds bounded calibration capacity')
  return dict(testWallSeconds=seconds,memoryMb=memory)
 
-def worst_plan(plan,report):
- result=copy.deepcopy(plan);ranked=sorted(report['tests'],key=lambda t:t['wall_ms'],reverse=True)
- ids={t['id'] for t in ranked[:3]}
- # Always repeat the largest declared generated witness, even when startup dominates tiny fixed cases.
- generated=[t for t in ranked if t.get('kind')=='generated']
- if generated:ids.add(max(generated,key=lambda t:t.get('input_bytes',0))['id'])
- if ranked:ids.add(max(ranked,key=lambda t:t.get('memory_peak_bytes',0))['id'])
- result['tests']=[t for t in result['tests'] if t['id'] in ids]
- if result.get('generated'):
-  result['generated']['tests']=[t for t in result['generated']['tests'] if t['id'] in ids]
-  if not result['generated']['tests']:result.pop('generated')
- # validate_problem requires a fixed suite even when the longest witness is generated.
- if not result['tests']:result['tests']=plan['tests'][:1]
- return result
 
 class AuditCompileCache(CompileCache):
  """Operator-only inventory scope; production cache admission is unchanged.
@@ -58,6 +44,9 @@ class Calibration:
   source_hash=hashlib.sha256(job['references'][language].encode()).hexdigest()
   if record.get('status')!='MEASURED' or record.get('executionContract')!=self.execution or record.get('packageHash')!=job['packageHash'] or record.get('sourceHash')!=source_hash:return False
   try:
+   sources=[job['references'][language]]+[a['source'] for a in job.get('allowedReferences',{}).get(language,[])]
+   broad_profile=LANGUAGES[language]|dict(testWallSeconds=20,memoryMb=LANGUAGES[language]['memoryMb'])
+   if not complete_measurement(record,language,sources,plan,broad_profile):return False
    proposal=budget(language,record['maxWallMs'],record['maxMemoryBytes'])
    if proposal!=record.get('proposal') or not complete_qualification(record.get('qualified',{}),language,source_hash,plan,LANGUAGES[language]|proposal):return False
    allowed=job.get('allowedReferences',{}).get(language,[]);qualified=record.get('qualifiedAlternates',[])
