@@ -77,6 +77,48 @@ class DiagnosticIntegrationTest {
                     .param(bank).param(n).param(n==0?"EASY":"MEDIUM").param(version).param("{\"privateRubric\":true}").update();
         }
     }
+    @Test void examFamiliesAllocateWholeUnseenSetsAndReplayTheAssignedSet() {
+        String family="exam-a-v2";
+        var ids=new java.util.ArrayList<String>();
+        for(int set=1;set<=4;set++) {
+            String examBank=String.format("exam-a-set-%02d-v2",set);ids.add(examBank);
+            jdbc.sql("INSERT INTO diagnostic_bank(id,reviewed) VALUES (?,true)").param(examBank).update();
+            for(int n=0;n<8;n++) {
+                String version=examBank+"-"+n;
+                var p=(ObjectNode)JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id='sum-v1'").query(String.class).single());p.put("version",version).put("title",version);
+                String json=JudgeJson.canonical(p);
+                jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,diagnostic_only) SELECT ?,?,?,runtime_image,runner_policy,true,true FROM problem_version WHERE id='sum-v1'").param(version).param(json).param(JudgeJson.hash(json)).update();
+                jdbc.sql("INSERT INTO diagnostic_bank_item(bank_id,position,category,difficulty,problem_version,rubric_json) VALUES (?,?,?,?,?,?)").param(examBank).param(n).param("exam-field-"+(n/2)).param(n%2==0?"CORE":"APPLIED").param(version).param("{}").update();
+            }
+        }
+        try {
+            assertThat(diagnostics.banks().stream().filter(b->b.id().equals(family)).toList()).singleElement().satisfies(b->{assertThat(b.setCount()).isEqualTo(4);assertThat(b.questionCount()).isEqualTo(8);assertThat(b.examType()).isEqualTo("A");});
+            assertThatThrownBy(()->diagnostics.start(user,UUID.randomUUID(),family,List.of("exam-field-0"))).isInstanceOf(AccountException.class).hasMessageContaining("전체 8문항");
+            var assigned=new java.util.HashSet<String>();
+            for(int n=0;n<4;n++) {
+                UUID key=UUID.randomUUID();var next=diagnostics.start(user,key,family);assertThat(next.items()).hasSize(8);assertThat(next.repeatAttempt()).isFalse();assertThat(assigned.add(next.bankId())).isTrue();
+                assertThat(diagnostics.start(user,key,family)).isEqualTo(next);
+                var restarted=new Diagnostics(jdbc).detail(user,next.id());assertThat(restarted).isEqualTo(next);
+                assertThatThrownBy(()->diagnostics.detail(other,next.id())).isInstanceOf(AccountException.class);
+                diagnostics.finish(user,next.id());
+            }
+            var repeat=diagnostics.start(user,UUID.randomUUID(),family);assertThat(assigned).contains(repeat.bankId());assertThat(repeat.items()).hasSize(8);assertThat(repeat.repeatAttempt()).isTrue();diagnostics.finish(user,repeat.id());
+        } finally {
+            jdbc.sql("DELETE FROM diagnostic_session WHERE bank_id LIKE 'exam-a-set-%-v2'").update();
+            for(String id:ids){jdbc.sql("DELETE FROM diagnostic_bank_item WHERE bank_id=?").param(id).update();jdbc.sql("DELETE FROM diagnostic_bank WHERE id=?").param(id).update();jdbc.sql("DELETE FROM problem_version WHERE id LIKE ?").param(id+"-%").update();}
+        }
+    }
+    @Test void callableDiagnosticProjectsOnlyJavaAndPublicBundleAndPreservesTheJudgePlan() {
+        var d=start();String version=d.current().problemVersion();
+        var api=JudgeJson.parse("{\"mode\":\"MULTI_API\",\"methods\":[{\"name\":\"init\",\"returns\":\"void\",\"parameters\":[],\"description\":\"초기화\"},{\"name\":\"answer\",\"returns\":\"int\",\"parameters\":[],\"description\":\"반환\"}]}");
+        var p=(ObjectNode)JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id=?").param(version).query(String.class).single());p.set("api",CallablePrograms.bundle(api));p.putArray("tests").addObject().put("id","T01").put("input","[[[\"init\"],[\"answer\"]]]").put("output","3");String raw=JudgeJson.canonical(p),hash=JudgeJson.hash(raw);
+        jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id=?").param(raw).param(hash).param(version).update();jdbc.sql("UPDATE diagnostic_item SET package_json=?,package_sha256=? WHERE problem_version=?").param(raw).param(hash).param(version).update();
+        var q=diagnostics.detail(user,d.id()).current();assertThat(q.languages()).extracting(LanguageProfiles.Option::id).containsExactly("JAVA");assertThat(q.api().path("template").asText()).contains("class UserSolution");
+        String source="public class UserSolution { public void init(){} public int answer(){return 3;} }";
+        var submission=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(version,source,null,d.current().itemId(),"JAVA"));
+        var plan=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(submission.id()).query(String.class).single());assertThat(plan.path("callable")).isEqualTo(p.path("api"));assertThat(plan.path("tests")).isEqualTo(p.path("tests"));
+    }
+
     static com.fasterxml.jackson.databind.node.ObjectNode habit(com.fasterxml.jackson.databind.node.ObjectNode observation) {
         observation.put("pattern","입력을 읽지 않고 고정 값을 출력합니다.").put("risk","예제 외 입력에서는 항상 틀립니다.").put("tone","RISK").putArray("alsoSeenIn");
         return observation;

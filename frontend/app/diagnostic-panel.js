@@ -1,6 +1,7 @@
 'use client';
 import ProblemStatement from './problem-statement';
 import SelectControl from './select-control';
+import DiagnosticChooser from './diagnostic-chooser';
 
 import EditorShortcutHelp,{EditorTools} from './editor-shortcut-help';
 import {useEffect,useRef,useState} from 'react';
@@ -15,7 +16,7 @@ import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
 import Modal from './modal';
 import DiagnosticEvaluation from './diagnostic-evaluation';
 import DiagnosticReassessment from './diagnostic-reassessment';
-import {categoryLabels as categories,bankTitle} from './diagnostic-categories';
+import {categoryLabels as categories,bankTitle,diagnosticRoleLabels} from './diagnostic-categories';
 import ResetCode from './reset-code';
 import ListPagination from './list-pagination';
 import {skipReasons,diagnosticOutcome} from './diagnostic-outcomes';
@@ -49,7 +50,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
   const languageKey=`gamjaoj-diagnostic-language-${user.id}`;
   function loadDraft(id,chosen){
     let local=null;try{local=readLocalDraft(draftKey(id,chosen));}catch{}
-    setSource(local?.source??(chosen==='JAVA'?starter:starters[chosen]));
+    setSource(local?.source??(chosen==='JAVA'?(current?.api?.template||starter):starters[chosen]));
     const ticket=++draftTicket.current;
     loadServerDraft(api,'d:'+id,chosen).then(server=>{
       if(ticket!==draftTicket.current||!newer(local,server)||server.source.length>65536)return;
@@ -146,7 +147,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
     <div className="diagnostic-heading">
       {current&&<SolvingLayoutChoice value={layout} onChange={setLayout} order={paneOrder} onOrderChange={setPaneOrder} mirrored={mirrored} onMirrorChange={setMirrored}/>}
       {!current&&<div><h2>{session?(session.status==='COMPLETED'?'진단 완료':'진단 진행'):'나에게 맞는 시작점 찾기'}</h2>{!session&&<p className="muted">내 약점을 몰라도 시작할 수 있어요. 원하는 분야만 풀고, 언제든 일반 연습으로 돌아가세요.</p>}</div>}
-      {session&&<div className="diagnostic-session-status"><span>{session.items.filter(i=>i.status!=='OPEN').length} / {session.items.length}문항 완료 · {session.status==='PAUSED'?'일시정지':session.status==='COMPLETED'?'진단 종료':'진행 중'}</span><progress className="diagnostic-progress" aria-label="진단 완료 문항" max={session.items.length||1} value={session.items.filter(i=>i.status!=='OPEN').length}/></div>}
+      {session&&<div className="diagnostic-session-status">{session.bankId?.startsWith('exam-')&&<strong>{bankTitle(session.bankId)}{session.repeatAttempt?' · 풀어본 세트 재응시':''}</strong>}<span>{session.items.filter(i=>i.status!=='OPEN').length} / {session.items.length}문항 완료 · {session.status==='PAUSED'?'일시정지':session.status==='COMPLETED'?'진단 종료':'진행 중'}</span><progress className="diagnostic-progress" aria-label="진단 완료 문항" max={session.items.length||1} value={session.items.filter(i=>i.status!=='OPEN').length}/></div>}
       <div className="diagnostic-session-actions">{session?.status==='COMPLETED'&&!held&&<button className="secondary" onClick={otherDiagnostics}>다른 진단 보기</button>}{!current&&<button className="secondary" disabled={!sessions.length} onClick={()=>{setHistoryPage(1);setSheet('history');}}>지난 진단</button>}{session&&session.status!=='COMPLETED'&&<button className="secondary" onClick={()=>setSheet('records')}>진단 기록</button>}{session&&session.status!=='COMPLETED'&&<button className="secondary" disabled={busy||!!request} onClick={()=>mutate(`/api/diagnostics/${session.id}/state`,{status:session.status==='PAUSED'?'ACTIVE':'PAUSED'})}>{session.status==='PAUSED'?'진단 이어서 풀기':'일시정지'}</button>}
       {session&&session.status!=='COMPLETED'&&!finishing&&<button className="secondary" disabled={busy||!!request} onClick={()=>setFinishing(true)}>진단 끝내기</button>}
       <button className="secondary" onClick={onPractice}>일반 연습으로</button>
@@ -159,22 +160,13 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
     {error&&<p role="alert" className="notice error">{error}</p>}
     {!loaded&&<p role="status">진단 목록을 불러오는 중…</p>}
     {request&&<p className="notice">응답을 확인하지 못한 요청이 있어요. 같은 요청으로 결과를 확인하세요. <button disabled={busy} onClick={()=>mutate(request.path,request.body,true)}>요청 다시 확인</button></p>}
-    {!session&&loaded&&<>
-      <p>문제당 정식 제출은 최대 5회이며, 정답 또는 5회 소진 시 다음 문항으로 넘어갑니다. 직접 실행은 횟수 제한이 없으며, 동시에 실행할 수 있는 작업 수는 제한됩니다.</p>
-      {!banks.length&&<p className="notice">검토가 끝난 진단 문항을 준비하고 있어요. 지금은 일반 문제를 자유롭게 연습할 수 있어요.</p>}
-      {banks.map(bank=><fieldset key={bank.id} disabled={busy||!!request}><legend>{bankTitle(bank.id)} · {bank.questionCount}문항</legend>
-        {bank.id.startsWith('core-a-')&&<p>구현·배열/문자열·기초 자료구조·기초 탐색을 확인하는 시범 진단입니다. 하·중 난이도는 잠정 분류이며, 완료 시간과 학습 효과는 아직 실측 검증되지 않았습니다. 전체 분야의 숙련도를 판정하지 않습니다.</p>}
-        {bank.id.startsWith('algo-mix-a-')&&<p>배열·문자열부터 BFS·DFS·백트래킹·DP·이분 탐색·그리디·최단 경로·최소 신장 트리까지 분야별 하·중 문항으로 풀이 과정과 코드 습관을 관찰합니다. 원하는 분야만 골라 시작할 수 있어요. 전체를 한 언어로 푸는 데 약 100~120분을 예상하지만 실측 전 추정이며, 숙련도 점수를 매기지 않습니다.</p>}
-        <div className="diagnostic-category-options">{bank.categories.map(c=><label key={c}><input type="checkbox" checked={(scope[bank.id]||bank.categories).includes(c)} onChange={e=>setScope({...scope,[bank.id]:e.target.checked?[...(scope[bank.id]||bank.categories),c]:(scope[bank.id]||bank.categories).filter(x=>x!==c)})}/>{categories[c]||c} · 하·중 2문항</label>)}</div>
-        <button className="primary" disabled={!(scope[bank.id]||bank.categories).length} onClick={()=>mutate('/api/diagnostics',{bankId:bank.id,categories:scope[bank.id]||bank.categories},true)}>선택한 {(scope[bank.id]||bank.categories).length*2}문항 시작</button>
-      </fieldset>)}
-    </>}
+    {!session&&loaded&&<DiagnosticChooser banks={banks} scope={scope} setScope={setScope} disabled={busy||!!request} onStart={(bank,chosen)=>mutate('/api/diagnostics',{bankId:bank.id,...(chosen?{categories:chosen}:{})},true)}/>}
     {session&&<>
-      {current&&<div className="diagnostic-workspace" data-layout={layout} data-pane-order={paneOrder} data-mirrored={mirrored} style={{...columnLayoutStyle(paneOrder,firstColumn,columnSplit,mirrored,size.ratio,split),'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}><article data-expanded={problemExpanded}><h2 ref={heading} tabIndex={-1}>{current.title}</h2><p><strong>{number(item.id)}번 / {session.items.length}문항</strong> · {categories[item.category]||item.category} · {item.difficulty==='EASY'?'하':'중'} · 제출 {item.attempts}/5{item.pending?' · 채점 중':''}</p><LimitChips profile={current.languages?.find(l=>l.id===language)} label={current.languages?.find(l=>l.id===language)?.label}/><button className="diagnostic-problem-toggle secondary" aria-expanded={problemExpanded} aria-controls="diagnostic-problem-content" onClick={()=>setProblemExpanded(value=>!value)}>{problemExpanded?'문제 접기':'문제 보기'}</button><div id="diagnostic-problem-content"><ProblemStatement key={current.problemVersion} statement={current.statement} version={current.problemVersion} api={api} manage={false}/><Examples examples={current.examples?.length?current.examples:[{input:current.sampleInput,output:current.sampleOutput}]}/></div></article>
+      {current&&<div className="diagnostic-workspace" data-layout={layout} data-pane-order={paneOrder} data-mirrored={mirrored} style={{...columnLayoutStyle(paneOrder,firstColumn,columnSplit,mirrored,size.ratio,split),'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}><article key={current.problemVersion} data-expanded={problemExpanded}><h2 ref={heading} tabIndex={-1}>{current.title}</h2><p><strong>{number(item.id)}번 / {session.items.length}문항</strong> · {categories[item.category]||item.category} · {diagnosticRoleLabels[item.difficulty]||item.difficulty} · 제출 {item.attempts}/5{item.pending?' · 채점 중':''}</p><LimitChips profile={current.languages?.find(l=>l.id===language)} label={current.languages?.find(l=>l.id===language)?.label}/><button className="diagnostic-problem-toggle secondary" aria-expanded={problemExpanded} aria-controls="diagnostic-problem-content" onClick={()=>setProblemExpanded(value=>!value)}>{problemExpanded?'문제 접기':'문제 보기'}</button><div id="diagnostic-problem-content"><ProblemStatement key={current.problemVersion} statement={current.statement} version={current.problemVersion} api={api} manage={false}/>{current.api&&<details className="diagnostic-api-guide"><summary>제출 방식 · 제공된 구동 코드</summary><p>UserSolution의 public 메서드를 구현해요. 입력 처리와 Main은 서버가 제공하며, 한 케이스의 호출은 같은 객체를 사용합니다.</p><pre>{current.api.driver}</pre></details>}{!/^## (?:예제 1|공개 호출 예제)\s*$/m.test(current.statement||'')&&<Examples examples={current.examples?.length?current.examples:[{input:current.sampleInput,output:current.sampleOutput}]}/>}</div></article>
         <ResizeHandle className="diagnostic-resizer" label={layout==='columns'?'첫 번째와 두 번째 패널 비율':'진단 문제와 편집기 비율'} value={layout==='columns'?firstColumn:mirrored?100-size.ratio:size.ratio} min={mirrored&&layout==='default'?30:20} max={mirrored&&layout==='default'?80:70} step={2} scale={columnScale} onChange={ratio=>layout==='columns'?setFirstColumn(ratio):changeSize({ratio:mirrored?100-ratio:ratio})}/>
-        <div className="diagnostic-code-column"><div className="code-top-controls"><div className="code-heading"><div className="code-caption"><span className="code-filename">{languageInfo[language].file}</span><span className="muted code-save-note" title={`${saveNote||'초안은 자동 저장돼요.'} 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.`}><span aria-live="polite">{saveNote||'초안은 자동 저장돼요.'}</span> 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.</span></div><div className="code-tools"><label className="language-choice">언어<SelectControl aria-label="진단 언어" title="언어를 바꿔도 제출 횟수는 유지돼요." value={language} disabled={disabled||!!item.pending} onChange={e=>changeLanguage(e.target.value)}>{(current.languages||[languageInfo.JAVA]).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</SelectControl></label>
+        <div className="diagnostic-code-column"><div className="code-top-controls"><div className="code-heading"><div className="code-caption"><span className="code-filename">{current.api?'UserSolution.java':languageInfo[language].file}</span><span className="muted code-save-note" title={`${saveNote||'초안은 자동 저장돼요.'} 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.`}><span aria-live="polite">{saveNote||'초안은 자동 저장돼요.'}</span> 진단 중에는 해설과 AI 힌트를 제공하지 않습니다.</span></div><div className="code-tools"><label className="language-choice">언어<SelectControl aria-label="진단 언어" title="언어를 바꿔도 제출 횟수는 유지돼요." value={language} disabled={disabled||!!item.pending} onChange={e=>changeLanguage(e.target.value)}>{(current.languages||[languageInfo.JAVA]).map(l=><option key={l.id} value={l.id}>{l.label}</option>)}</SelectControl></label>
         <EditorTools id="diagnostic-editor-tools"><summary>도구</summary><div className="tool-pop-panel"><label className="check-row vim-toggle"><input type="checkbox" checked={vim} onChange={e=>setVim(e.target.checked)}/>Vim 모드 <small>Esc 일반 모드 · i 입력 모드</small></label><EditorShortcutHelp diagnostic/></div></EditorTools>
-        <ResetCode disabled={disabled||!!item.pending} onReset={()=>edit(language==='JAVA'?starter:starters[language])}/></div></div>
+        <ResetCode disabled={disabled||!!item.pending} onReset={()=>edit(language==='JAVA'?(current?.api?.template||starter):starters[language])}/></div></div>
         </div><SplitStack className="diagnostic-split" layout={layout} share={layout==='columns'?columnSplit:split} onChange={layout==='columns'?setColumnSplit:setSplit}
           top={<div className="diagnostic-editor"><Editor key={`${current.itemId}:${language}`} language={language} id="diagnostic-source" label={`진단 ${language==='JAVA'?'Java':languageInfo[language].label} 코드`} value={source} vim={vim} disabled={disabled} onChange={edit} onRun={()=>{if(!disabled)setRunRequest(value=>value+1);}} onSubmit={()=>{if(!disabled&&!item.pending)mutate('/api/submissions',body,true);}} onLimit={()=>setError('코드는 64 KiB 이내로 작성해 주세요.')}/></div>}
           bottom={<RunConsole user={user} api={api} scope={current.problemVersion} disabled={disabled} examples={current.examples?.length?current.examples:[{input:current.sampleInput,output:current.sampleOutput}]}

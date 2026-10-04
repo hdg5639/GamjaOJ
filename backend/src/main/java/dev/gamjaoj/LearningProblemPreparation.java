@@ -88,7 +88,15 @@ class LearningProblemPreparation {
         Map.entry("bfs",List.of("너비 우선 탐색")),Map.entry("dfs",List.of("깊이 우선 탐색")),
         Map.entry("dp",List.of("동적 계획법")),Map.entry("binary-search",List.of("이분 탐색")),
         Map.entry("greedy",List.of("탐욕법")),Map.entry("graph",List.of("그래프·최단 경로","그래프","최단 경로","다익스트라")),
-        Map.entry("mst",List.of("최소 신장 트리")));
+        Map.entry("mst",List.of("최소 신장 트리")),
+        Map.entry("exam-a-implementation",List.of("구현")),
+        Map.entry("exam-a-simulation",List.of("구현","시뮬레이션")),
+        Map.entry("exam-a-combinatorial-search",List.of("백트래킹","동적 계획법")),
+        Map.entry("exam-a-state-search",List.of("너비 우선 탐색")),
+        Map.entry("exam-b-indexed-structures",List.of("기초 자료구조","자료구조")),
+        Map.entry("exam-b-priority-order",List.of("기초 자료구조","정렬")),
+        Map.entry("exam-b-dynamic-queries",List.of("기초 자료구조","트리","배열·문자열")),
+        Map.entry("exam-b-combined-design",List.of("그래프·최단 경로","기초 자료구조")));
     // For a basic self-report, family + EASY is the explicit goal. Code goals additionally require topic evidence.
     static Submissions.Problem match(DiagnosticPlans.Plan plan,DiagnosticPlans.Options options,List<Submissions.Problem> problems,Set<String> used) {
         String category=options.category();if(category==null)return null;

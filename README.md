@@ -32,3 +32,7 @@ Do not commit environment files, access tokens, internal hostnames, or private n
 Operational tools require explicit local configuration through `GAMJAOJ_APP_SSH_TARGET`,
 `GAMJAOJ_RUNNER_SSH_TARGET`, and `GAMJAOJ_BASE_URL` where applicable.
 The AI settings tool requires an explicit `--target`. Keep actual values in an ignored environment file.
+
+## UI/UX 기준
+
+페이지·모달·컨트롤 수정은 [GamjaOJ UI/UX 기준](docs/GamjaOJ_UIUX_Guidelines.md)의 글래스모피즘·뉴모피즘, 테마, 레이아웃·접근성 기준을 따릅니다.
