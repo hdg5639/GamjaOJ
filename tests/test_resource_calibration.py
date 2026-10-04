@@ -7,6 +7,19 @@ def load(name,file):
  s=importlib.util.spec_from_file_location(name,Path(__file__).resolve().parents[1]/'scripts'/file);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 cal=load('resource_calibration','calibrate-problem-resources.py');stage=load('resource_stage','stage-resource-limits.py')
 class CalibrationTests(unittest.TestCase):
+ def test_prepare_rejects_malformed_allowed_sources_before_runner_work(self):
+  prepare=load('resource_prepare','prepare-resource-audit.py')
+  valid={'CPP':[{'name':'ordinary DFS','source':'int main(){}'}]}
+  prepare.validate_allowed_references(valid)
+  prepare.validate_allowed_references({})
+  for invalid in [None,{'UNKNOWN':[]},{'CPP':['int main(){}']},
+                  {'CPP':{'name':'DFS','source':'code'}},
+                  {'CPP':[{'name':'','source':'code'}]},
+                  {'CPP':[{'name':'DFS','source':' '}]},
+                  {'CPP':[{'name':'DFS','source':'x'*(prepare.SOURCE_LIMIT+1)}]},
+                  {'CPP':[{'name':'DFS','source':'x'},{'name':'DFS','source':'y'}]}]:
+   with self.subTest(invalid_type=type(invalid).__name__),self.assertRaises(ValueError):
+    prepare.validate_allowed_references(invalid)
  def test_slow_control_uses_published_examples_without_hidden_or_audit_maximums(self):
   plan={'version':'bridge','samples':[{'input':'small example','output':'8'}],
         'tests':[{'id':'upstream-samples'},{'id':'upstream-hidden'},{'id':'audit-max-shape'}],

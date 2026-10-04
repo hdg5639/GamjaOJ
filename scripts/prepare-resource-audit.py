@@ -2,13 +2,29 @@
 import argparse,hashlib,json,re,sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from runner.judge import validate_problem
+from runner.judge import validate_problem,LANGUAGES,SOURCE_LIMIT
 from scripts.resource_evidence import audit_plan,profiling_seconds
 
 def canonical(v):return json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(v):return hashlib.sha256(canonical(v).encode()).hexdigest()
 def write(path,value):
  temporary=path.with_suffix('.tmp');temporary.write_text(canonical(value)+'\n');temporary.replace(path)
+
+def validate_allowed_references(value):
+ if not isinstance(value,dict) or set(value)-set(LANGUAGES):
+  raise ValueError('allowed references must map supported languages to named sources')
+ for language,entries in value.items():
+  if not isinstance(entries,list):raise ValueError('allowed reference entries must be a list: '+language)
+  names=set()
+  for entry in entries:
+   if not isinstance(entry,dict) or set(entry)!={'name','source'}:
+    raise ValueError('allowed reference must contain name and source: '+language)
+   name,source=entry['name'],entry['source']
+   if not isinstance(name,str) or not name.strip() or name in names:
+    raise ValueError('allowed reference names must be nonempty and unique: '+language)
+   if not isinstance(source,str) or not source.strip() or len(source.encode())>SOURCE_LIMIT:
+    raise ValueError('allowed reference source exceeds Runner contract: '+language)
+   names.add(name)
 
 def callable_learner_java(source):
  # Hybrid authoring artifacts are executable Main bundles; the pinned callable Runner
@@ -76,7 +92,9 @@ def prepare(root,inventory,output):
   if 'api' in pack:
    job['references']={l:callable_learner_java(s) if l=='JAVA' else s for l,s in job['references'].items()}
    job['slow']={l:callable_learner_java(s) if l=='JAVA' else s for l,s in job['slow'].items()}
-  if authored.get('allowedReferences'):job['allowedReferences']=authored['allowedReferences']
+  if 'allowedReferences' in authored:
+   validate_allowed_references(authored['allowedReferences'])
+   if authored['allowedReferences']:job['allowedReferences']=authored['allowedReferences']
   witness=output.parent/'witness-overrides'/(v+'.json')
   if witness.exists():
    evidence=json.loads(witness.read_text())
