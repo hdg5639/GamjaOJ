@@ -1,5 +1,5 @@
 """Resumable private calibration on the dedicated Runner; never updates production.
-Runs two bounded functional jobs, preserves hashes/reports, checks original correct/slow
+Runs a bounded number of functional jobs, preserves hashes/reports, checks original correct/slow
 programs under measured budgets. A measurement alone is not a worst-case/intent certificate.
 """
 import argparse,copy,hashlib,json,math,os,sys,tempfile
@@ -34,12 +34,23 @@ class AuditCompileCache(CompileCache):
   if profile is None:return None
   return (version,self.scopes[version],image,tuple(profile['compileCommand']),hashlib.sha256(source).hexdigest())
 
+class AuditGeneratedCache(GeneratedCache):
+ """Reuse private deterministic input/oracle bytes, never learner verdicts.
+ All inventory versions are fenced by package and pinned helper runtime identities.
+ Production generated-cache admission remains unchanged.
+ """
+ def __init__(self,scopes):super().__init__();self.scopes=scopes
+ def key(self,version,generator,reference,seed,expected):
+  if version not in self.scopes:return None
+  profile=LANGUAGES['JAVA'];sha=lambda text:hashlib.sha256(text.encode()).hexdigest()
+  return (version,self.scopes[version],profile['image'],tuple(profile['compileCommand']),sha(generator),sha(reference),seed,expected)
+
 class Calibration:
  def __init__(self,args):
   scopes={}
   for path in getattr(args,'jobs',Path('/nonexistent')).glob('*.json'):
    job=json.loads(path.read_text());scopes[job['version']]=job['packageHash']
-  self.args=args;self.cache=AuditCompileCache(scopes);self.generated=GeneratedCache();self.execution=contract()
+  self.args=args;self.cache=AuditCompileCache(scopes);self.generated=AuditGeneratedCache(scopes);self.execution=contract()
  def reusable(self,job,language,plan,record):
   source_hash=hashlib.sha256(job['references'][language].encode()).hexdigest()
   if record.get('status')!='MEASURED' or record.get('executionContract')!=self.execution or record.get('packageHash')!=job['packageHash'] or record.get('sourceHash')!=source_hash:return False
@@ -106,19 +117,25 @@ class Calibration:
   return version,language,record['status']
  def main(self):
   tasks=[]
-  jobs=[(path,json.loads(path.read_text())) for path in self.args.jobs.glob('*.json')]
+  # Large private witnesses must not keep the whole inventory in controller memory.
+  jobs=[]
+  for path in self.args.jobs.glob('*.json'):
+   job=json.loads(path.read_text())
+   priority=0 if job.get('auditGenerated') else 1 if job.get('auditTests') else 2
+   jobs.append((priority,path,job['version'],tuple(job['references'])))
+  if jobs:del job
   # Resolve newly reviewed maximum-input failures before spending hours on small suites.
-  jobs.sort(key=lambda item:(0 if item[1].get('auditGenerated') else 1 if item[1].get('auditTests') else 2,item[0].name))
-  for path,job in jobs:
-   if self.args.complete_only and len(job['references'])!=3:continue
-   if self.args.prefix and not job['version'].startswith(self.args.prefix):continue
-   for language in job['references']:
+  jobs.sort(key=lambda item:(item[0],item[1].name))
+  for priority,path,version,languages in jobs:
+   if self.args.complete_only and len(languages)!=3:continue
+   if self.args.prefix and not version.startswith(self.args.prefix):continue
+   for language in languages:
     if not self.args.language or language==self.args.language:tasks.append((path,language))
   self.args.output.mkdir(parents=True,exist_ok=True)
   if self.args.limit:tasks=tasks[:self.args.limit]
-  with ThreadPoolExecutor(max_workers=2) as pool:
+  with ThreadPoolExecutor(max_workers=getattr(self.args,'workers',2)) as pool:
    pending=[pool.submit(self.measure,*task) for task in tasks]
    for f in as_completed(pending):print(*f.result(),flush=True)
   print('Measured tasks:',len(tasks),flush=True)
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--jobs',type=Path,required=True);p.add_argument('--drivers',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--complete-only',action='store_true');p.add_argument('--prefix');p.add_argument('--language',choices=list(LANGUAGES));p.add_argument('--limit',type=int);a=p.parse_args();Calibration(a).main()
+ p=argparse.ArgumentParser();p.add_argument('--jobs',type=Path,required=True);p.add_argument('--drivers',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--complete-only',action='store_true');p.add_argument('--prefix');p.add_argument('--language',choices=list(LANGUAGES));p.add_argument('--limit',type=int);p.add_argument('--workers',type=int,choices=[1,2,4],default=2);a=p.parse_args();Calibration(a).main()
