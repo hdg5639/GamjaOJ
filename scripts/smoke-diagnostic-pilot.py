@@ -52,7 +52,7 @@ def main():
         assert call('/api/auth/login','POST',dict(username=username,password=password),form=True)[0]==204
         catalog=call('/api/diagnostics/banks')[1]
         entry=next(b for b in catalog if b['id']==bank['id']);assert entry['questionCount']==count and len(entry['categories'])==count//2
-        assert set(entry)=={'id','categories','questionCount'}
+        assert set(entry)=={'id','categories','questionCount','examType','setCount'}
         assert all(not p['version'].startswith('diagnostic-') for p in call('/api/problems')[1])
         key=str(uuid.uuid4());body=dict(bankId=bank['id'],categories=entry['categories'])
         status,saved=call('/api/diagnostics','POST',body,key);assert status==200
@@ -62,7 +62,7 @@ def main():
             by_version={item['problem']['version']:item for item in content['items']}
             for _ in content['items']:
                 question=saved['current'];item=by_version[question['problemVersion']]
-                assert set(question)=={'itemId','problemVersion','title','statement','sampleInput','sampleOutput','examples','languages'}
+                assert set(question)=={'itemId','problemVersion','title','statement','sampleInput','sampleOutput','examples','languages','api'}
                 limits=limits_for(item['problem'])
                 if limits is not None:
                     assert {p['id']:p['timeLimitMs'] for p in question['languages']}=={l:limits[l]*1000 for l in ('JAVA','CPP','PYTHON')}
@@ -93,7 +93,7 @@ def main():
         assert saved['status']=='COMPLETED' and saved['current'] is None
         assert all(i['status']=='PASSED' and i['attempts']==attempts for i in saved['items'])
         options=call('/api/diagnostics/'+session+'/reassessments')[1]
-        assert all(set(option)=={'id','categories','questionCount'} for option in options)
+        assert all(set(option)=={'id','categories','questionCount','examType','setCount'} for option in options)
         if args.reassess:
             target=json.loads((Path(__file__).resolve().parents[1]/'diagnostics/core-b-v1.json').read_text())
             entry=next(b for b in options if b['id']==target['id']);assert entry['questionCount']==8
