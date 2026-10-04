@@ -7,6 +7,16 @@ def load(name,file):
  s=importlib.util.spec_from_file_location(name,Path(__file__).resolve().parents[1]/'scripts'/file);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 cal=load('resource_calibration','calibrate-problem-resources.py');stage=load('resource_stage','stage-resource-limits.py')
 class CalibrationTests(unittest.TestCase):
+ def test_private_generated_cache_fences_input_bytes_without_reusing_verdicts(self):
+  cache=cal.AuditGeneratedCache({'exam-v1':'package-a'})
+  key=cache.key('exam-v1','generator','oracle','1','REFERENCE')
+  self.assertIsNotNone(key);self.assertIsNone(cache.key('unknown','generator','oracle','1','REFERENCE'))
+  for version,generator,oracle,seed,expected in [('exam-v1','changed','oracle','1','REFERENCE'),('exam-v1','generator','changed','1','REFERENCE'),('exam-v1','generator','oracle','2','REFERENCE'),('exam-v1','generator','oracle','1','VALID')]:
+   self.assertNotEqual(key,cache.key(version,generator,oracle,seed,expected))
+  self.assertNotEqual(key,cal.AuditGeneratedCache({'exam-v1':'package-b'}).key('exam-v1','generator','oracle','1','REFERENCE'))
+  cache.put(key,{'input':b'bounded input','expected':b'independent answer'})
+  self.assertEqual({'input':b'bounded input','expected':b'independent answer'},cache.get(key))
+  self.assertIsNone(cal.GeneratedCache.key('exam-v1','generator','oracle','1','REFERENCE'))
  def test_private_generated_witness_requires_new_qualification_and_preserves_original_package(self):
   with tempfile.TemporaryDirectory() as folder:
    root=Path(folder);jobs,reports,proof=self.complete_fixture(root);path=jobs/'test-v1.json';job=json.loads(path.read_text())
