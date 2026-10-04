@@ -44,7 +44,8 @@ class ExportRemoteTest {
   var state=ExportRemote.obj();var url=remote.publish("GITHUB","token",target,payload(),state,s->{},()->{});assertThat(url).endsWith("GamjaOJ/learner/sum-v1/JAVA");assertThat(writes).hasSize(2);
   remote.publish("GITHUB","token",target,payload(),ExportRemote.obj(),s->{},()->{});assertThat(writes).hasSize(2);
   var updated=payload().put("source","updated code");updated.set("thinking",ExportRemote.obj().put("layer",1).put("name","그대로"));
-  remote.publish("GITHUB","token",target,updated,state,s->{},()->{});assertThat(writes).hasSize(3);
+  remote.publish("GITHUB","token",target,updated,state,s->{},()->{});assertThat(writes).hasSize(4); // Code and the changed rating metadata both update.
+  remote.publish("GITHUB","token",target,updated,state,s->{},()->{});assertThat(writes).hasSize(4);
   assertThat(state.path("githubFolder").asText()).isEqualTo("GamjaOJ/learner/sum-v1/JAVA");
  }
  JsonNode children(JsonNode... nodes){var r=ExportRemote.obj().put("has_more",false);r.putArray("results").addAll(Arrays.asList(nodes));return r;}
