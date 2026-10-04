@@ -5,7 +5,7 @@ references and inefficient witnesses. Private reports contain no public answers.
 import argparse,copy,hashlib,json,sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from scripts.resource_evidence import canonical,digest,complete_qualification,audit_plan,complete_measurement,public_example_plan
+from scripts.resource_evidence import canonical,digest,complete_qualification,audit_plan,complete_measurement,public_example_plan,profiling_seconds,compatible_execution_evidence
 
 def quote(v):return "'"+str(v).replace("'","''")+"'"
 
@@ -37,10 +37,10 @@ def stage(jobs,measurements,certificates,output):
    qualified=report['qualified'];proposal=report.get('proposal',{})
    trusted_profile=execution['languages'][language]|proposal
    if bundles:expected_plan['callable']=bundles[language]
-   if report.get('executionContract')!=execution or set(proposal)!={'testWallSeconds','memoryMb'} or not complete_qualification(qualified,language,report['sourceHash'],expected_plan,trusted_profile):
+   if not compatible_execution_evidence(report,execution) or set(proposal)!={'testWallSeconds','memoryMb'} or not complete_qualification(qualified,language,report['sourceHash'],expected_plan,trusted_profile):
     issues.append(dict(version=version,language=language,reason='complete qualified corpus/profile evidence missing'));continue
    measurement_sources=[source]+[a['source'] for a in job.get('allowedReferences',{}).get(language,[])]
-   broad_profile=execution['languages'][language]|dict(testWallSeconds=20,memoryMb=execution['languages'][language]['memoryMb'])
+   broad_profile=execution['languages'][language]|dict(testWallSeconds=profiling_seconds(job,language),memoryMb=execution['languages'][language]['memoryMb'])
    if not complete_measurement(report,language,measurement_sources,expected_plan,broad_profile):
     issues.append(dict(version=version,language=language,reason='full measurement/peak replay evidence missing'));continue
    alternatives=job.get('allowedReferences',{}).get(language,[]);qualified_alternatives=report.get('qualifiedAlternates',[])

@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from runner.judge import Runner,LANGUAGES,checked_profile,CompileCache,GeneratedCache
 from runner.execution_contract import contract
-from scripts.resource_evidence import complete_qualification,audit_plan,worst_plan,complete_measurement,public_example_plan
+from scripts.resource_evidence import complete_qualification,audit_plan,worst_plan,complete_measurement,public_example_plan,profiling_seconds,compatible_execution_evidence
 
 def canonical(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(value):return hashlib.sha256(canonical(value).encode()).hexdigest()
@@ -19,7 +19,7 @@ def budget(language,wall_ms,memory_bytes):
  floor={'JAVA':0.75,'CPP':0.25,'PYTHON':0.35}[language]
  seconds=round(max(floor,math.ceil((wall_ms*1.5+50)/50)*0.05),3)
  memory=max({'JAVA':192,'CPP':32,'PYTHON':48}[language],math.ceil((memory_bytes/1048576*1.2+8)/16)*16)
- if seconds>20 or memory>LANGUAGES[language]['memoryMb']:raise ValueError('reference exceeds bounded calibration capacity')
+ if seconds>60 or memory>LANGUAGES[language]['memoryMb']:raise ValueError('reference exceeds bounded calibration capacity')
  return dict(testWallSeconds=seconds,memoryMb=memory)
 
 
@@ -53,10 +53,10 @@ class Calibration:
   self.args=args;self.cache=AuditCompileCache(scopes);self.generated=AuditGeneratedCache(scopes);self.execution=contract()
  def reusable(self,job,language,plan,record):
   source_hash=hashlib.sha256(job['references'][language].encode()).hexdigest()
-  if record.get('status')!='MEASURED' or record.get('executionContract')!=self.execution or record.get('packageHash')!=job['packageHash'] or record.get('sourceHash')!=source_hash:return False
+  if record.get('status')!='MEASURED' or not compatible_execution_evidence(record,self.execution) or record.get('packageHash')!=job['packageHash'] or record.get('sourceHash')!=source_hash:return False
   try:
    sources=[job['references'][language]]+[a['source'] for a in job.get('allowedReferences',{}).get(language,[])]
-   broad_profile=LANGUAGES[language]|dict(testWallSeconds=20,memoryMb=LANGUAGES[language]['memoryMb'])
+   broad_profile=LANGUAGES[language]|dict(testWallSeconds=profiling_seconds(job,language),memoryMb=LANGUAGES[language]['memoryMb'])
    if not complete_measurement(record,language,sources,plan,broad_profile):return False
    proposal=budget(language,record['maxWallMs'],record['maxMemoryBytes'])
    if proposal!=record.get('proposal') or not complete_qualification(record.get('qualified',{}),language,source_hash,plan,LANGUAGES[language]|proposal):return False
@@ -78,7 +78,7 @@ class Calibration:
   job=json.loads(path.read_text());version=job['version'];source=job['references'][language];plan=audit_plan(job)
   if 'api' in plan:
    bundles=json.loads((self.args.drivers/(version+'.json')).read_text());plan['callable']=bundles['languages'][language]
-  fingerprint=digest(dict(version=version,packageHash=job['packageHash'],plan=plan,language=language,source=source,allowed=job.get('allowedReferences',{}).get(language,[]),slow=job.get('slow',{}).get(language),intent=job.get('intent',{}),contract=self.execution))
+  fingerprint=digest(dict(version=version,packageHash=job['packageHash'],plan=plan,language=language,profilingSeconds=profiling_seconds(job,language),source=source,allowed=job.get('allowedReferences',{}).get(language,[]),slow=job.get('slow',{}).get(language),intent=job.get('intent',{}),contract=self.execution))
   out=self.args.output/(version+'-'+language+'.json')
   saved=json.loads(out.read_text()) if out.exists() else {}
   if self.reusable(job,language,plan,saved):return version,language,'REUSED'
@@ -88,11 +88,11 @@ class Calibration:
    allowed=job.get('allowedReferences',{}).get(language,[])
    sources=[source]+[alternative['source'] for alternative in allowed]
    for candidate in sources:
-    broad=self.run(language,candidate,plan,dict(testWallSeconds=20,memoryMb=LANGUAGES[language]['memoryMb']));record['reports'].append(broad);write(out,record)
+    broad=self.run(language,candidate,plan,dict(testWallSeconds=profiling_seconds(job,language),memoryMb=LANGUAGES[language]['memoryMb']));record['reports'].append(broad);write(out,record)
     if broad['verdict']!='AC':raise ValueError('allowed reference did not pass broad budget: '+broad['verdict'])
     repeat=worst_plan(plan,broad)
     for _ in range(2):
-     report=self.run(language,candidate,repeat,dict(testWallSeconds=20,memoryMb=LANGUAGES[language]['memoryMb']));record['reports'].append(report);write(out,record)
+     report=self.run(language,candidate,repeat,dict(testWallSeconds=profiling_seconds(job,language),memoryMb=LANGUAGES[language]['memoryMb']));record['reports'].append(report);write(out,record)
      if report['verdict']!='AC':raise ValueError('allowed reference replay: '+report['verdict'])
    tests=[t for r in record['reports'] for t in r['tests']]
    if any(t.get('memory_measurement')!='cgroup-peak-observed' or not t.get('memory_peak_bytes') for t in tests):raise ValueError('trusted memory observation missing')

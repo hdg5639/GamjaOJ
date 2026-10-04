@@ -3,6 +3,7 @@ import hashlib
 import json
 import copy
 import math
+from pathlib import Path
 
 
 def canonical(value):
@@ -36,6 +37,60 @@ def public_example_plan(plan):
                             input=sample['input'], output=sample['output'])
                        for i, sample in enumerate(samples, 1)]
     return result
+
+
+def profiling_seconds(job, language):
+    """Longer operator probes need an explicit, language-local reviewed window."""
+    windows = job.get('auditProfilingSeconds', {})
+    if not isinstance(windows, dict) or set(windows) - {'JAVA', 'CPP', 'PYTHON'}:
+        raise ValueError('invalid audit profiling windows')
+    if any(type(seconds) is not int or not 20 <= seconds <= 60 for seconds in windows.values()):
+        raise ValueError('audit profiling window must be bounded20..60 seconds')
+    return windows.get(language, 20)
+
+
+def compatible_execution_evidence(record, target):
+    """Retain original provenance for one audited validation-only widening.
+
+    No source/settings/runtime migration is inferred. The approved hash pair has
+    identical images, commands, sandbox settings, and all files except a literal
+    checked_profile ceiling20->60. Only original profiles<=20 remain reusable.
+    """
+    source = record.get('executionContract')
+    if source == target:
+        return True
+    if not isinstance(source, dict) or not isinstance(target, dict):
+        return False
+    migrations = json.loads((Path(__file__).with_name('resource-contract-compatibility.json')).read_text())['migrations']
+    approved = next((m for m in migrations if m['from'] == digest(source)
+                     and m['to'] == digest(target)
+                     and m['kind'] == 'test-wall-ceiling-only-20-to-60'), None)
+    if not approved or approved.get('maximumLegacySeconds') != 20 or source.get('format') != target.get('format'):
+        return False
+    if source.get('languages') != target.get('languages') or source.get('profile') != target.get('profile'):
+        return False
+    old_files, new_files = source.get('files', {}), target.get('files', {})
+    if set(old_files) != set(new_files) or {k for k in old_files if old_files[k] != new_files[k]} != {'runner/judge.py'}:
+        return False
+    if old_files['runner/judge.py'] != approved['oldJudgeHash'] or new_files['runner/judge.py'] != approved['newJudgeHash']:
+        return False
+    current_judge = (Path(__file__).resolve().parents[1] / 'runner/judge.py').read_bytes()
+    if (current_judge.count(b'0.1 <= seconds <= 60') != 1
+            or hashlib.sha256(current_judge).hexdigest() != approved['newJudgeHash']
+            or hashlib.sha256(current_judge.replace(b'0.1 <= seconds <= 60', b'0.1 <= seconds <= 20', 1)).hexdigest() != approved['oldJudgeHash']):
+        return False
+    reports = list(record.get('reports', [])) + [record.get('qualified', {})]
+    reports += [a.get('qualified', {}) for a in record.get('qualifiedAlternates', [])]
+    slow = record.get('slow', {})
+    reports += [slow[k] for k in ('small', 'large') if k in slow]
+    for report in reports:
+        seconds = report.get('execution_profile', {}).get('testWallSeconds')
+        if type(seconds) not in (int, float) or not math.isfinite(seconds) or not 0.1 <= seconds <= approved['maximumLegacySeconds']:
+            return False
+        observed = report.get('runner_environment', {}).get('contract')
+        if observed is not None and observed != source:
+            return False
+    return bool(record.get('reports'))
 
 
 def complete_qualification(qualified, language, source_hash, plan, profile):
