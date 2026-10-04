@@ -7,11 +7,12 @@ from pathlib import Path
 spec=importlib.util.spec_from_file_location('runner_smoke',Path(__file__).with_name('smoke-dedicated-runner.py'));helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
 ssh,sql=helper.ssh,helper.sql
 class Browser:
- def __init__(self,base):self.base=base;self.client=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+ def __init__(self,base):
+  self.base=base;self.client=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()));self.client.addheaders=[('User-Agent','GamjaOJ-Smoke/1.0')]
  def call(self,path,method='GET',body=None,key=None,form=False):
   headers={}
   if method!='GET':
-   status,csrf=self.call('/api/auth/csrf');assert status==200;headers[csrf['headerName']]=csrf['token']
+   status,csrf=self.call('/api/auth/csrf');assert status==200,status;headers[csrf['headerName']]=csrf['token']
   if key:headers['Idempotency-Key']=key
   if body is not None:
    headers['Content-Type']='application/x-www-form-urlencoded' if form else 'application/json';body=(urllib.parse.urlencode(body) if form else json.dumps(body)).encode()
@@ -23,7 +24,7 @@ class Browser:
 def main(folder):
  target=os.environ['GAMJAOJ_APP_SSH_TARGET'];base=ssh(target,"sed -n 's/^PUBLIC_BASE_URL=//p' ~/gamjaoj/web/.env").rstrip('/');invitation=ssh(target,"sed -n 's/^INVITE_CODE=//p' ~/gamjaoj/web/.env")
  banks={b['id']:b for b in [json.loads(p.read_text()) for p in folder.glob('*.json')]};assert len(banks)==8
- names=['exam_probe_'+secrets.token_hex(5) for _ in range(2)];clients=[Browser(base),Browser(base)];password=secrets.token_urlsafe(24);images=0
+ names=['exam_'+secrets.token_hex(5) for _ in range(2)];clients=[Browser(base),Browser(base)];password=secrets.token_urlsafe(24);images=0
  try:
   for name,client in zip(names,clients):
    assert client.call('/api/auth/signup','POST',dict(username=name,password=password,nickname='진단 검증',inviteCode=invitation))[0]==201

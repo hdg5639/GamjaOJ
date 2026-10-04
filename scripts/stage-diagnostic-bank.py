@@ -44,6 +44,7 @@ def stage(data):
         lines.append('INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,diagnostic_only) VALUES ('+','.join(map(quote,values))+',true,true);')
         limits=limits_for(p)
         if limits is not None:
+            if (set(limits)!={'JAVA','CPP','PYTHON','analysis'} or any(type(limits[l]) is not int or not 1<=limits[l]<=20 for l in ('JAVA','CPP','PYTHON')) or not isinstance(limits['analysis'],str) or not 1<=len(limits['analysis'])<=6000):raise ValueError('Invalid server time-limit contract')
             lines.append('UPDATE problem_version SET time_limits_json='+quote(canonical(limits))+' WHERE id='+quote(p['version'])+';')
         values=[data['id'],str(pos),item['category'],item['difficulty'],p['version'],canonical(item['rubric'])]
         lines.append('INSERT INTO diagnostic_bank_item(bank_id,position,category,difficulty,problem_version,rubric_json) VALUES ('+','.join(map(quote,values))+');')
