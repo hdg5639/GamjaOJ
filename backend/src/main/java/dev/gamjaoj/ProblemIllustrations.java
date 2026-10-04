@@ -12,9 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProblemIllustrations {
- public record Image(UUID id,String src,String alt,String caption,int width,int height,String kind) {}
+ public record Image(UUID id,String src,String alt,String caption,int width,int height,String kind,String afterParagraph,String explanation) {}
  public record Presentation(boolean canEdit,List<Image> illustrations) {}
- public record Curated(String version,String statementSha256,String file,String alt,String caption,int width,int height,String kind) {}
+ public record Curated(String version,String statementSha256,String file,String alt,String caption,int width,int height,String kind,String afterParagraph,String explanation) {}
  private record Access(UUID owner,boolean ready,boolean held,boolean diagnostic,String statement,String hash,boolean shared) {}
  private final JdbcClient jdbc;private final Submissions submissions;private final List<Curated> curated;
  public ProblemIllustrations(JdbcClient jdbc,Submissions submissions){this.jdbc=jdbc;this.submissions=submissions;
@@ -34,9 +34,9 @@ public class ProblemIllustrations {
  private Presentation presentation(UUID owner,String version,Access p){
   var images=new ArrayList<Image>();
   // Curated drawings contain only already-public rules; match the exact statement before showing them.
-  for(var c:curated)if(c.version().equals(version)&&c.statementSha256().equals(JudgeJson.hash(p.statement())))images.add(new Image(null,"/problem-illustrations/"+c.file(),c.alt(),c.caption(),c.width(),c.height(),c.kind()));
+  for(var c:curated)if(c.version().equals(version)&&c.statementSha256().equals(JudgeJson.hash(p.statement())))images.add(new Image(null,"/problem-illustrations/"+c.file(),c.alt(),c.caption(),c.width(),c.height(),c.kind(),c.afterParagraph(),c.explanation()));
   images.addAll(jdbc.sql("SELECT id,alt,caption,width,height FROM problem_illustration WHERE problem_version=? AND package_sha256=? ORDER BY created_at,id")
-   .param(version).param(p.hash()).query((r,n)->new Image(r.getObject(1,UUID.class),"/api/problem-images/"+r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getInt(4),r.getInt(5),"AUTHOR")).list());
+   .param(version).param(p.hash()).query((r,n)->new Image(r.getObject(1,UUID.class),"/api/problem-images/"+r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getInt(4),r.getInt(5),"AUTHOR",null,null)).list());
   return new Presentation(owner.equals(p.owner())&&!p.held()&&!p.diagnostic(),List.copyOf(images));
  }
  public byte[] image(String username,UUID id){UUID owner=submissions.owner(username,false);

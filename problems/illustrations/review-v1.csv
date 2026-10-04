@@ -44,8 +44,8 @@ basic-pool-v1-bfs-hard-02-v1,발소리를 빌려주는 쌍둥이,너비 우선 �
 basic-pool-v1-bfs-hard-03-v1,켜진 방을 기억하는 성,너비 우선 탐색,9365c5a647fe5d959ad46ee168be7ead777a87774f08277fd0a25028544b5175,REVIEW_NEEDED,격자 / 상하좌우
 basic-pool-v1-bfs-hard-04-v2,고장 난 셔터의 길,너비 우선 탐색,3485bdf1657af7cfca6d343f193db6bf3a8ee365086fcac0e657e4e7cab1b062,ILLUSTRATED,규칙 검토 완료
 basic-pool-v1-bfs-medium-01-v1,새벽 청소부의 경계,너비 우선 탐색,ba607355ee61fedf2f5f11f20a6b373135b465b1122f8209faab757c9ca9d6d5,REVIEW_NEEDED,격자 / 상하좌우
-basic-pool-v1-bfs-medium-02-v1,한 박자 늦게 열리는 문,너비 우선 탐색,b57c427ae7e5f96099ad6309e5b6ceffcc00406a4bf1b5ddc827386e3cbcb70f,REVIEW_NEEDED,격자 / 상하좌우 / 다리
-basic-pool-v1-bfs-medium-03-v1,빌린 날개 한 번,너비 우선 탐색,cd27225d0c1b5ff5a746b0449476cfe7421d5e8f0bfec1258ab810186cdebeb3,REVIEW_NEEDED,격자 / 상하좌우
+basic-pool-v1-bfs-medium-02-v1,한 박자 늦게 열리는 문,너비 우선 탐색,b57c427ae7e5f96099ad6309e5b6ceffcc00406a4bf1b5ddc827386e3cbcb70f,ILLUSTRATED,규칙 검토 완료
+basic-pool-v1-bfs-medium-03-v1,빌린 날개 한 번,너비 우선 탐색,cd27225d0c1b5ff5a746b0449476cfe7421d5e8f0bfec1258ab810186cdebeb3,ILLUSTRATED,규칙 검토 완료
 basic-pool-v1-bfs-medium-04-v1,박수로 켜는 안내등,너비 우선 탐색,dc87172b13225608b59b06dd96cf8e67691476d70b6ab29fcde30744fe79ff5f,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 basic-pool-v1-binary-search-easy-01-v1,약속보다 늦지 않은 별똥별,이분 탐색,785ea8eaafd6d76343183b8cc4d37fd105420e6ad6d7007016a3aae7c65b58a6,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 basic-pool-v1-binary-search-easy-02-v1,없어진 열차표의 k번째 자리,이분 탐색,44123c5dcb4b481fb6a735040f8a2a4f2bf827fde789d42e41ea0f8295f8c342,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
@@ -61,7 +61,7 @@ basic-pool-v1-binary-search-medium-03-v1,숨을 고르는 풍선 연주자,이�
 basic-pool-v1-binary-search-medium-04-v1,최소 밝기로 열리는 통로,이분 탐색,a313dc367dc91d54efee57bd660988bd662236cfbf958146877266c1837453f0,REVIEW_NEEDED,격자 / 상하좌우
 basic-pool-v1-dfs-easy-01-v1,잠들지 않는 전시실,깊이 우선 탐색,7c53b50b10a73e48f0dc2dc431589eb1af8fd8eb17903f67aa9cec98b2f123a3,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 basic-pool-v1-dfs-easy-02-v1,돌아오는 복도의 발자국,깊이 우선 탐색,63a82ded328b5078d2e946ef62bc7c11b81817bf2a52f21b437955d0ba51b266,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
-basic-pool-v1-dfs-easy-03-v1,금이 간 유리섬,깊이 우선 탐색,5c200b07ec87195b2c068b491c1fd016340edd8255e8bd642debfe897787abb6,REVIEW_NEEDED,격자 / 상하좌우
+basic-pool-v1-dfs-easy-03-v1,금이 간 유리섬,깊이 우선 탐색,5c200b07ec87195b2c068b491c1fd016340edd8255e8bd642debfe897787abb6,ILLUSTRATED,규칙 검토 완료
 basic-pool-v1-dfs-easy-04-v1,끝이 정해진 전언,깊이 우선 탐색,baa96805def9ac6cea76d1a74e6b637b5edcd225c138a32c9cc1797b711fa78e,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 basic-pool-v1-dfs-hard-01-v1,왕의 이름을 지운 지도,깊이 우선 탐색,bfb0325e9198670263c0c478e84a6748bf7f1ff2bcc5dd4083f252ae9126ab86,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 basic-pool-v1-dfs-hard-02-v1,같은 이야기를 끝없이,깊이 우선 탐색,efa2442fd9adbfee7a7b9ac77bc32b26da473e0496f99591de8cdbed4bf33f18,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
@@ -108,7 +108,7 @@ basic-pool-v1-greedy-medium-02-v1,배역이 바뀌는 오디션,탐욕법,ae4811
 basic-pool-v1-greedy-medium-03-v1,불씨 없는 마지막 순회,탐욕법,c5557aa6475484179ab54ba1c95daf0d51634bfae876b7de65105b22d04949ec,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 basic-pool-v1-greedy-medium-04-v1,끊기지 않는 전시의 벽,탐욕법,67774a940c0dad5a9ff8dbd02ed1a4272e7b84e12edef693cb69679113078d0b,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 basic-pool-v1-mst-easy-01-v2,온실을 깨우는 선,최소 신장 트리,833eddc4771c0bb81252634eea91a12f3488e7c20c77e26f7191269faa61b4ad,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
-basic-pool-v1-mst-easy-02-v1,유리섬의 마지막 다리,최소 신장 트리,b61fa228bc25ccf9e2b03688e588017dd4ef9e402bff98d7fd8d3029783181c9,REVIEW_NEEDED,다리
+basic-pool-v1-mst-easy-02-v1,유리섬의 마지막 다리,최소 신장 트리,b61fa228bc25ccf9e2b03688e588017dd4ef9e402bff98d7fd8d3029783181c9,ILLUSTRATED,규칙 검토 완료
 basic-pool-v1-mst-easy-03-v1,꼬인 별자리의 길이,최소 신장 트리,8450d22c0455efd4d879d4b32d765654aabe1044a537a2ea486515c315fe632e,REVIEW_NEEDED,격자 / 좌표
 basic-pool-v1-mst-easy-04-v1,재난 훈련의 가장 높은 수위,최소 신장 트리,3ed01e845d5ee4744637b1035f97197b8c7dc7101ea2a068ea658889107cc19a,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 basic-pool-v1-mst-hard-01-v2,딱 한 번 할인받는 설계도,최소 신장 트리,019684ef4c5358218895a03f36bd3d9c024c3efe5d37fef93306dfae7e05ec47,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
@@ -195,7 +195,7 @@ iamywl-v1-210e168065f13898,힙 정렬과 우선순위 큐,정렬,cf0a034316af07b
 iamywl-v1-2231d9cdc31225b2,동전 교환 경우의수 무제한 배낭,중복 조합,3b096c9d3ea9a2380d0d1bb8ea9a35fc4ed3ae7e9ab55a50f9a17feac6799ffb,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-22b94e33d994aa40,CCW를 활용한 선분 교차 판별,기하,6efc6a166471e22b7149620b5b637bb1f3fc9d8b8cb441a546078e1d71a514a0,ILLUSTRATED,규칙 검토 완료
 iamywl-v1-23fa688894f7b54c,아윤이의 계단 오르기,동적 계획법,ea6b8d0590ccb04df74a152f0dc131a4a32082f9d041222d1ffaca9147b4132f,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
-iamywl-v1-241bfb705697b488,작업 순서 결정,위상 정렬,d85d4357143b0c48542e7f60e78363efa95e4805c9c8e28d8a8e73c894ade42d,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
+iamywl-v1-241bfb705697b488,작업 순서 결정,위상 정렬,d85d4357143b0c48542e7f60e78363efa95e4805c9c8e28d8a8e73c894ade42d,ILLUSTRATED,규칙 검토 완료
 iamywl-v1-26f6c996b9abfcf2,허프만 인코딩 트리 구축,탐욕법,00e41d202603f90e5d90b64c497fe4c0ca33e2297e1e4695c44589ab2148bf23,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-27283786dd78cbfc,은우의 프로젝트 태스크 스케줄링,위상 정렬,dc3185c690534ca13b62b02ef3117fb94dd496dc806504a49c0ebac76cf01a5f,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-27f82b113bcd3b40,사이클 존재 여부 판별,위상 정렬,736766043c3e186038b6e80021b444a94fefa0833247172298cc0e7d95c6c3c2,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
@@ -205,7 +205,7 @@ iamywl-v1-2a001e4bc7ba1e18,서윤이의 회문 유사 문자열 검사,두 포�
 iamywl-v1-2a0c7f64291da92d,서준이의 부분수열의 합 경우의수,부분집합,567930a9b22cfe794d92a1fd42c465b9d8c9d47b4283658d7ba84428cf82ded6,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-2ac64f6ae6a61a9d,시우의 랜선 자르기,이분 탐색,fa04ccf9b361164c648b4bfdde8d85f86fa13b0633ca7d3794ab88405d5c9764,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-2ba1257a46316e1b,연결리스트에 대해서,연결 리스트,f291927675ce08cbcbd4611c984c37e80b3157483559d388b461aeab2a618607,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
-iamywl-v1-2c6b7f10a64c0952,색종이 쿼드트리,분할 정복,dd16f88257c9ce757847a984caeb7819a66a10baa7d6c28fb0fb0058ebcb8245,REVIEW_NEEDED,쿼드트리
+iamywl-v1-2c6b7f10a64c0952,색종이 쿼드트리,분할 정복,dd16f88257c9ce757847a984caeb7819a66a10baa7d6c28fb0fb0058ebcb8245,ILLUSTRATED,규칙 검토 완료
 iamywl-v1-2c6d7f685d2f747b,네트워크 유량 에드몬드-카프,네트워크 유량,27502a7a3bc395dd95b38cb976185955fb8a888f50ad325eda542a229544a792,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-2e6324e6048bb564,도윤이의 알파벳 단어 사전순 나열,순열,227d4c7e52180a448da668c22a88d3c5f5993160208cf4a92d4dd81ea4707e3c,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-2f2cbb268e71bd67,수강 가능 여부 체크,위상 정렬,318df07980e871d5f7bf0ed37a9547484c2de18ca92e1a6afeafac059c7eaf4f,REVIEW_NEEDED,선수과목
@@ -224,7 +224,7 @@ iamywl-v1-39b352b080407637,크루스칼 알고리즘 기초,최소 신장 트리
 iamywl-v1-3a62ae98ab577603,포함배제의 원리 상한 제한 중복조합,중복 조합,c022a3d7c606c2236b405f69baaef8e7befc078be18b8d19c38389ca1e946699,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-3b190e4ffff43f00,두배열 합의 K번째수,이분 탐색,429cf904a03f929d61ecc1d0ac8a5bbd66b6688eda5b039c2dd968793a214f62,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-3b23695a00e40ad8,별찍기 프랙탈 카펫 격자 생성,재귀,a123031d2f44576cf96f05aa1fa17205787a33a120cfe4bf2d4de79617933f08,REVIEW_NEEDED,격자
-iamywl-v1-3d2b15cb2291497e,단지 번호 붙이기,깊이 우선 탐색,1ba8b1f03ea458372ca141301c027de5c724e0118d8cf3698f6ae6adb631a9fd,REVIEW_NEEDED,격자
+iamywl-v1-3d2b15cb2291497e,단지 번호 붙이기,깊이 우선 탐색,1ba8b1f03ea458372ca141301c027de5c724e0118d8cf3698f6ae6adb631a9fd,ILLUSTRATED,규칙 검토 완료
 iamywl-v1-3d81c2edb5f8ef10,최대 부분배열 합 카디널,분할 정복,105d302496232665834020c8666fb8efff9d799e297beb024f952b046ac2c826,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-3e6a50e299aa2c61,타일 색칠 이분그래프 판별,깊이 우선 탐색,5d0c291fab2f73b4a67f04ae482c241a19b12d0d9dfe4590448b59de85015f20,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-3f344754e245758f,하노이의 탑 K번째 이동 추적,재귀,e95d316a2bfd1b6c4a8450a0d63ab72bd8f0e50d7f2256370878c8a115af66d6,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
@@ -271,7 +271,7 @@ iamywl-v1-585a1c2114a2f90c,재귀에 대해서,재귀,6fa3b725178e871fbca78f1fb5
 iamywl-v1-59eef09d46df1a05,DP에 대해서,동적 계획법,09559b17b99c8551c62e7880c31c2573e7a4b570dd031b24ff9d1094b0e34be8,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-5a4530b15f4b2f1a,도서관 책 선택,조합,9566d3702312f737c38fe14c896f0b70475ec3e5cd0e544c4f79a6bace91eb02,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-5a6b7c37704b9e06,오등큰수 빈도수 모노톤스택,스택,15475a97bc5a026d77ff27b9c9420dc6d8338b85f9075f1c50960095fddfc7c1,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
-iamywl-v1-5b1320e876d2e6e9,다리 위의 트럭 하중 제어,큐,721f97c203031d1093f5ed3585e15dd18ee1b56031a7f4399b9297995889224b,REVIEW_NEEDED,다리
+iamywl-v1-5b1320e876d2e6e9,다리 위의 트럭 하중 제어,큐,721f97c203031d1093f5ed3585e15dd18ee1b56031a7f4399b9297995889224b,ILLUSTRATED,규칙 검토 완료
 iamywl-v1-5b80f541dda82b47,,이분 탐색,e48771311116ac44fa7d5b996bc2eaa40332a5da6c07b3b035dbb3b90878e429,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-5bc8a8c7e50034e3,하노이 탑 이동 순서,분할 정복,65ca8a2e070f9e04408f10272d3a656e364d04fb7bada98eecdca9fd34f77dcc,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-5c4d19fa4c392df6,올바른 괄호쌍,스택,d511e7bcb30ad34439634a014d01daf7c58c27eed2f8e6bcd4945a53540ec63e,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
@@ -304,7 +304,7 @@ iamywl-v1-7141350e64545c18,유클리드 호제법과 최대공약수,정수론,c
 iamywl-v1-71c8bd542e20cb59,스타트와 링크 팀 밸런스 최적화,조합,122ffebf17e9e00471c394b5dbe9bde740e742783c80ce6b9ff5d321c42431ad,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-71f8495305770c83,동전 교환 경우의 수,동적 계획법,7db522d07bbd5b27d7e0f5701a5c2d9d87f68b8209d63b8c072ee5f1add084cd,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-7293de03dfd740ca,선우의 행렬 거듭제곱,분할 정복,92da8ccfbe3954f2b2f7196983cef68739f945efadc42c15d893400b8dfb7eab,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
-iamywl-v1-73b8cf3c4ff384f1,0-1 BFS 격자 탈출,덱,4a5af7eb990c0b11627316359aeb6772638720176572f64d545924f978915a23,REVIEW_NEEDED,격자 / 상하좌우
+iamywl-v1-73b8cf3c4ff384f1,0-1 BFS 격자 탈출,덱,4a5af7eb990c0b11627316359aeb6772638720176572f64d545924f978915a23,ILLUSTRATED,규칙 검토 완료
 iamywl-v1-7481b41a831ac52d,입국심사 최소시간,이분 탐색,9382135b5f591ff718816a4ab1658102d1fc37f06ed0d6201aca4659ecdf1ede,REVIEW_NEEDED,다리
 iamywl-v1-76bb1a6ed8a4a988,유준이의 01 배낭 싸기,동적 계획법,88a45905828fd4794a602d546e32dd6bc90c994ad3fa8f04f3bc4dbbb0ce41e6,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-772852bac26969d8,선우의 연속합 최대구간,동적 계획법,3f034a3d9571afbf9fec6f399701802d85f114f7996dafc2e59dfb503893d318,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
@@ -317,7 +317,7 @@ iamywl-v1-7b9ec7b8e5ab716b,센서 통신 기지국 설치,탐욕법,ce096b77be75
 iamywl-v1-7c5017bee32f50b8,은우의 문서 키워드 밀도 측정,슬라이딩 윈도우,94f4946831d084640ef94bdaa45580bb5706d430c217db2f423ea8f3b9425b6f,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-7c79ad5b95e9fc0c,이진탐색에 대해서,이분 탐색,bea934c1af70053e3235e8fb448c7df66b3a4c7df6e48e4a2b7bb2a45a837ad7,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-7cff55e662817d80,연결 요소의 개수,서로소 집합,1cfc6e2522b6ae9ee17a0ed5cb7266692522dc0cd8062d7d6c75a4039ec7846a,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
-iamywl-v1-7d365588567be2ec,감시카메라 배치,조합,de4b292071f015fb2f603483bb683eed810e2cc6ecb8d10d9eec9ae7572d60b4,REVIEW_NEEDED,격자 / 좌표
+iamywl-v1-7d365588567be2ec,감시카메라 배치,조합,de4b292071f015fb2f603483bb683eed810e2cc6ecb8d10d9eec9ae7572d60b4,ILLUSTRATED,규칙 검토 완료
 iamywl-v1-7e683348c594a553,과수원 스프링클러 설치,조합,52783862ea978bb4a22c26421659b507c0b0086ec28140cd6bc27d8ca6e28d94,REVIEW_NEEDED,격자 / 상하좌우
 iamywl-v1-7f737ede4615f92a,과일트럭 최단배달,순열,e1aa4342d9f51a81d15ff8d57921a819b1b6031b90d89d1bbf26214cf60a784e,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-801fa0e5acb4263b,모스부호 문자열 복원,중복 순열,cc838957e2bf9a4c7d77ab99b2cb489ba9633ef6aebb60783e89769d45177797,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
@@ -360,7 +360,7 @@ iamywl-v1-96e7be449cc75eda,행렬 피보나치 거듭제곱,분할 정복,ee2e47
 iamywl-v1-998adaa1adcbee04,방정식 정수해 개수,중복 조합,97b3e5953f67d04f347a19a456bc4661bec089d2ccf846c06400577e463a65ce,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-9990f5c62f385739,사전순 다음 순열,순열,3d8d78c69bf7f05e16b3764d4d6aa9bb6b618cf497b7125df1e4051fe3275aff,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-9a52a20841956906,,서로소 집합,6ea48a0f9bb9334ba73f36ff3f1f6f20bf2496a536a3babcc2ec9b7e2ab9e05e,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
-iamywl-v1-9ab31c8992ff67a4,불과 비상탈출,너비 우선 탐색,0c8dd6f238a1a5b6a73f9dcade84552f931c7eb565a3ec430685e735e4858596,REVIEW_NEEDED,격자
+iamywl-v1-9ab31c8992ff67a4,불과 비상탈출,너비 우선 탐색,0c8dd6f238a1a5b6a73f9dcade84552f931c7eb565a3ec430685e735e4858596,ILLUSTRATED,규칙 검토 완료
 iamywl-v1-9b19b37542d168fb,구간 중앙값 선택 퀵셀렉트,분할 정복,260c1eb3573b22ac4bf657391c9ec33bf1f1bb85754ddde16b9f282bf10d64f8,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-9ba5e181788e01c8,순환 수열 최대 연속합 카운터,슬라이딩 윈도우,7b5fc754c224e94cc5ab653c76df86172e1fc1c73cd46f745d7cbfa57b3a120a,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-9c36f9e60c0e01de,K번째 최단경로 우선순위큐 최적화,최단 경로,412915031232fa2e5f499553b7ba856800c4fd934796816315a8b9f52b625910,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
@@ -472,7 +472,7 @@ iamywl-v1-efe67d121c51b91f,자연수 분할 분할수 DP,중복 조합,dbfb9313b
 iamywl-v1-f0c385946fba5f09,두 부분배열의 합 중간에서 만나기,부분집합,63eebd16f1f27f71916dba245a01837074eda619c3b51ef7f7bbca346d31cf16,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-f0ea128468968d9f,하윤이의 회의실 배정 최대 스케줄링,탐욕법,e9faec21698a35e5371d9b3a457f3d23b64b8664766be5ec61b73d39a12845cb,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-f14b1493dcdeca70,부분배열 중앙값 유지 엔진,슬라이딩 윈도우,b6b6e2ed3ac06abb951695c23e854ce01403d06d9a5c2495bac6ee5a418f7e1d,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
-iamywl-v1-f16065dcccde0087,격자 도미노 비트마스크,부분집합,c2221f3a8535c0812c1bbb134f9bc79b0c5a68154191c60887afb9c80671c022,REVIEW_NEEDED,격자 / 좌표
+iamywl-v1-f16065dcccde0087,격자 도미노 비트마스크,부분집합,c2221f3a8535c0812c1bbb134f9bc79b0c5a68154191c60887afb9c80671c022,ILLUSTRATED,규칙 검토 완료
 iamywl-v1-f17db5a6c59410b8,하윤이의 과일 스무디 당도 분석,슬라이딩 윈도우,788e0494b61bbe08be3e8ae0d4094a64775604b345ea103638cb14f3f04fc665,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-f1a349294401c7b2,서준이의 문자열 빈도 분석,자료구조,52d8766747927b8f74488e196dd2f70e7b0eb51c14ff673641d55c168a4bb1cf,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
 iamywl-v1-f1ae5587810c87e5,비트마스크 동적계획법 집합 분할,부분집합,bb98039d066de40eaaa191a772090341ed24ff071d6bb0730baeee9cc7110746,TEXT_FIRST,그림 필요성을 추가 검토한 뒤 제작
