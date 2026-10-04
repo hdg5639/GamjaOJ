@@ -1,6 +1,9 @@
 """Build private, hash-fenced reference jobs from an operator inventory and authoring files."""
-import argparse,hashlib,json,re
+import argparse,hashlib,json,re,sys
 from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from runner.judge import validate_problem
+from scripts.resource_evidence import audit_plan
 
 def canonical(v):return json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(v):return hashlib.sha256(canonical(v).encode()).hexdigest()
@@ -84,6 +87,8 @@ def prepare(root,inventory,output):
    if evidence.get('generated'):
     if pack.get('generated'):raise ValueError('audit generator cannot replace an existing problem generator: '+v)
     job['auditGenerated']=evidence['generated']
+  # Reject invalid private witnesses before handing a long batch to the Runner.
+  validate_problem(audit_plan(job))
   write(output/(v+'.json'),job);jobs.append(dict(version=v,packageHash=row['packageHash'],languages=list(sources),generated=bool(pack.get('generated')),callable='api' in pack,diagnostic=row['diagnostic']))
  summary=dict(total=len(jobs),missing=missing,problems=jobs)
  write(output.parent/'coverage.json',summary);print(canonical(dict(total=len(jobs),missing=missing)))
