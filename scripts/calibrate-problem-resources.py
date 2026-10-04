@@ -117,8 +117,10 @@ class Calibration:
   return version,language,record['status']
  def main(self):
   tasks=[]
-  for path in sorted(self.args.jobs.glob('*.json')):
-   job=json.loads(path.read_text())
+  jobs=[(path,json.loads(path.read_text())) for path in self.args.jobs.glob('*.json')]
+  # Resolve newly reviewed maximum-input failures before spending hours on small suites.
+  jobs.sort(key=lambda item:(0 if item[1].get('auditGenerated') else 1 if item[1].get('auditTests') else 2,item[0].name))
+  for path,job in jobs:
    if self.args.complete_only and len(job['references'])!=3:continue
    if self.args.prefix and not job['version'].startswith(self.args.prefix):continue
    for language in job['references']:
