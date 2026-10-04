@@ -47,6 +47,7 @@ for(const width of [390,1440])test('confirmed feedback becomes a linked training
   await page.getByText('최근 제출 내역',{exact:false}).click();
   await page.locator('#submission-results .record-list li button').click();
   await page.getByRole('button',{name:'이 제출 피드백 보기'}).click();
+  await page.getByText('이 분석으로 이어서 연습',{exact:true}).click();
   await page.getByRole('button',{name:'이 분석으로 다음 훈련 준비'}).click();
   await expect(page.getByLabel('다시 연습할 지점')).toHaveValue('0');
   await page.getByRole('button',{name:'이 목표 확인하고 다음 훈련 찾기'}).click();
