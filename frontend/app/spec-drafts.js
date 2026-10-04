@@ -1,4 +1,5 @@
 'use client';
+import ProblemStatement from './problem-statement';
 import ProblemReview from './problem-review';
 import {useEffect,useRef,useState} from 'react';
 import Pager,{usePage} from './pager';
@@ -68,7 +69,7 @@ export default function SpecDrafts({api,generationActive,onActive,onOpen,visible
       {item.checks&&<p className="draft-help">Runner 작업 {item.checks.executions}개 완료{item.status!=='PUBLISHED'&&' · 미게시'}</p>}
       {item.spec&&<details><summary>명세와 검증 계획 보기</summary>
         <p>{item.spec.category} · {item.spec.tags.join(' · ')}</p>
-        <p className="spec-text">{item.spec.statement}</p>
+        <ProblemStatement statement={item.spec.statement}/>
         {Object.entries({inputDefinition:'입력',outputDefinition:'출력',constraints:'제약',referenceStrategy:'기준 풀이 전략',oracleStrategy:'독립 oracle 계획'}).map(([key,label])=><div key={key}><h4>{label}</h4><p className="spec-text">{item.spec[key]}</p></div>)}
         <h4>{item.checks?'예제 · 예비 실행 검사 완료':'예제 · 아직 실행 검증되지 않음'}</h4>
         {item.spec.samples.map((sample,index)=><div key={index}><p>예제 {index+1} 입력</p><pre>{sample.input}</pre><p>출력</p><pre>{sample.output}</pre><p>{sample.explanation}</p></div>)}

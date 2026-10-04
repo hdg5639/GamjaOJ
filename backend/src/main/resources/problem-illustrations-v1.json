@@ -1,0 +1,142 @@
+[
+  {
+    "version": "basic-pool-v1-arrays-strings-easy-02-v1",
+    "alt": "두 필름을 같은 칸에 겹치는 방식",
+    "caption": "B 전체를 A 안에 놓습니다. 같은 칸의 서로 다른 글자만 충돌하며, 물음표는 충돌하지 않습니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "953208c475e4ed74aaf80a7e9586400628898405796c4aef7c71e7a3e5dd4476",
+    "file": "7600d05dde98043a00a92fffa205d7927eff1cd40ae913d7306c8e5eaae73754.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "basic-pool-v1-bfs-easy-01-v1",
+    "alt": "격자에서 가능한 네 방향 이동과 벽",
+    "caption": "한 번에 상하좌우로 한 칸 이동합니다. 벽과 격자 밖으로는 이동할 수 없습니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "5c2fbfe23be61f50da28ac6e856987a189a08e24214613b902b143a85d0817ea",
+    "file": "02a10bb75f4ea7946e50af6b4a14e5728d59461d610a231e3616e1876ee792fd.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "basic-pool-v1-bfs-hard-02-v1",
+    "alt": "하나의 명령을 함께 받는 두 로봇",
+    "caption": "같은 방향 명령에도 벽에 막힌 로봇은 머무르고 다른 로봇은 움직입니다. 같은 칸에 도착하거나 서로 위치를 교환할 수 없습니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "0bf3c323d931dc2feec0acc1c4e5d8b6a0a089876a77cec4b73e4a9ad09a54c5",
+    "file": "72c37351370bc3b8970e14867f285e916762cfcbac98c09318732e87d5d58e49.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "basic-pool-v1-bfs-hard-04-v2",
+    "alt": "한 번의 이동 거리와 벽으로 끊기는 이동 범위",
+    "caption": "한 번에 같은 행 또는 열로 1~K칸 이동합니다. 지나가는 모든 칸이 비어 있어야 하며 벽을 넘을 수 없습니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "3485bdf1657af7cfca6d343f193db6bf3a8ee365086fcac0e657e4e7cab1b062",
+    "file": "a2cbda0fb011c27c3163a0244c731750e21c5ae59b70351f17c9ddfe0572ac0e.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "basic-pool-v1-graph-hard-01-v1",
+    "alt": "방향이 있는 길과 길드 도장의 관계",
+    "caption": "길에는 이동 비용과 길드 번호가 있습니다. 같은 길드의 가입세는 경로에서 처음 이용할 때만 내며, 길드 0에는 가입세가 없습니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "ed46d4e81ce63aadc23e8e1edeb4c98c1ab4bafc3e854bf46b605597693775e1",
+    "file": "9028d04b52aecf2b6316af889bb306322b76bce95f29bec2b487609a654741e0.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "iamywl-v1-0c468772cccdbfa4",
+    "alt": "좌표 위의 점과 두 점 사이의 직선 거리",
+    "caption": "점의 위치는 평면 좌표로 주어집니다. 두 점을 잇는 비용은 두 점 사이의 유클리드 거리입니다. 선택할 연결을 표시한 그림은 아닙니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "0fd2fc49cf21a3aa82cb743ad5237138f7456d2edbbfcb4657529aac1a3a716a",
+    "file": "042f5b88024afd067ef59ece5f7eaf0ebafef6d85f45b0fcf9a5d9d3b43048ca.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "iamywl-v1-0d14a02045e8bf29",
+    "alt": "토마토의 상태와 상하좌우 전파 관계",
+    "caption": "1은 익은 토마토, 0은 익지 않은 토마토, -1은 빈 칸입니다. 익은 토마토들은 동시에 상하좌우 이웃에 영향을 주며 대각선으로는 퍼지지 않습니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "d3d214f2f37f6f2b97f4473967e49265ee91c13149d8623a744cd807779358f0",
+    "file": "410d1bb2fb25de59170dc54c76502b66fb76d1cc91098e7fccee4635781fdd14.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "iamywl-v1-22b94e33d994aa40",
+    "alt": "교차에 포함되는 선분의 세 가지 만남",
+    "caption": "서로 가로지르는 경우뿐 아니라 끝점이 닿거나 같은 직선 위에서 겹치는 경우도 교차에 포함됩니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "6efc6a166471e22b7149620b5b637bb1f3fc9d8b8cb441a546078e1d71a514a0",
+    "file": "305a40eb989a502956c7b3d92b97bf6e212859e764e7f0827ec763c5a9df9780.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "iamywl-v1-6bbe159f306f3c92",
+    "alt": "선수과목을 나타내는 방향 연결",
+    "caption": "A → B는 A를 먼저 이수해야 B를 들을 수 있다는 뜻입니다. 두 과목을 같은 학기에 이수할 수 없으며, 한 학기의 수강 과목 수에는 제한이 없습니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "d10ca77b4f187aba66f6cf84f5431b4f644a435b29bda37048e9a2bc3f26b332",
+    "file": "d40c0be8142f5b673c9379ddca51b9468639b591241a03b2869df0ecdfca8ea5.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "iamywl-v1-94d62cbe23c47c66",
+    "alt": "섬과 건설 가능한 다리 후보",
+    "caption": "섬은 점, 건설할 수 있는 다리는 선으로 표시합니다. 숫자는 다리의 비용이며, 그림은 선택 전의 후보 연결을 보여줍니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "9eda37aa334d1d04a9f9027fa6d478ce6e27924f6ade2b257bd606979fac1b11",
+    "file": "1fc64e07c25e7591bf8004323618447f8c1dae4e3fa053b65835f5373886cbf9.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "iamywl-v1-da2d5cb7ffae00f1",
+    "alt": "연구소 칸의 종류와 새로 세울 벽 세 개",
+    "caption": "0은 빈 칸, 1은 기존 벽, 2는 바이러스입니다. 빈 칸에 새 벽을 정확히 세 개 세운 뒤 바이러스가 상하좌우로 퍼집니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "98710995a851da7231cf114b06592ac1d1e78d6b5f755f62df501cff546a7bdd",
+    "file": "cd4331db5521b8b5db2edb308062c4e0f8af0303a1a92e330be39b57ff7c76c0.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "iamywl-v1-ff911ece9cc1639f",
+    "alt": "커서를 기준으로 문자를 넣고 지우는 편집 명령",
+    "caption": "TYPE은 커서 왼쪽에 문자를 넣고, DELETE는 커서 왼쪽 문자를 지웁니다. LEFT·RIGHT는 커서를 한 칸 이동하며 문서 밖으로 나가지 않습니다.",
+    "kind": "COMMAND_EXPLANATION",
+    "statementSha256": "da42a664313b8bde6f6dfbb57e7e5fda4faa5abe64fcf4760e43458b87054d4d",
+    "file": "b1ab4a7e44ec58f0fc137ec12a0a1933e8ecbf5c8ef63ad09dbeeec5d21d733d.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "basic-pool-v1-basic-data-structures-hard-02-v1",
+    "alt": "연속된 빈 객석 예약과 구간 해제 명령",
+    "caption": "BOOK k는 가장 왼쪽의 연속된 빈 좌석 k개를 예약합니다. FREE l r은 양 끝을 포함해 해당 구간의 좌석을 모두 비웁니다.",
+    "kind": "COMMAND_EXPLANATION",
+    "statementSha256": "06e116639f2d1815c3470d770ae1b9b487c3a7fa014167a6b01e5c30b608b1c5",
+    "file": "d1df9ae89fb1344a7717a08e5a04000629414d6407440e35cf20a65b5e35ee3f.svg",
+    "width": 800,
+    "height": 340
+  },
+  {
+    "version": "basic-pool-v1-backtracking-medium-02-v1",
+    "alt": "스위치와 문이 연결되는 상태 규칙",
+    "caption": "소문자 스위치에 들어가면 해당 비트가 반전됩니다. 대문자 문은 들어가기 직전 해당 비트가 1이어야 통과할 수 있습니다. 처음에는 모든 비트가 0입니다.",
+    "kind": "STRUCTURE",
+    "statementSha256": "edc12a3551f2dd82f28b79338ec881cd872533ed588604aa17f0e34f09b56ca5",
+    "file": "2224731fa61ba4229b6e3bc405b53033af4f0a027077938ff7deca6ffd1d6741.svg",
+    "width": 800,
+    "height": 340
+  }
+]

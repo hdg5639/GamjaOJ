@@ -1,4 +1,5 @@
 'use client';
+import ProblemStatement from './problem-statement';
 import {useEffect,useState} from 'react';
 import Pager,{usePage} from './pager';
 import ProblemId from './problem-id';
@@ -32,7 +33,7 @@ export default function FollowupPanel({api,onOpen,onGeneration,locked}) {
       <p>{item.goal}</p>
       {item.status==='READY_TO_PRACTICE'&&<>
         {item.candidates.length>0?<><p className="draft-help">같은 검증된 풀이 유형과 선택한 목표의 후보입니다. 문제 내용을 확인하고 시작해 주세요. 아직 정답 처리하지 않은 문제만 표시합니다.</p>
-          {item.candidates.map(candidate=><div className="followup-candidate" key={candidate.version}><div>{candidate.title}<small><ProblemId version={candidate.version}/></small>{candidate.statement&&<details><summary>문제 내용 확인</summary><p className="spec-text">{candidate.statement}</p></details>}</div><button className="secondary" disabled={locked||busy} onClick={()=>action(item,'start',{problemVersion:candidate.version})}>이 문제로 훈련</button></div>)}</>:<p>조건에 맞는 준비된 문제가 없어요. 태그만 비슷한 문제로 대신하지 않습니다.</p>}
+          {item.candidates.map(candidate=><div className="followup-candidate" key={candidate.version}><div>{candidate.title}<small><ProblemId version={candidate.version}/></small>{candidate.statement&&<details><summary>문제 내용 확인</summary><ProblemStatement statement={candidate.statement} version={candidate.version} api={api} manage={false}/></details>}</div><button className="secondary" disabled={locked||busy} onClick={()=>action(item,'start',{problemVersion:candidate.version})}>이 문제로 훈련</button></div>)}</>:<p>조건에 맞는 준비된 문제가 없어요. 태그만 비슷한 문제로 대신하지 않습니다.</p>}
         {!item.generationStatus&&<button className="secondary" disabled={busy||locked} onClick={()=>action(item,'generate')}>이 목표로 새 문제 요청</button>}
         {item.generationStatus&&<><p className="draft-help">출제 요청이 저장돼 있어요. 생성 화면에서 진행을 확인하고, 검증·게시를 마치면 이곳에서 선택할 수 있어요.</p><button className="secondary" onClick={onGeneration}>생성 진행 확인</button></>}
       </>}
