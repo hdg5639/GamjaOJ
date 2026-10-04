@@ -1,10 +1,11 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import Markdown,{defaultUrlTransform} from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Modal from './modal';
 
-export function statementImageUrl(src){return typeof src==='string'&&(/^\/api\/problem-images\/[a-f0-9-]{36}$/.test(src)||/^\/problem-illustrations\/[a-f0-9]{64}\.svg$/.test(src))?src:'';}
+import {statementImageUrl,statementIllustrationLayout,remarkStatementIllustrations} from './statement-illustrations.mjs';
+export {statementImageUrl} from './statement-illustrations.mjs';
 function StatementImage({src,alt='',caption='',width,height,onExpand}){
  const [failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[src]);
  return <span className="statement-image">{failed?<span className="statement-image-missing" role="status">그림을 불러오지 못했어요. {alt}<button type="button" className="secondary" onClick={()=>setFailed(false)}>다시 불러오기</button></span>:<button type="button" className="statement-image-button" aria-label={`${alt||'문제 그림'} 확대`} onClick={()=>onExpand({src,alt,caption})}><img src={src} alt={alt} width={width} height={height} loading="lazy" decoding="async" onError={()=>setFailed(true)}/><span className="statement-image-hint">클릭하여 확대</span></button>}{caption&&<span className="statement-image-caption">{caption}</span>}</span>;
@@ -24,15 +25,16 @@ export default function ProblemStatement({statement='',version,api,className='',
   finally{executionLock.current=false;setBusy(false);}
  }
  async function remove(image){if(executionLock.current)return;executionLock.current=true;setBusy(true);setError('');try{const value=await api(`${path}/${image.id}`,{method:'DELETE'});revision.current++;setPresentation(value);setDeleting(null);}catch(e){setError(e.message);}finally{executionLock.current=false;setBusy(false);}}
- const components={
-  img:({src,alt,title})=>statementImageUrl(src)?<StatementImage src={src} alt={alt} caption={title} onExpand={setExpanded}/>:<span className="statement-image-missing">그림: {alt||'설명 이미지'} · 등록된 이미지 주소가 필요해요.</span>,
+ const layout=useMemo(()=>statementIllustrationLayout(statement,presentation.illustrations),[statement,presentation.illustrations]);
+ const components=useMemo(()=>({
+  img:({src,alt,title})=>statementImageUrl(src)?<StatementImage src={src} alt={alt} caption={title} width={presentation.illustrations.find(i=>i.src===src)?.width} height={presentation.illustrations.find(i=>i.src===src)?.height} onExpand={setExpanded}/>:<span className="statement-image-missing">그림: {alt||'설명 이미지'} · 등록된 이미지 주소가 필요해요.</span>,
   a:({href,children})=><a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
   table:({children})=><div className="statement-table-scroll"><table>{children}</table></div>,
- };
+ }),[presentation.illustrations]);
  return <div className={`problem-statement ${className}`}>
-  <Markdown remarkPlugins={[remarkGfm]} skipHtml components={components} urlTransform={(url,key)=>key==='src'?statementImageUrl(url):defaultUrlTransform(url)}>{typeof statement==='string'?statement:''}</Markdown>
+  <Markdown remarkPlugins={[remarkGfm,[remarkStatementIllustrations,{placements:layout.placements}]]} skipHtml components={components} urlTransform={(url,key)=>key==='src'?statementImageUrl(url):defaultUrlTransform(url)}>{typeof statement==='string'?statement:''}</Markdown>
   {loadError&&<p className="statement-illustration-error" role="status">{loadError} <button type="button" className="secondary" onClick={refresh}>다시 불러오기</button></p>}
-  {presentation.illustrations.length>0&&<section className="statement-illustrations" aria-label="문제 이해 그림">{presentation.illustrations.map((image,i)=>statementImageUrl(image.src)&&<figure key={image.id||image.src||i}><StatementImage {...image} onExpand={setExpanded}/></figure>)}</section>}
+  {layout.remainder.length>0&&<section className="statement-illustrations" aria-label="문제 이해 그림">{layout.remainder.map((image,i)=>statementImageUrl(image.src)&&<figure key={image.id||image.src||i}><StatementImage {...image} onExpand={setExpanded}/></figure>)}</section>}
   {manage&&presentation.canEdit&&<button type="button" className="secondary statement-manage" onClick={()=>setEditing(true)}>문제 그림 관리</button>}
   <Modal open={!!expanded} title={expanded?.alt||'문제 그림 확대'} onClose={()=>setExpanded(null)} wide className="statement-image-dialog">{expanded&&<><img className="statement-expanded-image" src={expanded.src} alt={expanded.alt}/>{expanded.caption&&<p>{expanded.caption}</p>}</>}</Modal>
   <Modal open={editing} title="문제 그림 관리" onClose={()=>{if(!busy)setEditing(false);}} className="diagnostic-dialog" wide><div className="diagnostic-dialog-content statement-image-manager">

@@ -5,3 +5,7 @@
  background: transparent !important; border: 0 !important; box-shadow: none !important;
  padding: 0 !important; transform: none !important;
 }
+.problem-statement p[data-inline-illustration] {margin:20px 0 12px!important;}
+.problem-statement p[data-inline-illustration] .statement-image {margin:0;}
+.problem-statement p[data-inline-illustration] .statement-image-button {margin-inline:auto;}
+.problem-statement .statement-figure-explanation {margin:0 0 22px!important;}

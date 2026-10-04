@@ -22,6 +22,7 @@ class ProblemIllustrationsIntegrationTest {
  @Autowired JdbcClient jdbc;@Autowired ProblemIllustrations images;@Autowired MockMvc mvc;
  UUID alice,bob;byte[] png;String version="image-owned-v1";
  @BeforeEach void setup() throws Exception{
+  jdbc.sql("DELETE FROM problem_version WHERE id='basic-pool-v1-bfs-medium-02-v1'").update();
   jdbc.sql("DELETE FROM problem_version WHERE id=?").param(version).update();jdbc.sql("DELETE FROM app_user").update();
   alice=create("alice");bob=create("bob");
   String pkg="{\"version\":\""+version+"\",\"title\":\"그림 테스트\",\"statement\":\"공개 규칙\"}";
@@ -71,4 +72,14 @@ class ProblemIllustrationsIntegrationTest {
   mvc.perform(multipart("/api/problems/"+version+"/illustrations").file(file).param("alt","그림 규칙").header("Idempotency-Key",key).with(user("alice")).with(csrf())).andExpect(status().isOk()).andExpect(jsonPath("$.illustrations[0].id").value(key.toString()));
   mvc.perform(get("/api/problem-images/"+key).with(user("bob"))).andExpect(status().isNotFound());mvc.perform(get("/api/problem-images/"+key)).andExpect(status().isUnauthorized());
  }
+ @Test void curatedInlineContractIncludesExactAnchorAndHidesImagesWhenRulesChange()throws Exception{
+  String v="basic-pool-v1-bfs-medium-02-v1";
+  String statement=new org.springframework.core.io.ClassPathResource("illustrations-inline-door-statement.txt").getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+  var pkg=JudgeJson.JSON.createObjectNode().put("version",v).put("title","한 박자 늦게 열리는 문").put("statement",statement);String serialized=pkg.toString();
+  jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,shared) SELECT ?,?,?,runtime_image,runner_policy,true,true FROM problem_version WHERE id='sum-v1'").param(v).param(serialized).param(JudgeJson.hash(serialized)).update();
+  var figure=images.presentation("alice",v).illustrations().getFirst();assertThat(figure.afterParagraph()).isEqualTo(statement.split("\n\n")[1]);assertThat(figure.explanation()).contains("도착 시각");assertThat(figure.id()).isNull();
+  mvc.perform(get("/api/problems/"+v+"/illustrations").with(user("bob"))).andExpect(status().isOk()).andExpect(jsonPath("$.illustrations[0].afterParagraph").value(figure.afterParagraph())).andExpect(jsonPath("$.illustrations[0].explanation").value(figure.explanation()));
+  jdbc.sql("UPDATE problem_version SET package_json=? WHERE id=?").param(pkg.put("statement",statement+"새로운 규칙").toString()).param(v).update();assertThat(images.presentation("alice",v).illustrations()).isEmpty();
+ }
+
 }
