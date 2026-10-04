@@ -432,18 +432,20 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         {selected&&selected.problemVersion===version&&<article className="submission-detail">
           {selected.problemHeld&&<p className="notice">문제 검토 중 · 이 기록은 학습 판단 근거에서 보류됩니다.</p>}
           <div className="record-heading"><h4 id="submission-heading" tabIndex={-1}>{label(selected)}</h4><small>{new Date(selected.createdAt).toLocaleString('ko-KR')}</small></div>
+          <details className="feedback-submission-info" open={tool==='history'}><summary hidden={tool!=='feedback'}>제출 정보·업로드</summary>
           {selected.verdict==='AC'&&<ExportSubmission key={selected.id} api={api} submission={selected}/>}
           {verdictHelp[selected.verdict]&&selected.verdict!=='IE'&&<p className="draft-help">{verdictHelp[selected.verdict]}</p>}
           <ExecutionMetrics result={selected}/><p className="version">{shortProblemId(selected.problemVersion)} · {recordLanguageLabel(selected)}</p>
           {(selected.problemVersion!==version||selected.source!==source)&&<p className="notice">현재 편집 중인 코드와 다른 제출의 결과예요.</p>}
           <button type="button" className="secondary" onClick={()=>viewCode(selected)}>해당 제출 코드 보기</button>
+          </details>
           {tool==='history'&&<>
             {selected.verdict==='IE'&&<p className="notice">채점 시스템 문제로 결과를 확인하지 못했어요. 풀이 실패로 기록하지 않습니다.</p>}
             {selected.compileMessage&&<pre className="compiler-message">{selected.compileMessage}</pre>}
             <details className="saved-code"><summary>제출 코드 펼치기</summary><pre aria-label="저장된 제출 코드">{selected.source}</pre></details>
             <button type="button" className="secondary" onClick={()=>showTool('feedback')}>이 제출 피드백 보기</button>
           </>}
-          <div hidden={tool!=='feedback'}><AiFeedback key={selected.id} submission={selected} api={api}/></div>
+          <div hidden={tool!=='feedback'}><AiFeedback key={selected.id} submission={selected} api={api} compact/></div>
         </article>}
       </div>
     </aside></div>}

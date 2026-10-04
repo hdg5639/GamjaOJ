@@ -109,3 +109,26 @@
 @media(max-width:700px){.diagnostic-panel .diagnostic-choice-detail>.diagnostic-choice-start{flex-direction:column;align-items:stretch}}
 .diagnostic-picker .diagnostic-choice-kicker{color:var(--muted)}
 :root:root:root .diagnostic-type[aria-pressed="true"]{color:var(--ink)}
+
+/* Solving feedback prioritizes one current answer; secondary tools expand in place. */
+.feedback-compact { border-top:0; padding-top:0; overflow-wrap:anywhere; }
+.feedback-compact > h4 { margin:0 0 6px; font-size:14px; }
+.feedback-compact .draft-help { margin:6px 0; }
+.feedback-compact .editor-tools { gap:8px; margin:12px 0; }
+.feedback-compact .feedback-entry { padding:12px 0; border-top:1px solid var(--surface-edge); }
+.feedback-compact .feedback-entry > h4 { font-size:13px; margin:0 0 8px; }
+.feedback-compact .feedback-summary { margin:0 0 8px; line-height:1.65; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:4; overflow:hidden; }
+.feedback-compact .feedback-entry:has(> .feedback-analysis-detail[open]) > .feedback-summary { display:none; }
+.feedback-compact details > summary,.feedback-submission-info > summary { padding:11px 0; min-height:40px; font-size:13px; color:var(--ink); }
+.feedback-compact > details { border-top:1px solid var(--surface-edge); }
+.feedback-compact details[open] > summary { color:var(--green); font-weight:650; }
+.feedback-compact .feedback-analysis-detail[open],.feedback-compact .feedback-question[open],.feedback-compact .feedback-reflection[open],.feedback-compact .feedback-followup[open] { padding:0 12px 12px; border-radius:10px; background:var(--glass-panel); box-shadow:var(--surface-inset); }
+.feedback-compact ul { margin:8px 0 14px; padding-left:20px; }
+.feedback-compact li { margin-bottom:8px; line-height:1.6; }
+.feedback-compact .feedback-model > summary { color:var(--muted); font-size:12px; }
+.feedback-compact .problem-reflection { margin-top:0; }
+.feedback-compact .confidence-options { display:grid; grid-template-columns:1fr; gap:6px; }
+.feedback-compact textarea,.feedback-compact button { max-width:100%; }
+.feedback-compact .feedback-past-entry { padding-inline:8px; border-top:1px solid var(--surface-edge); }
+.feedback-compact .feedback-empty { font-size:13px; line-height:1.6; }
+.feedback-submission-info { margin:4px 0 12px; border-bottom:1px solid var(--surface-edge); }
