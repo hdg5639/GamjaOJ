@@ -1,0 +1,80 @@
+{
+  "iamywl-v1-0c468772cccdbfa4": {
+    "originalStatementSha256": "0fd2fc49cf21a3aa82cb743ad5237138f7456d2edbbfcb4657529aac1a3a716a",
+    "statementSha256": "10099127159a60ef35f13c18cf0efefd6180fc93865b0346d8ca03e92d331c92",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-0d14a02045e8bf29": {
+    "originalStatementSha256": "d3d214f2f37f6f2b97f4473967e49265ee91c13149d8623a744cd807779358f0",
+    "statementSha256": "7abc368bd666d01be53a870ab9a31c8c71af10410a815d6e0118271b6d8764a3",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-22b94e33d994aa40": {
+    "originalStatementSha256": "6efc6a166471e22b7149620b5b637bb1f3fc9d8b8cb441a546078e1d71a514a0",
+    "statementSha256": "65238e6aa52c85969e37e00b4201b9fa7d9d8f3f70c63510d23610f5ad6fb4ed",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-241bfb705697b488": {
+    "originalStatementSha256": "d85d4357143b0c48542e7f60e78363efa95e4805c9c8e28d8a8e73c894ade42d",
+    "statementSha256": "604b527c9fdb8e7eefa17cf8ebe9772e2e155d178187681ee1614261aa47accd",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-2c6b7f10a64c0952": {
+    "originalStatementSha256": "dd16f88257c9ce757847a984caeb7819a66a10baa7d6c28fb0fb0058ebcb8245",
+    "statementSha256": "e0c262817c2a74a733b21a3c14710cd5367e87545e05f327ee7c23454454f764",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-3d2b15cb2291497e": {
+    "originalStatementSha256": "1ba8b1f03ea458372ca141301c027de5c724e0118d8cf3698f6ae6adb631a9fd",
+    "statementSha256": "63596f032ae023a03ba5c5e24ec917e1d2b33b8c5298932269d819de4a8fb524",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-5b1320e876d2e6e9": {
+    "originalStatementSha256": "721f97c203031d1093f5ed3585e15dd18ee1b56031a7f4399b9297995889224b",
+    "statementSha256": "cb3ff344e16957c613ae3888476c0fc62de354e55645fa81df13ce5a4ee0bffe",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-6bbe159f306f3c92": {
+    "originalStatementSha256": "d10ca77b4f187aba66f6cf84f5431b4f644a435b29bda37048e9a2bc3f26b332",
+    "statementSha256": "9ce79bc8f511b685088df84e13a70af3d51b0cfe5377774b35272137360c22c6",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-73b8cf3c4ff384f1": {
+    "originalStatementSha256": "4a5af7eb990c0b11627316359aeb6772638720176572f64d545924f978915a23",
+    "statementSha256": "81eabacfab159099e28dabb7a797eaac0c85ab5ef819b8242ce2c5e8c31acfbb",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-94d62cbe23c47c66": {
+    "originalStatementSha256": "9eda37aa334d1d04a9f9027fa6d478ce6e27924f6ade2b257bd606979fac1b11",
+    "statementSha256": "9941dda9ebb22da807cc5bee3def8e9a6d57b3dbdb4d93dcbda0489ccf1fad85",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-9ab31c8992ff67a4": {
+    "originalStatementSha256": "0c8dd6f238a1a5b6a73f9dcade84552f931c7eb565a3ec430685e735e4858596",
+    "statementSha256": "b00096edd5fcec86297ce47c3ed7447acf75af6f842deb783f94dbf366345e26",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-da2d5cb7ffae00f1": {
+    "originalStatementSha256": "98710995a851da7231cf114b06592ac1d1e78d6b5f755f62df501cff546a7bdd",
+    "statementSha256": "53a0ba21e7952c4a23f05beb3d1167c2d91aa620a795b8e71fe4c3ac634c2f9f",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  },
+  "iamywl-v1-ff911ece9cc1639f": {
+    "originalStatementSha256": "da42a664313b8bde6f6dfbb57e7e5fda4faa5abe64fcf4760e43458b87054d4d",
+    "statementSha256": "5086d8ec8c473b026e90237bf6141c5f0e0250d5d318ac26b0b8bb87742a243a",
+    "change": "ADD_APPROVED_T_BOUND_1_TO_10",
+    "approvalDate": "2026-10-05"
+  }
+}
