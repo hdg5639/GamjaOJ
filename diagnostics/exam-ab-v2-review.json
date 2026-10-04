@@ -1,0 +1,66 @@
+{
+  "decision": "APPROVED_LIMITED_PILOT",
+  "reviewerType": "AI_ASSISTED_CONTENT_REVIEW",
+  "manifest": {
+    "id": "exam-ab-v2",
+    "banks": [
+      {
+        "id": "exam-a-set-01-v2",
+        "artifactSha256": "f25824dfb0fc9f0e88317c505396633015a131e10f8c2de20fab57c2200047ac",
+        "reviewSha256": "dfc0bb8740da295ae34219e5f2c484eba630a9ce13abedf9a35abc408da72c48"
+      },
+      {
+        "id": "exam-a-set-02-v2",
+        "artifactSha256": "5bb09d2045f3d8d01280fe0943d7efa02144af58bd771be8aac771fd5ce9c095",
+        "reviewSha256": "6377f40bc945aada1a9fbc2e82ac10e0d09734f608d29b078db53658d97401a3"
+      },
+      {
+        "id": "exam-a-set-03-v2",
+        "artifactSha256": "799fa702f07b539114c0fd4ec148cb885aef306e22c06881dd8f4647bc237fff",
+        "reviewSha256": "41a134e99080f69a4263267c2f9f9c77dbd41f95babe3916b0367c5b0bd39fd9"
+      },
+      {
+        "id": "exam-a-set-04-v2",
+        "artifactSha256": "bb60b66ff41c130d9faa181cb1f064e8df52bcd9d23d3a30c8a1daa1d1e28439",
+        "reviewSha256": "4410a6a217bf2629099b489ee0e1a80ad8a8c87d4a28859cfd247ae20c0b79fb"
+      },
+      {
+        "id": "exam-b-set-01-v2",
+        "artifactSha256": "af7068c4c6e5c1ca750f982ac4e2027bd447c72d7333c68a36ff098d22a9e2c9",
+        "reviewSha256": "0d43feeaa8a24d7d49b905702bb28d444553ffd18a19b828079d8492bdf44ce7"
+      },
+      {
+        "id": "exam-b-set-02-v2",
+        "artifactSha256": "0d6040890c716ec74106e2a797dbd7e7c066e4dcbd6ec6ea8edc2afdd278a867",
+        "reviewSha256": "6da0ed92490774dce98d66c9d23b17f3703ad55ba82f036aa4d88091492e73d6"
+      },
+      {
+        "id": "exam-b-set-03-v2",
+        "artifactSha256": "513aecf6c3ef692c874fc0f346969cd8b50a4d25a5392ea6bc6a9c5512bbdc01",
+        "reviewSha256": "b3a14ca62644ec9572c9ecbb3acd6ba62faf7c593473e1e207dc2b42d0666a99"
+      },
+      {
+        "id": "exam-b-set-04-v2",
+        "artifactSha256": "d4c71108ed58ffc7c512b6a2029a88453cabf26f2137a2ce1cf22c729ba24bf5",
+        "reviewSha256": "c091e4c3b762360d8b1639d673cb8999080b3f68b716ab0f133247bce69da2e8"
+      }
+    ],
+    "runnerEvidenceSha256": "fc0141d397def267dab808663b6a70ca2b6101c9c37edb0c38a175c430c67865",
+    "limitsSha256": "26a87ba75120009721c1229df7ec3775b9d5dd8b37634a05060b3d4e623f5403"
+  },
+  "checks": {
+    "qualifiedProblems": 64,
+    "referenceLanguagePrograms": 128,
+    "correctJudgedCases": 1848,
+    "logicMutants": 128,
+    "privatePNG": 33
+  },
+  "limitations": [
+    "No independent educator or learner calibration; no official exam pass prediction",
+    "Sets are not equated and repeated results are not independent improvement evidence",
+    "Finite fixed corpus, not exhaustive worst-case proof; original supplied slow/TLE teaching claims remain unverified",
+    "A runtimes validated in all three languages; B supports Java callable only. Python mutants verify logic in STDIO equivalents",
+    "Mostly two bounded FUNCTIONAL slots; timings are not isolated EXCLUSIVE measurements",
+    "Full semantic overlap/originality audit across existing public catalog not completed"
+  ]
+}

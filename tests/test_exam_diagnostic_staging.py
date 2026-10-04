@@ -17,3 +17,17 @@ class ExamDiagnosticStagingTests(unittest.TestCase):
    if mutation=='mixed':data['items'][0]['difficulty']='EASY'
    if mutation=='wrong':data['items'][0]['difficulty']='HARD'
    with self.assertRaises(ValueError):stage.stage(data)
+
+ def test_release_guards_full_package_hash_without_embedding_hidden_inputs(self):
+  import hashlib
+  spec=importlib.util.spec_from_file_location('release_exam',ROOT/'scripts/release-diagnostic-bank.py');release=importlib.util.module_from_spec(spec);spec.loader.exec_module(release)
+  data=self.candidate();sentinel='private-payload-regression-';data['items'][0]['problem']['tests'][-1]['input']=sentinel*10000
+  artifact=json.dumps(data,ensure_ascii=False).encode()
+  review=dict(bankId=data['id'],artifactSha256=hashlib.sha256(artifact).hexdigest(),decision='APPROVED_LIMITED_PILOT',reviewerType='AI_ASSISTED_CONTENT_REVIEW',checks=['fixture only'],limitations=['fixture only'])
+  sql=release.release(artifact,review)
+  self.assertIn("encode(sha256(convert_to(p.package_json,'UTF8')),'hex')",sql);self.assertNotIn(sentinel,sql);self.assertLess(len(sql),30000)
+
+ def test_missing_limit_analysis_is_rejected_before_database_import(self):
+  from unittest.mock import patch
+  with patch.object(stage,'limits_for',return_value={'JAVA':5,'CPP':3,'PYTHON':8}):
+   with self.assertRaisesRegex(ValueError,'server time-limit contract'):stage.stage(self.candidate())
