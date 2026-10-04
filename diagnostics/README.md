@@ -1,5 +1,28 @@
 # Diagnostic bank authoring
 
+## A/B target diagnostics v2
+
+`import_exam_bank.py` converts the privately supplied 64-question package into eight unreviewed
+candidate banks. B questions use the actual server-generated `CallablePrograms.bundle` driver and
+template, with Java-only callable submissions. STDIO equivalents remain validation material.
+CORE/APPLIED are observation roles and are never relabeled EASY/MEDIUM.
+
+Family IDs `exam-a-v2` and `exam-b-v2` group four whole eight-question sets each. Under the user row
+lock, allocation prefers fewer exposed questions, then fewer prior assignments. Replaying a start
+key returns its original set. Repeated sets are labeled; equivalence and official exam predictions
+are not asserted. Existing selectable-category diagnostics and reassessment mappings remain intact.
+
+Private illustrations are converted to PNG and stored in `problem_illustration`, bound to the exact
+package hash. Current/previously viewed diagnostic access checks and no-store media are reused;
+diagnostic images are never copied into public static assets.
+
+`verify_exam_banks.py` checks A references in all three pinned production runtimes, B Java callable
+references, Python logic mutants passing public examples before private WA, and cgroup memory.
+It uses two bounded FUNCTIONAL slots, so its timing evidence differs from EXCLUSIVE measurements.
+The verifier records private evidence and does not publish banks. Artifacts, answers, hidden tests,
+images and SQL stay in ignored `diagnostics/private/`. Publication uses a separate content review,
+exact hash binding and the existing backed-up release path.
+
 `core-a-v1.json` is a private candidate, not a published assessment. It includes hidden inputs,
 reference/mutant source and evaluation rubrics. Never copy it into frontend assets or serialize it
 through a public catalog endpoint. `build_core_bank.py` reproduces the exact candidate artifact.

@@ -14,7 +14,7 @@ public class Diagnostics {
     public record Item(UUID id,int position,String category,String difficulty,String problemVersion,
                        String status,int attempts,int pending,boolean externallySeen,String skipReason) {}
     public record Example(String input,String output) {}
-    public record Question(UUID itemId,String problemVersion,String title,String statement,String sampleInput,String sampleOutput,List<Example> examples,List<LanguageProfiles.Option> languages) {}
+    public record Question(UUID itemId,String problemVersion,String title,String statement,String sampleInput,String sampleOutput,List<Example> examples,List<LanguageProfiles.Option> languages,JsonNode api) {}
     /** The first test and the EX-prefixed tests right after it are public examples; every later test stays hidden. */
     static List<Example> examples(JsonNode tests) {
         var out=new java.util.ArrayList<Example>();
@@ -22,12 +22,19 @@ public class Diagnostics {
             out.add(new Example(tests.get(i).path("input").asText(),tests.get(i).path("output").asText()));
         return out;
     }
-    public record View(UUID id,String bankId,String status,List<Item> items,Question current,UUID sourceSessionId,java.time.OffsetDateTime createdAt) {}
+    public record View(UUID id,String bankId,String status,List<Item> items,Question current,UUID sourceSessionId,java.time.OffsetDateTime createdAt,boolean repeatAttempt) {}
     record Snapshot(String json,String hash,String image,String policy,String limits) {}
 
-    public record Bank(String id,List<String> categories,int questionCount) {}
+    public record Bank(String id,List<String> categories,int questionCount,String examType,int setCount) {
+        Bank(String id,List<String> categories,int questionCount){this(id,categories,questionCount,null,1);}
+    }
+    static String examFamily(String bank) {
+        return bank!=null&&bank.matches("exam-[ab]-set-0[1-4]-v2")?bank.substring(0,6)+"-v2":bank;
+    }
+    static boolean exam(String bank){return bank!=null&&bank.matches("exam-[ab]-(v2|set-0[1-4]-v2)");}
+    static boolean completePair(List<String> roles){return roles.size()==2&&(new java.util.HashSet<>(roles).equals(java.util.Set.of("EASY","MEDIUM"))||new java.util.HashSet<>(roles).equals(java.util.Set.of("CORE","APPLIED")));}
     public List<Bank> banks() {
-        return jdbc.sql("SELECT bank.id FROM diagnostic_bank bank WHERE bank.reviewed=true AND NOT EXISTS (SELECT 1 FROM diagnostic_bank_item i JOIN diagnostic_reassessment_pair r ON r.target_version=i.problem_version WHERE i.bank_id=bank.id AND r.reviewed=true) ORDER BY bank.id").query(String.class).list().stream().map(id->{
+        var available=jdbc.sql("SELECT bank.id FROM diagnostic_bank bank WHERE bank.reviewed=true AND NOT EXISTS (SELECT 1 FROM diagnostic_bank_item i JOIN diagnostic_reassessment_pair r ON r.target_version=i.problem_version WHERE i.bank_id=bank.id AND r.reviewed=true) ORDER BY bank.id").query(String.class).list().stream().map(id->{
             var categories=jdbc.sql("SELECT category FROM diagnostic_bank_item WHERE bank_id=? GROUP BY category ORDER BY category")
                     .param(id).query(String.class).list();
             int count=jdbc.sql("SELECT count(*) FROM diagnostic_bank_item WHERE bank_id=?").param(id).query(Integer.class).single();
@@ -35,6 +42,11 @@ public class Diagnostics {
                     .param(id).query(Integer.class).single();
             return count>0 && count==categories.size()*2 && unavailable==0?new Bank(id,categories,count):null;
         }).filter(java.util.Objects::nonNull).toList();
+        var grouped=new java.util.LinkedHashMap<String,Bank>();
+        for(var bank:available){String family=examFamily(bank.id());var previous=grouped.get(family);
+            grouped.put(family,exam(bank.id())?new Bank(family,bank.categories(),bank.questionCount(),family.substring(5,6).toUpperCase(),previous==null?1:previous.setCount()+1):bank);
+        }
+        return List.copyOf(grouped.values());
     }
 
     private UUID owner(String name) {
@@ -62,12 +74,16 @@ public class Diagnostics {
             View saved=view(user,id);
             String previous=jdbc.sql("SELECT requested_categories_json FROM diagnostic_session WHERE id=?").param(id)
                     .query((r,n)->new String[]{r.getString(1)}).single()[0];
-            if(!saved.bankId().equals(bank)||!java.util.Objects.equals(previous,requested)||!java.util.Objects.equals(saved.sourceSessionId(),source))
+            if(!(bank!=null&&bank.matches("exam-[ab]-v2")?examFamily(saved.bankId()).equals(bank):saved.bankId().equals(bank))||!java.util.Objects.equals(previous,requested)||!java.util.Objects.equals(saved.sourceSessionId(),source))
                 throw new AccountException(409,"같은 요청 키의 진단 은행이나 선택 분야가 달라요.");
             return saved;
         }
         if(jdbc.sql("SELECT count(*) FROM diagnostic_session WHERE id=? OR open_owner=?").param(id).param(user).query(Integer.class).single()>0)
             throw new AccountException(409,"진행 중인 진단을 이어서 진행해 주세요.");
+        if(exam(bank)) {
+            if(categories!=null)throw new AccountException(400,"A/B형 진단은 분야를 나누지 않고 전체 8문항으로 진행해요.");
+            if(bank.matches("exam-[ab]-v2"))bank=allocateExam(user,bank);
+        }
         if(jdbc.sql("SELECT count(*) FROM diagnostic_bank WHERE id=? AND reviewed=true").param(bank).query(Integer.class).single()==0)
             throw new AccountException(404,"검토가 완료된 진단 은행을 찾을 수 없어요.");
         var rows=bankItems(bank,categories);
@@ -77,8 +93,8 @@ public class Diagnostics {
             rows=rows.stream().filter(row->categories.contains(row.category())).toList();
         }
         if(rows.isEmpty() || rows.stream().collect(java.util.stream.Collectors.groupingBy(BankItem::category)).values().stream()
-                .anyMatch(pair->pair.size()!=2 || pair.stream().map(BankItem::difficulty).distinct().count()!=2))
-            throw new AccountException(409,"카테고리별 하·중 문항 쌍이 준비되지 않았어요.");
+                .anyMatch(pair->!completePair(pair.stream().map(BankItem::difficulty).toList())))
+            throw new AccountException(409,"분야별 기본·응용 문항 쌍이 준비되지 않았어요.");
         String correspondence=source==null?null:validateReassessment(user,source,rows);
         jdbc.sql("INSERT INTO diagnostic_session(id,user_id,bank_id,status,open_owner,requested_categories_json,source_session_id,correspondence_json) VALUES (?,?,?,'ACTIVE',?,?,?,?)")
                 .param(id).param(user).param(bank).param(user).param(requested).param(source).param(correspondence).update();
@@ -91,6 +107,19 @@ public class Diagnostics {
                 .param(UUID.randomUUID()).param(id).param(row.position()).param(row.category()).param(row.difficulty()).param(row.version())
                 .param(row.json()).param(row.hash()).param(row.image()).param(row.policy()).param(row.rubric()).param(row.limits()).update();
         return view(user,id);
+    }
+    private String allocateExam(UUID user,String family) {
+        var candidates=jdbc.sql("SELECT id FROM diagnostic_bank WHERE reviewed=true AND id LIKE ? ORDER BY id").param(family.substring(0,6)+"-set-%-v2").query(String.class).list();
+        var best=new java.util.ArrayList<String>();int least=Integer.MAX_VALUE;long leastUsed=Long.MAX_VALUE;
+        for(String candidate:candidates) {
+            List<BankItem> rows;try{rows=bankItems(candidate,null);}catch(AccountException held){continue;}if(rows.size()!=8)continue;
+            int seen=0;for(var row:rows)if(jdbc.sql("SELECT count(*) FROM diagnostic_exposure WHERE user_id=? AND content_sha256=?").param(user).param(contentHash(row.json())).query(Integer.class).single()>0)seen++;
+            long used=jdbc.sql("SELECT count(*) FROM diagnostic_session WHERE user_id=? AND bank_id=?").param(user).param(candidate).query(Long.class).single();
+            if(seen<least||seen==least&&used<leastUsed){least=seen;leastUsed=used;best.clear();}
+            if(seen==least&&used==leastUsed)best.add(candidate);
+        }
+        if(best.isEmpty())throw new AccountException(409,"사용할 수 있는 진단 세트를 준비하고 있어요.");
+        return best.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(best.size()));
     }
     private List<BankItem> bankItems(String bank,List<String> categories) {
         return jdbc.sql("SELECT b.*,p.package_json,p.package_sha256,p.runtime_image,p.runner_policy,p.time_limits_json,p.ready,p.review_hold,p.diagnostic_only,p.owner_id FROM diagnostic_bank_item b JOIN problem_version p ON p.id=b.problem_version WHERE bank_id=? ORDER BY position")
@@ -240,11 +269,12 @@ public class Diagnostics {
         }
         Question question=current.map(i->{
             JsonNode p=JudgeJson.parse(jdbc.sql("SELECT package_json FROM diagnostic_item WHERE id=?").param(i.id()).query(String.class).single());
-            return new Question(i.id(),i.problemVersion(),p.path("title").asText(),p.path("statement").asText(),p.path("tests").path(0).path("input").asText(),p.path("tests").path(0).path("output").asText(),examples(p.path("tests")),LanguageProfiles.options(jdbc.sql("SELECT time_limits_json FROM diagnostic_item WHERE id=?").param(i.id()).query((r,n)->r.getString(1)).optional().orElse(null)));
+            return new Question(i.id(),i.problemVersion(),p.path("title").asText(),p.path("statement").asText(),p.path("tests").path(0).path("input").asText(),p.path("tests").path(0).path("output").asText(),examples(p.path("tests")),LanguageProfiles.options(jdbc.sql("SELECT time_limits_json FROM diagnostic_item WHERE id=?").param(i.id()).query((r,n)->r.getString(1)).optional().orElse(null)).stream().filter(l->!p.has("api")||l.id().equals("JAVA")).toList(),p.has("api")?p.path("api"):null);
         }).orElse(null);
         UUID source=jdbc.sql("SELECT source_session_id FROM diagnostic_session WHERE id=?").param(id)
                 .query((r,n)->new UUID[]{r.getObject(1,UUID.class)}).single()[0];
         var created=jdbc.sql("SELECT created_at FROM diagnostic_session WHERE id=?").param(id).query(java.time.OffsetDateTime.class).single();
-        return new View(id,session[0],status,items,question,source,created);
+        boolean repeat=exam(session[0])&&jdbc.sql("SELECT count(*) FROM diagnostic_session WHERE user_id=? AND bank_id=? AND created_at<?").param(user).param(session[0]).param(created).query(Integer.class).single()>0;
+        return new View(id,session[0],status,items,question,source,created,repeat);
     }
 }

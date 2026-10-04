@@ -20,7 +20,15 @@ public class LearningCurricula {
     private static final Map<String,String> CATEGORIES=Map.ofEntries(
         Map.entry("implementation","구현"),Map.entry("arrays-strings","배열·문자열"),Map.entry("basic-data-structures","기초 자료구조"),Map.entry("basic-search","기초 탐색"),
         Map.entry("bfs","너비 우선 탐색"),Map.entry("dfs","깊이 우선 탐색"),Map.entry("backtracking","백트래킹"),Map.entry("dp","동적 계획법"),
-        Map.entry("binary-search","이분 탐색"),Map.entry("greedy","탐욕법"),Map.entry("graph","그래프·최단 경로"),Map.entry("mst","최소 신장 트리"));
+        Map.entry("binary-search","이분 탐색"),Map.entry("greedy","탐욕법"),Map.entry("graph","그래프·최단 경로"),Map.entry("mst","최소 신장 트리"),
+        Map.entry("exam-a-implementation","조건 구현·경계 처리"),
+        Map.entry("exam-a-simulation","시뮬레이션·상태 전이"),
+        Map.entry("exam-a-combinatorial-search","조합·최적화"),
+        Map.entry("exam-a-state-search","상태 탐색"),
+        Map.entry("exam-b-indexed-structures","인덱스 기반 자료구조"),
+        Map.entry("exam-b-priority-order","우선순위·정렬"),
+        Map.entry("exam-b-dynamic-queries","동적 조회·구간 집계"),
+        Map.entry("exam-b-combined-design","복합 설계·관계 경로"));
     static String categoryLabel(String category){return category==null?"기초 개념":CATEGORIES.getOrDefault(category,"기초 개념");}
     public record Created(UUID evaluationId,List<DiagnosticPlans.Plan> plans,int manualReviewCount) {}
     public record Candidate(String version,String title,String category,String difficulty,ThinkingDifficulty.Profile thinking) {}

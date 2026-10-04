@@ -4,7 +4,7 @@ import {diagnosticOutcome} from './diagnostic-outcomes';
 import {categoryLabels} from './diagnostic-categories';
 const tones={STRENGTH:'강점',WATCH:'주의',RISK:'위험'};
 const outcomes={OPEN:'미완료',PASSED:'통과',EXHAUSTED:'5회 소진',SKIPPED:'건너뜀'};
-const difficulty={EASY:'하',MEDIUM:'중'};
+const difficulty={EASY:'하',MEDIUM:'중',CORE:'기본',APPLIED:'응용'};
 export default function DiagnosticProfile({api,sessionId,row,onObservation,onRuleDraft}) {
   const [profile,setProfile]=useState(null),[error,setError]=useState('');
   useEffect(()=>{let stopped=false;setError('');

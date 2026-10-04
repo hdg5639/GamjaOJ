@@ -34,7 +34,8 @@ def stage(data):
         groups.setdefault(item['category'],[]).append(item['difficulty'])
         for field in ('version','skills','positiveEvidence','negativeEvidence','unobservable','evidencePolicy'):
             if not item['rubric'].get(field):raise ValueError('Missing rubric evidence field: '+field)
-    if not groups or any(sorted(v)!=['EASY','MEDIUM'] for v in groups.values()):raise ValueError('Complete unique easy/medium pairs required')
+    if not groups or any(sorted(v) not in [['EASY','MEDIUM'],['APPLIED','CORE']] for v in groups.values()):raise ValueError('Complete unique legacy or core/applied pairs required')
+    if data.get('allocationUnit')=='WHOLE_SET' and (len(data['items'])!=8 or len(groups)!=4 or any(sorted(v)!=['APPLIED','CORE'] for v in groups.values())):raise ValueError('Exam diagnostics require four core/applied pairs')
     image=(ROOT/'runner/java-image.txt').read_text().strip()
     lines=['BEGIN;',f"INSERT INTO diagnostic_bank(id,reviewed) VALUES ({quote(data['id'])},false);"]
     for pos,item in enumerate(data['items']):

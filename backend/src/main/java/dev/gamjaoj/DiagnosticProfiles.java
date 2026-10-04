@@ -26,7 +26,15 @@ class DiagnosticProfiles {
             Map.entry("binary-search",List.of("이분 탐색","이진 탐색","파라메트릭","lower bound","upper bound")),
             Map.entry("greedy",List.of("그리디","탐욕","위상 정렬")),
             Map.entry("graph",List.of("최단 경로","다익스트라","플로이드","벨만","그래프")),
-            Map.entry("mst",List.of("최소 신장","MST","크루스칼","프림","유니온 파인드")));
+            Map.entry("mst",List.of("최소 신장","MST","크루스칼","프림","유니온 파인드")),
+        Map.entry("exam-a-implementation",List.of("구현","경계")),
+        Map.entry("exam-a-simulation",List.of("시뮬레이션","상태")),
+        Map.entry("exam-a-combinatorial-search",List.of("백트래킹","동적 계획법","조합")),
+        Map.entry("exam-a-state-search",List.of("BFS","너비 우선","상태")),
+        Map.entry("exam-b-indexed-structures",List.of("자료구조","해시","연결 리스트")),
+        Map.entry("exam-b-priority-order",List.of("힙","우선순위","정렬")),
+        Map.entry("exam-b-dynamic-queries",List.of("구간","트리","누적 합")),
+        Map.entry("exam-b-combined-design",List.of("그래프","경로","자료구조")));
     record Observation(int index,String tone,String pattern,String risk,String quote,boolean repeated) {}
     record Category(String id,boolean selected,List<JsonNode> items,List<Observation> observations,List<Integer> alsoSeen,List<String> ruleIds) {}
     record Profile(UUID evaluationId,String status,List<Category> categories,List<HybridAdmission.Profile> rules,boolean ruleOnboardingEnabled) {}
