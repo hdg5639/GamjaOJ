@@ -1,5 +1,8 @@
 """Exercise the deployed HTTP/DB contract; remove only this run's synthetic accounts."""
 import argparse
+import hashlib
+import struct
+import zlib
 import http.cookiejar
 import json
 from pathlib import Path
@@ -30,6 +33,7 @@ def main():
     compose = ["docker", "compose", "--env-file", str(args.env_file), "-f", str(args.compose)]
     names = ["probe_" + secrets.token_hex(5) for _ in range(2)]
     password = secrets.token_urlsafe(24)
+    image_version = "probe-image-" + secrets.token_hex(8)
 
     def sql(statement):
         return subprocess.run(compose + ["exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1",
@@ -42,7 +46,7 @@ def main():
             self.client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
             self.client.addheaders = [("User-Agent", "GamjaOJ-Smoke/1.0")]
 
-        def call(self, path, method="GET", data=None, csrf=True, form=False, key=None):
+        def call(self, path, method="GET", data=None, csrf=True, form=False, key=None, image=None):
             headers = {}
             if key is not None:
                 headers["Idempotency-Key"] = str(key)
@@ -50,7 +54,15 @@ def main():
                 status, token, _ = self.call("/api/auth/csrf")
                 assert status == 200
                 headers[token["headerName"]] = token["token"]
-            if data is not None:
+            if image is not None:
+                boundary = "GamjaOJ" + secrets.token_hex(12)
+                body = b""
+                for field, value in (data or {}).items():
+                    body += ("--"+boundary+'\r\nContent-Disposition: form-data; name="'+field+'"\r\n\r\n'+value+'\r\n').encode()
+                body += ("--"+boundary+'\r\nContent-Disposition: form-data; name="file"; filename="diagram.png"\r\nContent-Type: image/png\r\n\r\n').encode()+image+("\r\n--"+boundary+"--\r\n").encode()
+                headers["Content-Type"] = "multipart/form-data; boundary="+boundary
+                data = body
+            elif data is not None:
                 headers["Content-Type"] = "application/x-www-form-urlencoded" if form else "application/json"
                 data = (urllib.parse.urlencode(data) if form else json.dumps(data)).encode()
             request = urllib.request.Request(base + path, data=data, headers=headers, method=method)
@@ -59,7 +71,7 @@ def main():
             except urllib.error.HTTPError as error:
                 response = error
             body = response.read()
-            return response.status, json.loads(body) if body else None, response.headers
+            return response.status, (json.loads(body) if "json" in response.headers.get("Content-Type", "") else body) if body else None, response.headers
 
     a, b = Browser(), Browser()
     try:
@@ -81,6 +93,34 @@ def main():
                    + "') AND password_hash LIKE '$2a$12$%'") == "2"
         assert sql("SELECT count(*) FROM spring_session WHERE principal_name IN ('" + "','".join(names) + "')") == "2"
         print("PASS: signup/login, CSRF, BCrypt, independent user IDs and stored preferences/sessions")
+        # A private, disposable copy exercises real multipart and media ACLs without touching public problems.
+        package = json.loads(sql("SELECT package_json FROM problem_version WHERE id='sum-v1'"))
+        package["version"] = image_version
+        serialized = json.dumps(package, ensure_ascii=False, separators=(",", ":"))
+        package_hash = hashlib.sha256(serialized.encode()).hexdigest()
+        sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id,shared) SELECT '"+image_version+"','"+serialized.replace("'", "''")+"','"+package_hash+"',runtime_image,runner_policy,true,'"+first["id"]+"',false FROM problem_version WHERE id='sum-v1'")
+        def chunk(kind, data):
+            return struct.pack("!I", len(data))+kind+data+struct.pack("!I", zlib.crc32(kind+data))
+        png = b"\x89PNG\r\n\x1a\n"+chunk(b"IHDR", struct.pack("!IIBBBBB",32,24,8,2,0,0,0))+chunk(b"IDAT",zlib.compress((b"\x00"+b"\x55\x88\x77"*32)*24))+chunk(b"IEND",b"")
+        image_key = str(uuid.uuid4())
+        image_path = "/api/problems/"+image_version+"/illustrations"
+        image_fields = {"alt":"격자 이동 방향", "caption":"규칙 설명 그림"}
+        assert a.call(image_path,"POST",image_fields,csrf=False,key=image_key,image=png)[0] == 403
+        assert a.call(image_path,"POST",image_fields,key=uuid.uuid4(),image=b"<svg onload='alert(1)'/>")[0] == 400
+        status, saved_images, _ = a.call(image_path,"POST",image_fields,key=image_key,image=png)
+        assert status == 200 and len(saved_images["illustrations"]) == 1
+        assert a.call(image_path,"POST",image_fields,key=image_key,image=png)[1] == saved_images
+        media_path = saved_images["illustrations"][0]["src"]
+        status, pixels, headers = a.call(media_path)
+        assert status == 200 and pixels.startswith(b"\x89PNG") and headers["Content-Type"] == "image/png" and headers["Cache-Control"] == "no-store"
+        assert b.call(media_path)[0] == 404
+        sql("UPDATE problem_version SET shared=true WHERE id='"+image_version+"'")
+        assert b.call(image_path)[1]["canEdit"] is False and b.call(media_path)[0] == 200
+        assert b.call(image_path,"POST",image_fields,key=uuid.uuid4(),image=png)[0] == 404
+        sql("UPDATE problem_version SET shared=false WHERE id='"+image_version+"'")
+        assert b.call(media_path)[0] == 404
+        assert sql("SELECT package_sha256 FROM problem_version WHERE id='"+image_version+"'") == package_hash
+        print("PASS: actual multipart upload/PNG media, CSRF, exact replay, private/shared ACL and unchanged judge package")
         training_id = str(uuid.uuid4())
         start = {"problemVersion":"sum-v1", "goal":"재시작 후 훈련 이어가기"}
         assert a.call("/api/training-sessions", "POST", start, key=training_id)[0] == 200
@@ -116,6 +156,12 @@ def main():
         assert a.call("/api/me")[1]["trainingGoal"] == "DFS 복원"
         assert b.call("/api/me")[1]["id"] == second["id"]
         print("PASS: application restart preserves login and account-specific preferences")
+        assert a.call(image_path)[1] == saved_images
+        assert a.call(media_path)[1] == pixels
+        assert b.call(media_path)[0] == 404
+        assert a.call(image_path+"/"+image_key,"DELETE")[1]["illustrations"] == []
+        assert a.call(media_path)[0] == 404
+        print("PASS: problem image bytes/metadata/privacy survive restart; owner deletion revokes media")
         restored = a.call("/api/training-sessions/"+training_id)[1]["session"]
         assert restored["id"] == training_id and restored["status"] == "ACTIVE" and restored["goal"] == start["goal"]
         assert a.call("/api/training-sessions", "POST", start, key=training_id)[1]["id"] == training_id
@@ -167,6 +213,7 @@ def main():
     finally:
         selected = "('" + "','".join(names) + "')"
         sql("DELETE FROM spring_session WHERE principal_name IN " + selected)
+        sql("DELETE FROM problem_version WHERE id='"+image_version+"'")
         sql("DELETE FROM app_user WHERE username IN " + selected)
 
 

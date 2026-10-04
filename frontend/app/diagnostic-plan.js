@@ -1,4 +1,5 @@
 'use client';
+import ProblemStatement from './problem-statement';
 import SelectControl from './select-control';
 import {useRef,useState} from 'react';
 export default function DiagnosticPlan({api,row,index,onOpen,onGeneration,sourceKind="CODE_OBSERVATION"}) {
@@ -53,7 +54,7 @@ export default function DiagnosticPlan({api,row,index,onOpen,onGeneration,source
           </div>}
           {plan.status==='READY'?<><label>직접 고를 연습 문제<SelectControl value={selected[plan.id]||''} disabled={busy} onChange={e=>setSelected({...selected,[plan.id]:e.target.value})}><option value="">문제를 선택하세요</option>{options.problems.map(p=><option key={p.version} value={p.version}>{p.title}</option>)}</SelectControl></label>
             <p className="muted">현재 풀 수 있는 일반 문제 목록입니다. 이 목표와의 적합성이 자동 검증된 추천은 아닙니다.</p>
-            {selected[plan.id]&&<p className="diagnostic-statement">{options.problems.find(p=>p.version===selected[plan.id])?.statement}</p>}
+            {selected[plan.id]&&<ProblemStatement statement={options.problems.find(p=>p.version===selected[plan.id])?.statement} version={selected[plan.id]} api={api} manage={false}/>}
             <button className="primary" disabled={busy||!selected[plan.id]} onClick={()=>start(plan)}>선택한 문제로 훈련 시작</button></>:
             plan.sessionId?<button className="secondary" disabled={busy||plan.status==='HELD'} onClick={()=>start(plan)}>{plan.status==='TRAINING_ENDED'?'연습 문제 다시 보기':'시작한 훈련 이어서 보기'}</button>:
             <p>{plan.status==='NEEDS_REVIEW'?'저장 후 정정 의견이 변경됐어요. 최신 내용을 읽고 목표를 다시 확정해 주세요.':'진단이나 근거 재검토가 끝난 뒤 확인할 수 있어요.'}</p>}

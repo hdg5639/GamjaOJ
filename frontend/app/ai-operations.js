@@ -1,4 +1,5 @@
 'use client';
+import ProblemStatement from './problem-statement';
 import SelectControl from './select-control';
 import HybridGeneration from './hybrid-generation';
 import SpecDrafts from './spec-drafts';
@@ -107,7 +108,7 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
     </fieldset>
     {choice&&tags.length>0&&!resolved&&!selectionError&&<p role="status">선택한 조합의 규칙을 확인하고 있어요…</p>}
     {selectionError&&<p role="alert" className="notice error">{selectionError} <button className="secondary" onClick={()=>setSelectionAttempt(n=>n+1)}>조합 다시 확인</button></p>}
-    {resolved&&<details className="generation-contract"><summary>출제 규칙: {resolved.title}</summary><p>{resolved.statement}</p></details>}
+    {resolved&&<details className="generation-contract"><summary>출제 규칙: {resolved.title}</summary><ProblemStatement statement={resolved.statement}/></details>}
     <div className="generation-recommendations">
       <button className="secondary" disabled={busy||!!pending.current||!resolved||recommending} onClick={recommend}>{recommending?'규칙 찾는 중…':'다른 규칙 추천'}</button>
       <p className="draft-help">선택한 태그를 유지하면서 최근 12건에서 덜 만든 규칙을 추천해요. 추천에는 API 비용이 들지 않습니다.</p>
@@ -115,7 +116,7 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
       {suggestions&&<div aria-live="polite">
         {!suggestions.alternativeAvailable&&<p className="draft-help">선택한 태그에서는 이 규칙만 지원해요. 다른 조합을 원하면 조건 태그를 줄여 주세요.</p>}
         {suggestions.alternativeAvailable&&<ul>{suggestions.suggestions.map(item=><li key={item.template}>
-          <details><summary>{item.title} · 최근 {item.recentCount}회</summary><p>{item.statement}</p></details>
+          <details><summary>{item.title} · 최근 {item.recentCount}회</summary><ProblemStatement statement={item.statement}/></details>
           <button className="secondary" disabled={busy||!!pending.current} onClick={()=>{setTags(item.tags);setSourceAnalysisId('');}} aria-label={item.title+' 적용'}>이 조합 적용</button>
         </li>)}</ul>}
       </div>}
