@@ -165,6 +165,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     if (busy || pending) return;
     try{localStorage.setItem(selectionKey,nextVersion);}catch{/* Draft restoration still works without selection persistence. */}
     if (nextVersion !== version) {
+      selectionRevision.current++;setSelected(null);setHistory([]);setHistoryOpen(false);
       setVersion(nextVersion);
       restoreDraft(nextVersion);
     }
@@ -354,7 +355,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     <div className="practice-view" hidden={screen !== 'practice'}>
     <nav className="workspace-tools" aria-label="풀이 영역">
         {problems.length > 1 && <label className="solve-problem-choice"><span className="sr-only">풀이할 문제</span><SelectControl value={version} disabled={busy || !!pending} aria-describedby={busy || pending || activeSession ? "problem-selection-status" : undefined}
-          onChange={event => { try{localStorage.setItem(selectionKey,event.target.value);}catch{} setVersion(event.target.value); restoreDraft(event.target.value);setInspected(null); }}>
+          onChange={event => chooseProblem(event.target.value)}>
           {problems.map(item => <option key={item.version} value={item.version}>{item.problemHeld?'[검토 중] ':''}{item.title} · {shortProblemId(item.version)}</option>)}
         </SelectControl></label>}
 
@@ -365,7 +366,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       <div className="tool-buttons">{[['history','제출 기록'],['feedback','피드백']].map(([key,name])=><button id={'tool-'+key} key={key} aria-expanded={resultsOpen&&tool===key} aria-controls="workspace-results" className={resultsOpen&&tool===key?'active':''} onClick={()=>showTool(key)}>{name}</button>)}</div>
     </nav>
     {problem && <div className="practice-grid" data-layout={layout} data-pane-order={paneOrder} data-mirrored={mirrored} data-mobile-pane={mobilePane} data-results-open={resultsOpen} style={{...columnLayoutStyle(paneOrder,firstColumn,columnSplit,mirrored,size.ratio,split),'--result-width':`${resultSize}px`,'--problem-share':`${size.ratio}fr`,'--editor-share':`${100-size.ratio}fr`}}>
-      <article className="problem-card">
+      <article className="problem-card" key={problem.version}>
         <span className="version">문제 · <ProblemId version={problem.version}/></span><h2 id="problem-title" tabIndex={-1}>{problem.title}</h2><ThinkingDifficulty problem={problem}/>
         <LimitChips profile={inspected?inspected.execution:problem.languages?.find(l=>l.id===language)} label={inspected?recordLanguageLabel(inspected):(problem.languages?.find(l=>l.id===language)||languageInfo[language])?.label}/><ProblemStatement key={problem.version} statement={problem.statement} version={problem.version} api={api}/>
         {problem.api&&<section aria-label="구현할 API"><h3>{problem.api.api.mode==='MULTI_API'?'명령 처리 - 다중 API':'명령 처리 - 단일 함수'} · Java</h3><p>UserSolution의 메서드를 완성하세요. 입력과 출력은 제공된 구동 코드가 처리합니다. 한 케이스의 호출은 같은 객체를 사용하고, 다음 케이스에서는 새 객체를 만듭니다. 시간 제한은 입력에 포함된 모든 케이스와 호출 전체에 적용됩니다.</p>{problem.api.api.methods.map(m=><div key={m.name}><h4><code>{m.returns} {m.name}({m.parameters.map(p=>`${p.type} ${p.name}`).join(', ')})</code></h4><p>{m.description}</p></div>)}<details><summary>Main.java · 읽기 전용</summary><pre>{problem.api.driver}</pre></details></section>}
