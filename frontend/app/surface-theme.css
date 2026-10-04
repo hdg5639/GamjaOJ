@@ -132,3 +132,30 @@
 .feedback-compact .feedback-past-entry { padding-inline:8px; border-top:1px solid var(--surface-edge); }
 .feedback-compact .feedback-empty { font-size:13px; line-height:1.6; }
 .feedback-submission-info { margin:4px 0 12px; border-bottom:1px solid var(--surface-edge); }
+
+/* Typed callable cases retain the console palette and existing form relief. */
+.case-row:has(.callable-case-editor) { grid-template-columns:minmax(0,1fr) auto; align-items:start; }
+.callable-case-editor { min-width:0; overflow-wrap:anywhere; }
+.callable-case-toolbar,.callable-call-heading { display:flex; align-items:end; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.callable-case-toolbar strong { font-size:13px; }
+.callable-call { padding:12px 0; border-top:1px solid var(--console-line,#2c3d39); }
+.callable-call-heading > label { flex:1; min-width:0; }
+.callable-arguments { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr)); gap:8px; margin:8px 0; }
+.callable-arguments label small { color:var(--console-muted,#9fb2ad); }
+.run-console .callable-case-editor input:not([type="checkbox"]):not([type="file"]) { width:100%; min-width:0; padding:8px; background:var(--console-background,#0f1716); color:var(--console-ink,#e6efec); border:1px solid transparent; border-radius:8px; box-shadow:var(--surface-inset); font:inherit; }
+.run-console .callable-compare { display:flex; align-items:center; gap:8px; margin:8px 0; }
+.callable-case-note,.callable-method-help p,.callable-guide p { font-size:12px; line-height:1.6; color:var(--console-muted,#9fb2ad); }
+.callable-raw-fields { display:grid; gap:8px; margin:10px 0; }
+.callable-guide pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
+.callable-files { margin-top:10px; }
+.callable-files input[type="file"] { width:100%; font-size:12px; }
+.callable-case-editor .notice.error { color:var(--console-ink,#e6efec); }
+@media(max-width:560px) { .case-row:has(.callable-case-editor) { grid-template-columns:1fr; } }
+.callable-cases-dialog { --console-background:var(--surface); --console-input:var(--surface); --console-ink:var(--ink); --console-muted:var(--muted); --console-line:var(--surface-edge); }
+.callable-cases-dialog .case-editor { padding:20px; border:0; }
+.callable-cases-dialog .case-editor-help,.callable-cases-dialog .case-row label { color:var(--muted); }
+.callable-cases-dialog .case-editor-actions { padding-top:12px; }
+.callable-cases-dialog .callable-call { background:transparent; }
+.callable-cases-dialog .callable-files > label { margin:8px 0; }
+@media(max-width:560px) { .callable-cases-dialog .case-editor { padding:16px; } }
+.run-console .callable-cases-dialog .callable-case-editor input:not([type="checkbox"]):not([type="file"]) { background:color-mix(in srgb,var(--surface) 56%,transparent); }

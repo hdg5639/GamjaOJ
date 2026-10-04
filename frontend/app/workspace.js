@@ -404,7 +404,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
           onRun={() => {if(!busy&&!inspected&&problem.submissionsEnabled)setRunRequest(value=>value+1);}}
           onSubmit={() => document.getElementById('code-form')?.requestSubmit()} />
         </div>{inspected&&<div className="editor-view"><CodeEditor key={inspected.id} id="snapshot-source" label="기록 코드" language={recordLanguage(inspected)} value={inspected.source||''} disabled={true} onChange={()=>{}} onSubmit={()=>{}} onLimit={()=>{}} /></div>}</div>}
-        bottom={<RunConsole exportEnabled key={user.id} user={user} api={api} scope={version} disabled={!!inspected || !problem.submissionsEnabled}
+        bottom={<RunConsole callable={problem.api?.api} exportEnabled key={user.id} user={user} api={api} scope={version} disabled={!!inspected || !problem.submissionsEnabled}
           body={{problemVersion:version,source,language,sessionId:currentSession?.id || null}} examples={problem.examples?.length?problem.examples:[{input:problem.sampleInput||'',output:problem.sampleOutput||''}]}
           runRequest={runRequest} casesRequest={casesRequest} onCaseCount={setCaseCount} onActivity={() => setActivity(value => value + 1)}
           submission={selected&&selected.id===justSubmitted&&selected.problemVersion===version?selected:null} onShowRecords={()=>showTool('history')}>
