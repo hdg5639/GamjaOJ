@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from runner.judge import Runner,LANGUAGES,checked_profile,CompileCache,GeneratedCache
 from runner.execution_contract import contract
-from scripts.resource_evidence import complete_qualification
+from scripts.resource_evidence import complete_qualification,audit_plan
 
 def canonical(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(value):return hashlib.sha256(canonical(value).encode()).hexdigest()
@@ -75,8 +75,7 @@ class Calibration:
    if result['verdict']=='IE':raise RuntimeError('Runner infrastructure: '+result.get('error',''))
    return result
  def measure(self,path,language):
-  job=json.loads(path.read_text());version=job['version'];source=job['references'][language];plan=copy.deepcopy(job['problem'])
-  plan['tests'].extend(copy.deepcopy(job.get('auditTests',[])))
+  job=json.loads(path.read_text());version=job['version'];source=job['references'][language];plan=audit_plan(job)
   if 'api' in plan:
    bundles=json.loads((self.args.drivers/(version+'.json')).read_text());plan['callable']=bundles['languages'][language]
   fingerprint=digest(dict(version=version,packageHash=job['packageHash'],plan=plan,language=language,source=source,allowed=job.get('allowedReferences',{}).get(language,[]),slow=job.get('slow',{}).get(language),intent=job.get('intent',{}),contract=self.execution))

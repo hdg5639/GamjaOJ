@@ -5,7 +5,7 @@ references and inefficient witnesses. Private reports contain no public answers.
 import argparse,copy,hashlib,json,sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from scripts.resource_evidence import canonical,digest,complete_qualification
+from scripts.resource_evidence import canonical,digest,complete_qualification,audit_plan
 
 def quote(v):return "'"+str(v).replace("'","''")+"'"
 
@@ -22,7 +22,7 @@ def stage(jobs,measurements,certificates,output):
   proof=json.loads(certificate.read_text())
   if proof.get('packageHash')!=job['packageHash'] or proof.get('maximumInputsReviewed') is not True or not proof.get('allowedApproaches') or not proof.get('reviewedBy') or (job.get('intent',{}).get('efficiencyRequired') and not proof.get('inefficientApproaches')):
    issues.append(dict(version=version,reason='invalid or stale intent certificate'));continue
-  expected_plan=copy.deepcopy(job['problem']);expected_plan['tests'].extend(copy.deepcopy(job.get('auditTests',[])))
+  expected_plan=audit_plan(job)
   bundles=None
   if 'api' in expected_plan:
    driver_file=jobs.parent/'drivers'/(version+'.json')

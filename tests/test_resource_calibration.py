@@ -7,6 +7,20 @@ def load(name,file):
  s=importlib.util.spec_from_file_location(name,Path(__file__).resolve().parents[1]/'scripts'/file);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 cal=load('resource_calibration','calibrate-problem-resources.py');stage=load('resource_stage','stage-resource-limits.py')
 class CalibrationTests(unittest.TestCase):
+ def test_private_generated_witness_requires_new_qualification_and_preserves_original_package(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder);jobs,reports,proof=self.complete_fixture(root);path=jobs/'test-v1.json';job=json.loads(path.read_text())
+   job['auditGenerated']={'generator':'max input generator','reference':'independent oracle','tests':[{'id':'max-generated','seed':'1','expected':'REFERENCE'}]}
+   plan=cal.audit_plan(job)
+   self.assertNotIn('generated',job['problem']);self.assertEqual(job['auditGenerated'],plan['generated'])
+   plan['generated']['tests'][0]['seed']='2';self.assertEqual('1',job['auditGenerated']['tests'][0]['seed'])
+   record=json.loads((reports/'test-v1-JAVA.json').read_text());record.update(maxWallMs=100,maxMemoryBytes=1048576)
+   audit=cal.Calibration(SimpleNamespace(jobs=jobs,output=root/'out',drivers=root/'drivers'))
+   self.assertFalse(audit.reusable(job,'JAVA',cal.audit_plan(job),record))
+   path.write_text(json.dumps(job));self.assertFalse(stage.stage(jobs,reports,proof,root/'out'))
+   self.assertFalse((root/'out/resource-release.sql').exists())
+   job['problem']['generated']={'generator':'original'}
+   with self.assertRaises(ValueError):cal.audit_plan(job)
  def test_audit_build_cache_is_inventory_hash_scoped_and_keeps_production_policy(self):
   cache=cal.AuditCompileCache({'ordinary-v1':'package-a'})
   key=cache.key('ordinary-v1',cal.LANGUAGES['CPP']['image'],b'code')

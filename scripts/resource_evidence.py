@@ -1,6 +1,7 @@
 """Identity checks shared by private resource qualification and release staging."""
 import hashlib
 import json
+import copy
 
 
 def canonical(value):
@@ -9,6 +10,18 @@ def canonical(value):
 
 def digest(value):
     return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def audit_plan(job):
+    """Build the same private measurement plan for calibration and release review."""
+    plan = copy.deepcopy(job['problem'])
+    plan['tests'].extend(copy.deepcopy(job.get('auditTests', [])))
+    generated = job.get('auditGenerated')
+    if generated:
+        if 'generated' in plan:
+            raise ValueError('audit generator cannot replace an existing problem generator')
+        plan['generated'] = copy.deepcopy(generated)
+    return plan
 
 
 def complete_qualification(qualified, language, source_hash, plan, profile):
