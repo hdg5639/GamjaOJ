@@ -8,6 +8,10 @@ from pathlib import Path
 def canonical(v):return json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(v):return hashlib.sha256(canonical(v).encode()).hexdigest()
 def quote(v):return "'"+str(v).replace("'","''")+"'"
+def complete_qualification(qualified,language,source_hash,plan,profile):
+ expected={t['id'] for t in plan['tests']}|{t['id'] for t in plan.get('generated',{}).get('tests',[])}
+ actual=qualified.get('tests',[])
+ return (qualified.get('verdict')=='AC' and qualified.get('problem_sha256')==digest(plan) and qualified.get('language')==language and qualified.get('source_sha256')==source_hash and qualified.get('execution_mode')=='FUNCTIONAL' and qualified.get('judge_all') is True and qualified.get('execution_profile')==profile and {t.get('id') for t in actual}==expected and len(actual)==len(expected) and all(t.get('verdict')=='AC' and t.get('memory_measurement')=='cgroup-peak-observed' and t.get('memory_peak_bytes',0)>0 for t in actual))
 
 def stage(jobs,measurements,certificates,output):
  output.mkdir(parents=True,exist_ok=True)
@@ -34,13 +38,14 @@ def stage(jobs,measurements,certificates,output):
    report=json.loads(record.read_text());source=job['references'].get(language)
    if not source or report.get('status')!='MEASURED' or report.get('packageHash')!=job['packageHash'] or report.get('sourceHash')!=hashlib.sha256(source.encode()).hexdigest() or report.get('qualified',{}).get('verdict')!='AC':
     issues.append(dict(version=version,language=language,reason='qualification/source/package fence failed'));continue
-   qualified=report['qualified'];profile=qualified.get('execution_profile',{});proposal=report.get('proposal',{})
+   qualified=report['qualified'];proposal=report.get('proposal',{})
    trusted_profile=execution['languages'][language]|proposal
    if bundles:expected_plan['callable']=bundles[language]
-   expected={t['id'] for t in job['problem']['tests']+job.get('auditTests',[])}|{t['id'] for t in job['problem'].get('generated',{}).get('tests',[])}
-   actual=qualified.get('tests',[])
-   if report.get('executionContract')!=execution or qualified.get('problem_sha256')!=digest(expected_plan) or qualified.get('language')!=language or qualified.get('source_sha256')!=report['sourceHash'] or qualified.get('execution_mode')!='FUNCTIONAL' or qualified.get('judge_all') is not True or {t.get('id') for t in actual}!=expected or len(actual)!=len(expected) or any(t.get('verdict')!='AC' or t.get('memory_measurement')!='cgroup-peak-observed' or not t.get('memory_peak_bytes') for t in actual) or profile!=trusted_profile or set(proposal)!={'testWallSeconds','memoryMb'}:
+   if report.get('executionContract')!=execution or set(proposal)!={'testWallSeconds','memoryMb'} or not complete_qualification(qualified,language,report['sourceHash'],expected_plan,trusted_profile):
     issues.append(dict(version=version,language=language,reason='complete qualified corpus/profile evidence missing'));continue
+   alternatives=job.get('allowedReferences',{}).get(language,[]);qualified_alternatives=report.get('qualifiedAlternates',[])
+   if len(alternatives)!=len(qualified_alternatives) or any(record.get('name')!=alternative['name'] or record.get('sourceHash')!=hashlib.sha256(alternative['source'].encode()).hexdigest() or not complete_qualification(record.get('qualified',{}),language,record['sourceHash'],expected_plan,trusted_profile) for alternative,record in zip(alternatives,qualified_alternatives)):
+    issues.append(dict(version=version,language=language,reason='allowed algorithm alternative not fully qualified'));continue
    if language not in proof.get('languageEvidence',{}):issues.append(dict(version=version,language=language,reason='maximum-input language evidence missing'));continue
    evidence=proof['languageEvidence'][language]
    if evidence.get('measurementHash')!=digest(report):issues.append(dict(version=version,language=language,reason='maximum-input evidence identity mismatch'));continue

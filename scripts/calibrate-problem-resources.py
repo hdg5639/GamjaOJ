@@ -58,17 +58,25 @@ class Calibration:
   record=dict(version=version,language=language,fingerprint=fingerprint,packageHash=job['packageHash'],sourceHash=hashlib.sha256(source.encode()).hexdigest(),executionContract=self.execution,status='RUNNING',scope='fixed corpus plus declared generated witnesses; not exhaustive worst-case proof',reports=[])
   write(out,record)
   try:
-   broad=self.run(language,source,plan,dict(testWallSeconds=20,memoryMb=LANGUAGES[language]['memoryMb']));record['reports'].append(broad);write(out,record)
-   if broad['verdict']!='AC':raise ValueError('reference did not pass broad budget: '+broad['verdict'])
-   repeat=worst_plan(plan,broad)
-   for _ in range(2):
-    report=self.run(language,source,repeat,dict(testWallSeconds=20,memoryMb=LANGUAGES[language]['memoryMb']));record['reports'].append(report);write(out,record)
-    if report['verdict']!='AC':raise ValueError('reference replay: '+report['verdict'])
+   allowed=job.get('allowedReferences',{}).get(language,[])
+   sources=[source]+[alternative['source'] for alternative in allowed]
+   for candidate in sources:
+    broad=self.run(language,candidate,plan,dict(testWallSeconds=20,memoryMb=LANGUAGES[language]['memoryMb']));record['reports'].append(broad);write(out,record)
+    if broad['verdict']!='AC':raise ValueError('allowed reference did not pass broad budget: '+broad['verdict'])
+    repeat=worst_plan(plan,broad)
+    for _ in range(2):
+     report=self.run(language,candidate,repeat,dict(testWallSeconds=20,memoryMb=LANGUAGES[language]['memoryMb']));record['reports'].append(report);write(out,record)
+     if report['verdict']!='AC':raise ValueError('allowed reference replay: '+report['verdict'])
    tests=[t for r in record['reports'] for t in r['tests']]
    if any(t.get('memory_measurement')!='cgroup-peak-observed' or not t.get('memory_peak_bytes') for t in tests):raise ValueError('trusted memory observation missing')
    peak=max(t['memory_peak_bytes'] for t in tests);wall=max(t['wall_ms'] for t in tests);proposal=budget(language,wall,peak);record.update(maxWallMs=wall,maxMemoryBytes=peak,proposal=proposal);write(out,record)
    qualified=self.run(language,source,plan,proposal);record['qualified']=qualified;write(out,record)
    if qualified['verdict']!='AC':raise ValueError('measured resource proposal rejected correct reference: '+qualified['verdict'])
+   record['qualifiedAlternates']=[]
+   for alternative in allowed:
+    qualified=self.run(language,alternative['source'],plan,proposal)
+    record['qualifiedAlternates'].append(dict(name=alternative['name'],sourceHash=hashlib.sha256(alternative['source'].encode()).hexdigest(),qualified=qualified));write(out,record)
+    if qualified['verdict']!='AC':raise ValueError('measured proposal rejected allowed '+alternative['name']+': '+qualified['verdict'])
    witness=job.get('slow',{}).get(language)
    if witness:
     tiny=copy.deepcopy(plan);tiny.pop('generated',None);tiny['tests']=tiny['tests'][:3]

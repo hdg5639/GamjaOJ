@@ -4,6 +4,8 @@ from pathlib import Path
 
 def canonical(v):return json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(v):return hashlib.sha256(canonical(v).encode()).hexdigest()
+def write(path,value):
+ temporary=path.with_suffix('.tmp');temporary.write_text(canonical(value)+'\n');temporary.replace(path)
 
 def prepare(root,inventory,output):
  refs={};slow={};intent={}
@@ -44,7 +46,7 @@ def prepare(root,inventory,output):
   sources=refs.get(v,{})
   if not sources and v=='diagnostic-algo-mix-a-v2-safe-presentation-order-v2':sources=refs.get('diagnostic-algo-mix-a-v2-smallest-valid-order-v1',{})
   if row.get('reference'):sources={**sources,'JAVA':row['reference']}
-  override=output.parent/'reference-overrides'/(v+'.json')
+  authored={};override=output.parent/'reference-overrides'/(v+'.json')
   if override.exists():
    authored=json.loads(override.read_text())
    if authored.get('packageHash')!=row['packageHash']:raise ValueError('stale authored reference: '+v)
@@ -55,13 +57,14 @@ def prepare(root,inventory,output):
   for l in missing:
    if l not in sources:missing[l]+=1
   job=dict(version=v,packageHash=row['packageHash'],problem=pack,oldLimits=row['limits'],diagnostic=row['diagnostic'],references=sources,slow=slow.get(v,{}),intent=intent.get(v,pack.get('semantics',{})))
+  if authored.get('allowedReferences'):job['allowedReferences']=authored['allowedReferences']
   witness=output.parent/'witness-overrides'/(v+'.json')
   if witness.exists():
    evidence=json.loads(witness.read_text())
    if evidence.get('packageHash')!=row['packageHash'] or not evidence.get('tests') or not evidence.get('review'):raise ValueError('stale or incomplete audit witnesses: '+v)
    job.update(auditTests=evidence['tests'],auditReview=evidence['review'])
-  (output/(v+'.json')).write_text(canonical(job)+'\n');jobs.append(dict(version=v,packageHash=row['packageHash'],languages=list(sources),generated=bool(pack.get('generated')),callable='api' in pack,diagnostic=row['diagnostic']))
+  write(output/(v+'.json'),job);jobs.append(dict(version=v,packageHash=row['packageHash'],languages=list(sources),generated=bool(pack.get('generated')),callable='api' in pack,diagnostic=row['diagnostic']))
  summary=dict(total=len(jobs),missing=missing,problems=jobs)
- (output.parent/'coverage.json').write_text(canonical(summary)+'\n');print(canonical(dict(total=len(jobs),missing=missing)))
+ write(output.parent/'coverage.json',summary);print(canonical(dict(total=len(jobs),missing=missing)))
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('--inventory',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();prepare(Path(__file__).resolve().parents[1],a.inventory,a.output)
