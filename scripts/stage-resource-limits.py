@@ -5,7 +5,7 @@ references and inefficient witnesses. Private reports contain no public answers.
 import argparse,copy,hashlib,json,sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from scripts.resource_evidence import canonical,digest,complete_qualification,audit_plan,complete_measurement
+from scripts.resource_evidence import canonical,digest,complete_qualification,audit_plan,complete_measurement,public_example_plan
 
 def quote(v):return "'"+str(v).replace("'","''")+"'"
 
@@ -50,7 +50,7 @@ def stage(jobs,measurements,certificates,output):
    evidence=proof['languageEvidence'][language]
    if evidence.get('measurementHash')!=digest(report):issues.append(dict(version=version,language=language,reason='maximum-input evidence identity mismatch'));continue
    slow=report.get('slow',{});witness=job.get('slow',{}).get(language)
-   if proof.get('inefficientApproaches') and (evidence.get('inefficientWitnessSeparated') is not True or not witness or slow.get('sourceHash')!=hashlib.sha256(witness.encode()).hexdigest() or slow.get('small',{}).get('verdict')!='AC' or slow.get('large',{}).get('verdict') not in ('TLE','MLE')):
+   if proof.get('inefficientApproaches') and (evidence.get('inefficientWitnessSeparated') is not True or not witness or slow.get('sourceHash')!=hashlib.sha256(witness.encode()).hexdigest() or not expected_plan.get('samples') or not complete_qualification(slow.get('small',{}),language,slow['sourceHash'],public_example_plan(expected_plan),trusted_profile) or slow.get('large',{}).get('verdict') not in ('TLE','MLE')):
     issues.append(dict(version=version,language=language,reason='intended inefficient approach not separated'));continue
    proposed[language]=report['proposal']['testWallSeconds'];memory[language]=report['proposal']['memoryMb'];reports[language]=digest(report)
   if len(proposed)!=3:continue
