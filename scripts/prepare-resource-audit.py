@@ -57,7 +57,6 @@ def prepare(root,inventory,output):
  for row in (json.loads(s) for s in inventory.open()):
   v=row['version'];pack=row['package'];assert digest(pack)==row['packageHash'],v
   sources=refs.get(v,{})
-  if not sources and v=='diagnostic-algo-mix-a-v2-safe-presentation-order-v2':sources=refs.get('diagnostic-algo-mix-a-v2-smallest-valid-order-v1',{})
   if row.get('reference'):sources={**sources,'JAVA':row['reference']}
   authored={};override=output.parent/'reference-overrides'/(v+'.json')
   if override.exists():
