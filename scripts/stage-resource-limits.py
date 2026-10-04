@@ -2,16 +2,12 @@
 Requires all three languages, complete maximum-input/intent certificates, requalified
 references and inefficient witnesses. Private reports contain no public answers.
 """
-import argparse,copy,hashlib,json
+import argparse,copy,hashlib,json,sys
 from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from scripts.resource_evidence import canonical,digest,complete_qualification
 
-def canonical(v):return json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':'))
-def digest(v):return hashlib.sha256(canonical(v).encode()).hexdigest()
 def quote(v):return "'"+str(v).replace("'","''")+"'"
-def complete_qualification(qualified,language,source_hash,plan,profile):
- expected={t['id'] for t in plan['tests']}|{t['id'] for t in plan.get('generated',{}).get('tests',[])}
- actual=qualified.get('tests',[])
- return (qualified.get('verdict')=='AC' and qualified.get('problem_sha256')==digest(plan) and qualified.get('language')==language and qualified.get('source_sha256')==source_hash and qualified.get('execution_mode')=='FUNCTIONAL' and qualified.get('judge_all') is True and qualified.get('execution_profile')==profile and {t.get('id') for t in actual}==expected and len(actual)==len(expected) and all(t.get('verdict')=='AC' and t.get('memory_measurement')=='cgroup-peak-observed' and t.get('memory_peak_bytes',0)>0 for t in actual))
 
 def stage(jobs,measurements,certificates,output):
  output.mkdir(parents=True,exist_ok=True)

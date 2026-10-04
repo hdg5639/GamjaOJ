@@ -7,6 +7,14 @@ def load(name,file):
  s=importlib.util.spec_from_file_location(name,Path(__file__).resolve().parents[1]/'scripts'/file);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 cal=load('resource_calibration','calibrate-problem-resources.py');stage=load('resource_stage','stage-resource-limits.py')
 class CalibrationTests(unittest.TestCase):
+ def test_audit_build_cache_is_inventory_hash_scoped_and_keeps_production_policy(self):
+  cache=cal.AuditCompileCache({'ordinary-v1':'package-a'})
+  key=cache.key('ordinary-v1',cal.LANGUAGES['CPP']['image'],b'code')
+  self.assertIsNotNone(key);self.assertIsNone(cache.key('unknown',cal.LANGUAGES['CPP']['image'],b'code'))
+  self.assertIsNone(cache.key('ordinary-v1','untrusted-image',b'code'))
+  self.assertNotEqual(key,cache.key('ordinary-v1',cal.LANGUAGES['CPP']['image'],b'changed'))
+  self.assertNotEqual(key,cal.AuditCompileCache({'ordinary-v1':'package-b'}).key('ordinary-v1',cal.LANGUAGES['CPP']['image'],b'code'))
+  self.assertIsNone(cal.CompileCache().key('ordinary-v1',cal.LANGUAGES['CPP']['image'],b'code'))
  def test_margins_are_bounded_language_specific_and_reject_capacity_overflow(self):
   self.assertEqual({'testWallSeconds':0.75,'memoryMb':192},cal.budget('JAVA',250,40*1048576))
   self.assertEqual({'testWallSeconds':0.4,'memoryMb':32},cal.budget('CPP',230,10*1048576))
@@ -57,6 +65,20 @@ class CalibrationTests(unittest.TestCase):
    for text in ['BEGIN;','COMMIT;','LOCK TABLE','active inventory changed','package_sha256','IS NOT DISTINCT FROM NULL','resource or package fence changed']:self.assertIn(text,sql)
    (reports/'test-v1-CPP.json').unlink()
    self.assertFalse(stage.stage(jobs,reports,proof,root/'out'));self.assertFalse((root/'out/resource-release.sql').exists())
+ def test_reuse_tracks_the_measured_language_and_exact_corpus_not_unrelated_translation(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder);jobs,reports,proof=self.complete_fixture(root);job=json.loads((jobs/'test-v1.json').read_text());record=json.loads((reports/'test-v1-JAVA.json').read_text());record.update(maxWallMs=100,maxMemoryBytes=1048576)
+   audit=cal.Calibration(SimpleNamespace(jobs=jobs,drivers=root/'drivers',output=root/'out'))
+   job['references']['CPP']='new native C++ translation';job['oldLimits']={'JAVA':8}
+   self.assertTrue(audit.reusable(job,'JAVA',job['problem'],record))
+   changed=json.loads(json.dumps(job['problem']));changed['tests'].append({'id':'new-max'})
+   self.assertFalse(audit.reusable(job,'JAVA',changed,record))
+   job['allowedReferences']={'JAVA':[{'name':'unmeasured allowed tree','source':'tree'}]}
+   self.assertFalse(audit.reusable(job,'JAVA',job['problem'],record));job.pop('allowedReferences')
+   job['slow']={'JAVA':'new slow witness'}
+   self.assertFalse(audit.reusable(job,'JAVA',job['problem'],record));job.pop('slow')
+   job['references']['JAVA']='changed Java reference'
+   self.assertFalse(audit.reusable(job,'JAVA',job['problem'],record))
  def test_signed_certificate_cannot_hide_missing_case_changed_profile_or_missing_slow_witness(self):
   for failure in ['case','profile','contract','slow','plan','alternate']:
    with self.subTest(failure=failure),tempfile.TemporaryDirectory() as folder:
