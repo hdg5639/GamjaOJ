@@ -11,10 +11,20 @@ ROOT=Path(__file__).resolve().parents[1]
 class ProblemIllustrationContract(unittest.TestCase):
  def test_manifest_is_bound_to_reviewed_text_and_safe_content_hash(self):
   reviewed=json.loads((ROOT/'problems/illustrations/reviewed-statements-v1.json').read_text())
+  aliases=json.loads((ROOT/'problems/illustrations/approved-case-bound-aliases-v1.json').read_text())
   manifest=json.loads((ROOT/'backend/src/main/resources/problem-illustrations-v1.json').read_text())
-  self.assertEqual(len(manifest),26)
+  self.assertEqual(len(manifest),len(reviewed)+len(aliases))
+  self.assertEqual(len({(x['version'],x['statementSha256']) for x in manifest}),len(manifest))
+  for version,alias in aliases.items():
+   self.assertEqual(alias['originalStatementSha256'],reviewed[version])
+   self.assertEqual(alias['change'],'ADD_APPROVED_T_BOUND_1_TO_10')
+   entries=[x for x in manifest if x['version']==version]
+   self.assertEqual({x['statementSha256'] for x in entries},{reviewed[version],alias['statementSha256']})
+   self.assertEqual({k:v for k,v in entries[0].items() if k!='statementSha256'}, {k:v for k,v in entries[1].items() if k!='statementSha256'})
   for item in manifest:
-   self.assertEqual(item['statementSha256'],reviewed[item['version']])
+   accepted={reviewed[item['version']]}
+   if item['version'] in aliases:accepted.add(aliases[item['version']]['statementSha256'])
+   self.assertIn(item['statementSha256'],accepted)
    data=(ROOT/'frontend/public/problem-illustrations'/item['file']).read_bytes()
    self.assertEqual(item['file'],hashlib.sha256(data).hexdigest()+'.svg')
    doc=ET.fromstring(data)

@@ -105,10 +105,14 @@ add_inline('iamywl-v1-241bfb705697b488','여러 선행 작업이 합쳐지는 �
 
 def build(inventory):
  by={p['version']:p for p in inventory}; manifest=[]; selected=set();
- reviewed=json.loads((ROOT/'problems/illustrations/reviewed-statements-v1.json').read_text()); public=ROOT/'frontend/public/problem-illustrations'; public.mkdir(parents=True,exist_ok=True)
+ reviewed=json.loads((ROOT/'problems/illustrations/reviewed-statements-v1.json').read_text()); aliases=json.loads((ROOT/'problems/illustrations/approved-case-bound-aliases-v1.json').read_text()); public=ROOT/'frontend/public/problem-illustrations'; public.mkdir(parents=True,exist_ok=True)
  for f in FIGURES:
   p=by[f['version']]; selected.add(f['version'])
-  if reviewed[f['version']] != sha(p['statement']): raise ValueError('Statement changed: review rules again before drawing '+f['version'])
+  accepted={reviewed[f['version']]};alias=aliases.get(f['version'])
+  if alias:
+   if alias['originalStatementSha256']!=reviewed[f['version']] or alias['change']!='ADD_APPROVED_T_BOUND_1_TO_10':raise ValueError('Invalid approved statement alias')
+   accepted.add(alias['statementSha256'])
+  if sha(p['statement']) not in accepted: raise ValueError('Statement changed: review rules again before drawing '+f['version'])
   svg='<svg xmlns="http://www.w3.org/2000/svg" width="800" height="340" viewBox="0 0 800 340" role="img"><title>'+html.escape(f['alt'])+'</title><desc>'+html.escape(f['caption'])+'</desc><defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10" fill="#35766d"/></marker></defs><rect width="800" height="340" rx="12" fill="#f8fafb"/><g font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, sans-serif">'+f['body']+'</g></svg>\n'
   name=sha(svg)+'.svg';(public/name).write_text(svg)
   item={k:f[k] for k in ['version','alt','caption','kind']}|dict(statementSha256=sha(p['statement']),file=name,width=800,height=340)
@@ -116,7 +120,8 @@ def build(inventory):
    anchors=[part.strip() for part in p['statement'].split('\n\n') if part.strip().startswith(f['anchorPrefix'])]
    if len(anchors)!=1:raise ValueError('Ambiguous inline paragraph: '+f['version'])
    item.update(afterParagraph=anchors[0],explanation=f['explanation'])
-  manifest.append(item)
+  # Retain both identities during the staged statement release and later rebuilds.
+  for statement_hash in sorted(accepted):manifest.append(item|dict(statementSha256=statement_hash))
  (ROOT/'backend/src/main/resources/problem-illustrations-v1.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
  # Inventory contains public metadata only. A candidate is not yet an approved drawing.
  with (ROOT/'problems/illustrations/review-v1.csv').open('w',newline='') as stream:
