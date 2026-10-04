@@ -3,7 +3,7 @@ import argparse,hashlib,json,re,sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from runner.judge import validate_problem
-from scripts.resource_evidence import audit_plan
+from scripts.resource_evidence import audit_plan,profiling_seconds
 
 def canonical(v):return json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(v):return hashlib.sha256(canonical(v).encode()).hexdigest()
@@ -82,6 +82,9 @@ def prepare(root,inventory,output):
    evidence=json.loads(witness.read_text())
    if evidence.get('packageHash')!=row['packageHash'] or not (evidence.get('tests') or evidence.get('generated')) or not evidence.get('review'):raise ValueError('stale or incomplete audit witnesses: '+v)
    job.update(auditTests=evidence.get('tests',[]),auditReview=evidence['review'])
+   if 'profilingSeconds' in evidence:
+    job['auditProfilingSeconds']=evidence['profilingSeconds']
+    for language in missing:profiling_seconds(job,language)
    if evidence['review'].get('efficiencyRequired') is True:job['intent']['efficiencyRequired']=True
    if evidence.get('generated'):
     if pack.get('generated'):raise ValueError('audit generator cannot replace an existing problem generator: '+v)

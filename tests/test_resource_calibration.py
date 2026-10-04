@@ -75,8 +75,31 @@ class CalibrationTests(unittest.TestCase):
   self.assertEqual({'testWallSeconds':0.75,'memoryMb':192},cal.budget('JAVA',250,40*1048576))
   self.assertEqual({'testWallSeconds':0.4,'memoryMb':32},cal.budget('CPP',230,10*1048576))
   self.assertEqual({'testWallSeconds':1.55,'memoryMb':64},cal.budget('PYTHON',1000,40*1048576))
-  for wall,memory in [(20000,20*1048576),(1000,250*1048576)]:
+  self.assertEqual({'testWallSeconds':30.05,'memoryMb':48},cal.budget('PYTHON',20000,20*1048576))
+  for wall,memory in [(40000,20*1048576),(1000,250*1048576)]:
    with self.assertRaises(ValueError):cal.budget('CPP',wall,memory)
+ def test_long_probe_is_reviewed_language_local_and_bounded(self):
+  self.assertEqual(20,cal.profiling_seconds({},'PYTHON'))
+  self.assertEqual(60,cal.profiling_seconds({'auditProfilingSeconds':{'PYTHON':60}},'PYTHON'))
+  self.assertEqual(20,cal.profiling_seconds({'auditProfilingSeconds':{'PYTHON':60}},'CPP'))
+  for windows in [{'PYTHON':61},{'PYTHON':19},{'PYTHON':True},{'RUST':60},[]]:
+   with self.assertRaises(ValueError):cal.profiling_seconds({'auditProfilingSeconds':windows},'PYTHON')
+ def test_only_approved_validation_widening_reuses_original_bounded_provenance(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder);jobs,reports,_=self.complete_fixture(root);record=json.loads((reports/'test-v1-JAVA.json').read_text())
+   migration=json.loads((Path(__file__).resolve().parents[1]/'scripts/resource-contract-compatibility.json').read_text())['migrations'][0]
+   previous=copy.deepcopy(cal.contract());previous['files']['runner/judge.py']=migration['oldJudgeHash'];record['executionContract']=previous
+   before=copy.deepcopy(record)
+   self.assertTrue(cal.compatible_execution_evidence(record,cal.contract()))
+   self.assertEqual(before,record)
+   with patch('pathlib.Path.read_bytes',return_value=b'changed runtime body'):
+    self.assertFalse(cal.compatible_execution_evidence(record,cal.contract()))
+   changed=copy.deepcopy(record);changed['executionContract']['files']['runner/worker.py']='unknown build'
+   self.assertFalse(cal.compatible_execution_evidence(changed,cal.contract()))
+   changed=copy.deepcopy(record);changed['qualified']['execution_profile']['testWallSeconds']=21
+   self.assertFalse(cal.compatible_execution_evidence(changed,cal.contract()))
+   changed=copy.deepcopy(record);changed['reports'][0]['runner_environment']={'contract':cal.contract()}
+   self.assertFalse(cal.compatible_execution_evidence(changed,cal.contract()))
   for wall,memory in [(0,1),(-1,1),(float('nan'),1),(1,float('inf')),(True,1)]:
    with self.assertRaises(ValueError):cal.budget('CPP',wall,memory)
  def test_replay_keeps_large_generated_and_peak_memory_witness_even_when_startup_dominates(self):
