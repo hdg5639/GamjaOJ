@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from runner.judge import Runner,LANGUAGES,checked_profile,CompileCache,GeneratedCache
 from runner.execution_contract import contract
-from scripts.resource_evidence import complete_qualification,audit_plan,worst_plan,complete_measurement
+from scripts.resource_evidence import complete_qualification,audit_plan,worst_plan,complete_measurement,public_example_plan
 
 def canonical(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(value):return hashlib.sha256(canonical(value).encode()).hexdigest()
@@ -64,7 +64,7 @@ class Calibration:
    if len(allowed)!=len(qualified) or any(item.get('name')!=alternative['name'] or item.get('sourceHash')!=hashlib.sha256(alternative['source'].encode()).hexdigest() or not complete_qualification(item.get('qualified',{}),language,item['sourceHash'],plan,LANGUAGES[language]|proposal) for alternative,item in zip(allowed,qualified)):return False
    witness=job.get('slow',{}).get(language);slow=record.get('slow',{})
    if slow.get('sourceHash')!=(hashlib.sha256(witness.encode()).hexdigest() if witness else None):return False
-   if witness and (slow.get('small',{}).get('verdict')!='AC' or (job.get('intent',{}).get('efficiencyRequired') and slow.get('large',{}).get('verdict') not in ('TLE','MLE'))):return False
+   if witness and (not complete_qualification(slow.get('small',{}),language,slow['sourceHash'],public_example_plan(plan),LANGUAGES[language]|proposal) or (job.get('intent',{}).get('efficiencyRequired') and slow.get('large',{}).get('verdict') not in ('TLE','MLE'))):return False
    return True
   except (KeyError,TypeError,ValueError):return False
  def run(self,language,source,plan,limits):
@@ -106,7 +106,7 @@ class Calibration:
     if qualified['verdict']!='AC':raise ValueError('measured proposal rejected allowed '+alternative['name']+': '+qualified['verdict'])
    witness=job.get('slow',{}).get(language)
    if witness:
-    tiny=copy.deepcopy(plan);tiny.pop('generated',None);tiny['tests']=tiny['tests'][:3]
+    tiny=public_example_plan(plan)
     small=self.run(language,witness,tiny,proposal);large=self.run(language,witness,plan,proposal)
     record['slow']=dict(sourceHash=hashlib.sha256(witness.encode()).hexdigest(),small=small,large=large);write(out,record)
     if small['verdict']!='AC':raise ValueError('slow witness is not correct on public examples: '+small['verdict'])

@@ -25,6 +25,19 @@ def audit_plan(job):
     return plan
 
 
+def public_example_plan(plan):
+    """Check a slow control on actual published examples, never positional tests."""
+    samples = plan.get('samples', [])
+    if not samples:
+        raise ValueError('published examples required for inefficient reference control')
+    result = copy.deepcopy(plan)
+    result.pop('generated', None)
+    result['tests'] = [dict(id='resource-public-example-' + str(i),
+                            input=sample['input'], output=sample['output'])
+                       for i, sample in enumerate(samples, 1)]
+    return result
+
+
 def complete_qualification(qualified, language, source_hash, plan, profile):
     expected = {test['id'] for test in plan['tests']} | {
         test['id'] for test in plan.get('generated', {}).get('tests', [])}

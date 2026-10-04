@@ -7,6 +7,29 @@ def load(name,file):
  s=importlib.util.spec_from_file_location(name,Path(__file__).resolve().parents[1]/'scripts'/file);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 cal=load('resource_calibration','calibrate-problem-resources.py');stage=load('resource_stage','stage-resource-limits.py')
 class CalibrationTests(unittest.TestCase):
+ def test_slow_control_uses_published_examples_without_hidden_or_audit_maximums(self):
+  plan={'version':'bridge','samples':[{'input':'small example','output':'8'}],
+        'tests':[{'id':'upstream-samples'},{'id':'upstream-hidden'},{'id':'audit-max-shape'}],
+        'generated':{'generator':'maximum source','tests':[{'id':'max'}]}}
+  tiny=cal.public_example_plan(plan)
+  self.assertEqual([{'id':'resource-public-example-1','input':'small example','output':'8'}],tiny['tests'])
+  self.assertNotIn('generated',tiny)
+  self.assertEqual(3,len(plan['tests']));self.assertIn('generated',plan)
+  with self.assertRaises(ValueError):cal.public_example_plan({'tests':[{'id':'hidden'}]})
+ def test_slow_measurement_selects_examples_even_when_original_has_only_two_test_bundles(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder);out=root/'out';out.mkdir();path=root/'job.json'
+   job={'version':'bridge-v1','packageHash':'package','references':{'CPP':'correct'},'slow':{'CPP':'tick control'},'intent':{'efficiencyRequired':True},
+        'problem':{'samples':[{'input':'small','output':'8'}],'tests':[{'id':'upstream-samples'},{'id':'upstream-hidden'}]},'auditTests':[{'id':'audit-max-shape'}]}
+   path.write_text(json.dumps(job));audit=cal.Calibration(SimpleNamespace(output=out,drivers=root/'drivers'));calls=[]
+   def run(language,source,plan,limits):
+    ids=[t['id'] for t in plan['tests']];calls.append((source,ids))
+    verdict='TLE' if source=='tick control' and 'audit-max-shape' in ids else 'AC'
+    return {'verdict':verdict,'tests':[{'id':i,'wall_ms':100,'memory_peak_bytes':1048576,'memory_measurement':'cgroup-peak-observed'} for i in ids]}
+   with patch.object(audit,'run',side_effect=run):audit.measure(path,'CPP')
+   self.assertEqual(('tick control',['resource-public-example-1']),calls[-2])
+   self.assertEqual(('tick control',['upstream-samples','upstream-hidden','audit-max-shape']),calls[-1])
+   self.assertEqual('MEASURED',json.loads((out/'bridge-v1-CPP.json').read_text())['status'])
  def test_private_generated_cache_fences_input_bytes_without_reusing_verdicts(self):
   cache=cal.AuditGeneratedCache({'exam-v1':'package-a'})
   key=cache.key('exam-v1','generator','oracle','1','REFERENCE')
