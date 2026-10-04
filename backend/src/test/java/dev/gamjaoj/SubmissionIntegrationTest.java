@@ -55,7 +55,7 @@ class SubmissionIntegrationTest {
         try {
             jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id='sum-v1'").param(plan.toString()).param(JudgeJson.hash(plan.toString())).update();
             var catalog=submissions.problems(alice).stream().filter(p->p.version().equals("sum-v1")).findFirst().orElseThrow();
-            assertThat(catalog.languages()).extracting(LanguageProfiles.Option::id).containsExactly("JAVA");assertThat(catalog.api()).isEqualTo(bundle);
+            assertThat(catalog.languages()).extracting(LanguageProfiles.Option::id).containsExactly("JAVA","CPP","PYTHON");assertThat(catalog.api()).isEqualTo(CallablePrograms.publicBundle(bundle));
             UUID key=UUID.randomUUID();var saved=submit(alice,key);
             var stored=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(saved.id()).query(String.class).single());
             assertThat(stored.path("callable")).isEqualTo(bundle);assertThat(saved.input()).isNull();
@@ -65,7 +65,12 @@ class SubmissionIntegrationTest {
             var run=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"[[[\"init\",0],[\"query\"]]]",null,null,"JAVA"));
             var runPlan=JudgeJson.parse(jdbc.sql("SELECT run_package FROM submission WHERE id=?").param(run.id()).query(String.class).single());
             assertThat(runPlan.path("callable")).isEqualTo(bundle);assertThat(runPlan.path("output_policy").asText()).isEqualTo("RUN_ONLY");
-            assertThatThrownBy(()->submissions.submit(bob,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,"CPP"))).isInstanceOf(AccountException.class);
+            for(String language:List.of("CPP","PYTHON")) {
+                var nativeSaved=submissions.submit(bob,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,language));
+                var nativePlan=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(nativeSaved.id()).query(String.class).single());
+                assertThat(nativePlan.path("callable")).isEqualTo(NativeCallablePrograms.bundle(bundle.path("api"),language));
+                assertThat(nativeSaved.language()).isEqualTo(language);
+            }
         } finally {jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id='sum-v1'").param(previous).param(JudgeJson.hash(previous)).update();}
     }
     @Test void problemLimitsReachCatalogQueueAndRemainFrozenAcrossRetries() {

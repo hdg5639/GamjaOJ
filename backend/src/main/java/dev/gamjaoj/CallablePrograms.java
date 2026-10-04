@@ -120,6 +120,15 @@ final class CallablePrograms {
         validate(api);var b=JudgeJson.JSON.createObjectNode().put("format","JAVA_CALLABLE_V1").put("sourceFile","UserSolution.java");
         b.set("api",api.deepCopy());b.put("driver",driver(api)).put("template",template(api));return b;
     }
+    static ObjectNode bundleFields(JsonNode api,String language,String driver,String template) {
+        var b=JudgeJson.JSON.createObjectNode().put("format",language+"_CALLABLE_V1").put("sourceFile","UserSolution."+(language.equals("CPP")?"cpp":"py"));
+        b.set("api",api.deepCopy());return b.put("driver",driver).put("template",template);
+    }
+    static ObjectNode publicBundle(JsonNode saved) {
+        var api=saved.path("api");var result=bundle(api);var languages=result.putObject("languages");
+        for(String language:List.of("JAVA","CPP","PYTHON"))languages.set(language,NativeCallablePrograms.bundle(api,language));
+        return result;
+    }
     static String driver(JsonNode api) {
         validate(api);StringBuilder b=new StringBuilder("public class Main {\n"+SUPPORT+"\npublic static void main(String[] ignored) throws Exception {\n Object root=new Parser(new String(readAll(),java.nio.charset.StandardCharsets.UTF_8)).parse();\n java.util.List<?> cases=list(root); if(cases.size()<1||cases.size()>100)throw new IllegalArgumentException(\"case count\");\n for(Object item:cases){UserSolution user=new UserSolution(); java.util.List<?> calls=list(item);if(calls.isEmpty()||calls.size()>1000000)throw new IllegalArgumentException(\"call count\"); int position=0;\n for(Object call:calls){java.util.List<?> c=list(call);if(c.isEmpty()||!(c.get(0) instanceof String))throw new IllegalArgumentException(\"method\");String method=(String)c.get(0);\n");
         if(api.path("mode").asText().equals("SINGLE_FUNCTION"))b.append("if(calls.size()!=1)throw new IllegalArgumentException(\"single call required\");\n");

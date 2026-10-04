@@ -46,8 +46,8 @@ def main(folder):
      assert set(q)=={'itemId','problemVersion','title','statement','sampleInput','sampleOutput','examples','languages','api'}
      assert session['items'][next(i for i,x in enumerate(session['items']) if x['id']==q['itemId'])]['difficulty']==item['difficulty']
      assert len(q['examples'])==3 and q['examples'][0]['input']==item['problem']['tests'][0]['input']
-     assert [l['id'] for l in q['languages']]==(['JAVA'] if family=='exam-b-v2' else ['JAVA','CPP','PYTHON'])
-     assert q['api']==item['problem'].get('api')
+     assert [l['id'] for l in q['languages']]==['JAVA','CPP','PYTHON']
+     assert (q['api'] is None if not item['problem'].get('api') else {k:v for k,v in q['api'].items() if k!='languages'}==item['problem']['api'])
      if item.get('image'):
       path='/api/problem-images/'+item['image']['id'];assert b.call(path)[0]==404
       status,png=a.call(path);assert status==200 and hashlib.sha256(png).digest()==hashlib.sha256((folder/item['image']['file']).read_bytes()).digest();images+=1

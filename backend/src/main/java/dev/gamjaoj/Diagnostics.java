@@ -269,7 +269,7 @@ public class Diagnostics {
         }
         Question question=current.map(i->{
             JsonNode p=JudgeJson.parse(jdbc.sql("SELECT package_json FROM diagnostic_item WHERE id=?").param(i.id()).query(String.class).single());
-            return new Question(i.id(),i.problemVersion(),p.path("title").asText(),p.path("statement").asText(),p.path("tests").path(0).path("input").asText(),p.path("tests").path(0).path("output").asText(),examples(p.path("tests")),LanguageProfiles.options(jdbc.sql("SELECT time_limits_json FROM diagnostic_item WHERE id=?").param(i.id()).query((r,n)->r.getString(1)).optional().orElse(null)).stream().filter(l->!p.has("api")||l.id().equals("JAVA")).toList(),p.has("api")?p.path("api"):null);
+            return new Question(i.id(),i.problemVersion(),p.path("title").asText(),p.path("statement").asText(),p.path("tests").path(0).path("input").asText(),p.path("tests").path(0).path("output").asText(),examples(p.path("tests")),LanguageProfiles.options(jdbc.sql("SELECT time_limits_json FROM diagnostic_item WHERE id=?").param(i.id()).query((r,n)->r.getString(1)).optional().orElse(null)),p.has("api")?CallablePrograms.publicBundle(p.path("api")):null);
         }).orElse(null);
         UUID source=jdbc.sql("SELECT source_session_id FROM diagnostic_session WHERE id=?").param(id)
                 .query((r,n)->new UUID[]{r.getObject(1,UUID.class)}).single()[0];

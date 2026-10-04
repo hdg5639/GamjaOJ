@@ -108,15 +108,29 @@ class DiagnosticIntegrationTest {
             for(String id:ids){jdbc.sql("DELETE FROM diagnostic_bank_item WHERE bank_id=?").param(id).update();jdbc.sql("DELETE FROM diagnostic_bank WHERE id=?").param(id).update();jdbc.sql("DELETE FROM problem_version WHERE id LIKE ?").param(id+"-%").update();}
         }
     }
-    @Test void callableDiagnosticProjectsOnlyJavaAndPublicBundleAndPreservesTheJudgePlan() {
+    @Test void callableDiagnosticProjectsAllLanguagesAndPreservesTheJudgePlan() {
         var d=start();String version=d.current().problemVersion();
         var api=JudgeJson.parse("{\"mode\":\"MULTI_API\",\"methods\":[{\"name\":\"init\",\"returns\":\"void\",\"parameters\":[],\"description\":\"초기화\"},{\"name\":\"answer\",\"returns\":\"int\",\"parameters\":[],\"description\":\"반환\"}]}");
         var p=(ObjectNode)JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id=?").param(version).query(String.class).single());p.set("api",CallablePrograms.bundle(api));p.putArray("tests").addObject().put("id","T01").put("input","[[[\"init\"],[\"answer\"]]]").put("output","3");String raw=JudgeJson.canonical(p),hash=JudgeJson.hash(raw);
         jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id=?").param(raw).param(hash).param(version).update();jdbc.sql("UPDATE diagnostic_item SET package_json=?,package_sha256=? WHERE problem_version=?").param(raw).param(hash).param(version).update();
-        var q=diagnostics.detail(user,d.id()).current();assertThat(q.languages()).extracting(LanguageProfiles.Option::id).containsExactly("JAVA");assertThat(q.api().path("template").asText()).contains("class UserSolution");
+        var q=diagnostics.detail(user,d.id()).current();assertThat(q.languages()).extracting(LanguageProfiles.Option::id).containsExactly("JAVA","CPP","PYTHON");assertThat(q.api().path("template").asText()).contains("class UserSolution");
         String source="public class UserSolution { public void init(){} public int answer(){return 3;} }";
         var submission=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(version,source,null,d.current().itemId(),"JAVA"));
         var plan=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(submission.id()).query(String.class).single());assertThat(plan.path("callable")).isEqualTo(p.path("api"));assertThat(plan.path("tests")).isEqualTo(p.path("tests"));
+        jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='WA' WHERE submission_id=?").param(submission.id()).update();
+        for(String lang:java.util.List.of("CPP","PYTHON")) {
+            var run=submissions.run(user,UUID.randomUUID(),new RunController.Request(version,"class UserSolution {}", "[[[\"init\"],[\"answer\"]]]",null,d.current().itemId(),lang));
+            var runPlan=JudgeJson.parse(jdbc.sql("SELECT run_package FROM submission WHERE id=?").param(run.id()).query(String.class).single());
+            assertThat(runPlan.path("callable").path("format").asText()).isEqualTo(lang+"_CALLABLE_V1");
+            assertThat(runPlan.path("tests").get(0).path("input").asText()).isEqualTo("[[[\"init\"],[\"answer\"]]]");
+            jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='OK' WHERE submission_id=?").param(run.id()).update();
+            var formal=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(version,"class UserSolution {}",null,d.current().itemId(),lang));
+            var formalPlan=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(formal.id()).query(String.class).single());
+            assertThat(formalPlan.path("callable").path("format").asText()).isEqualTo(lang+"_CALLABLE_V1");
+            assertThat(formalPlan.path("tests")).isEqualTo(p.path("tests"));
+            jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='WA' WHERE submission_id=?").param(formal.id()).update();
+        }
+
     }
 
     static com.fasterxml.jackson.databind.node.ObjectNode habit(com.fasterxml.jackson.databind.node.ObjectNode observation) {

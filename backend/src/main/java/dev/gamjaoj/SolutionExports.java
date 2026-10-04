@@ -154,7 +154,7 @@ class SolutionExports {
                 return result.put("username",r.getString("username")).put("problemVersion",version).put("language",language).put("title",ProblemTitles.display(p))
                     .put("source",r.getString("source_code")).put("createdAt",r.getObject("created_at",OffsetDateTime.class).toString()).put("finishedAt",r.getObject("finished_at",OffsetDateTime.class).toString())
                     .put("problemUrl",settings.origin()+"/?problem="+ExportRemote.enc(version)+"#practice")
-                    .put("filename",language.equals("JAVA")?(r.getString("callable_package")!=null||p.has("api")?"UserSolution.java":"Main.java"):language.equals("CPP")?"Main.cpp":"Main.py");
+                    .put("filename",language.equals("JAVA")?(r.getString("callable_package")!=null||p.has("api")?"UserSolution.java":"Main.java"):language.equals("CPP")?(r.getString("callable_package")!=null||p.has("api")?"UserSolution.cpp":"Main.cpp"):(r.getString("callable_package")!=null||p.has("api")?"UserSolution.py":"Main.py"));
             }).optional();
         if(rows.isEmpty()){if(manual)throw new AccountException(404,"저장할 수 있는 본인의 정식 통과 제출을 선택해 주세요.");return null;}
         if(jdbc.sql("SELECT id FROM export_connection WHERE user_id=? AND provider=? AND status='CONNECTED' AND target_json IS NOT NULL FOR UPDATE")
