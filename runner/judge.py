@@ -37,7 +37,7 @@ def checked_profile(profile, language, image):
         raise ValueError("Unsupported language execution snapshot")
     seconds = profile.get('testWallSeconds')
     memory = profile.get('memoryMb')
-    if (type(seconds) not in (int, float) or not 0.1 <= seconds <= 60
+    if (type(seconds) not in (int, float) or not 0.1 <= seconds <= 180
             or abs(seconds * 1000 - round(seconds * 1000)) > 0.00001
             or type(memory) is not int or not 32 <= memory <= base['memoryMb']
             or profile != base | {'testWallSeconds': seconds, 'memoryMb': memory} or profile['image'] != image):

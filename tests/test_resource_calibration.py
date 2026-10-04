@@ -89,13 +89,15 @@ class CalibrationTests(unittest.TestCase):
   self.assertEqual({'testWallSeconds':0.4,'memoryMb':32},cal.budget('CPP',230,10*1048576))
   self.assertEqual({'testWallSeconds':1.55,'memoryMb':64},cal.budget('PYTHON',1000,40*1048576))
   self.assertEqual({'testWallSeconds':30.05,'memoryMb':48},cal.budget('PYTHON',20000,20*1048576))
-  for wall,memory in [(40000,20*1048576),(1000,250*1048576)]:
+  self.assertEqual({'testWallSeconds':60.05,'memoryMb':48},cal.budget('PYTHON',40000,20*1048576))
+  for wall,memory in [(120000,20*1048576),(1000,250*1048576)]:
    with self.assertRaises(ValueError):cal.budget('CPP',wall,memory)
  def test_long_probe_is_reviewed_language_local_and_bounded(self):
   self.assertEqual(20,cal.profiling_seconds({},'PYTHON'))
+  self.assertEqual(180,cal.profiling_seconds({'auditProfilingSeconds':{'PYTHON':180}},'PYTHON'))
   self.assertEqual(60,cal.profiling_seconds({'auditProfilingSeconds':{'PYTHON':60}},'PYTHON'))
   self.assertEqual(20,cal.profiling_seconds({'auditProfilingSeconds':{'PYTHON':60}},'CPP'))
-  for windows in [{'PYTHON':61},{'PYTHON':19},{'PYTHON':True},{'RUST':60},[]]:
+  for windows in [{'PYTHON':181},{'PYTHON':19},{'PYTHON':True},{'RUST':60},[]]:
    with self.assertRaises(ValueError):cal.profiling_seconds({'auditProfilingSeconds':windows},'PYTHON')
  def test_only_approved_validation_widening_reuses_original_bounded_provenance(self):
   with tempfile.TemporaryDirectory() as folder:
@@ -115,6 +117,19 @@ class CalibrationTests(unittest.TestCase):
    self.assertFalse(cal.compatible_execution_evidence(changed,cal.contract()))
   for wall,memory in [(0,1),(-1,1),(float('nan'),1),(1,float('inf')),(True,1)]:
    with self.assertRaises(ValueError):cal.budget('CPP',wall,memory)
+ def test_sixty_second_reports_keep_their_original_contract_and_ceiling(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder);jobs,reports,_=self.complete_fixture(root);record=json.loads((reports/'test-v1-JAVA.json').read_text())
+   migration=next(m for m in json.loads((Path(__file__).resolve().parents[1]/'scripts/resource-contract-compatibility.json').read_text())['migrations'] if m['maximumLegacySeconds']==60)
+   previous=copy.deepcopy(cal.contract());previous['files']['runner/judge.py']=migration['oldJudgeHash'];record['executionContract']=previous
+   for report in record['reports']+[record['qualified']]:
+    report['execution_profile']['testWallSeconds']=60
+    report['runner_environment']={'contract':previous}
+   before=copy.deepcopy(record)
+   self.assertTrue(cal.compatible_execution_evidence(record,cal.contract()))
+   self.assertEqual(before,record)
+   record['qualified']['execution_profile']['testWallSeconds']=60.001
+   self.assertFalse(cal.compatible_execution_evidence(record,cal.contract()))
  def test_replay_keeps_large_generated_and_peak_memory_witness_even_when_startup_dominates(self):
   plan={'version':'test','tests':[{'id':str(i)} for i in range(5)],'generated':{'generator':'source','reference':'source','tests':[{'id':'small-slow'},{'id':'max'}]}}
   report={'tests':[{'id':str(i),'wall_ms':100-i,'memory_peak_bytes':999 if i==4 else 1} for i in range(5)]+[{'id':'small-slow','kind':'generated','wall_ms':10,'memory_peak_bytes':1,'input_bytes':10},{'id':'max','kind':'generated','wall_ms':1,'memory_peak_bytes':1,'input_bytes':1000}]}

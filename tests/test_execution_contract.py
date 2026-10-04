@@ -13,7 +13,7 @@ from runner.judge import Runner, EXECUTION_CONTRACT, COMPILE_COMMAND, LANGUAGES,
 class ExecutionContractTests(unittest.TestCase):
     def test_only_bounded_wall_and_memory_budgets_can_vary_and_drive_sandbox_limits(self):
         base = LANGUAGES['PYTHON']
-        for changes in ({'testWallSeconds': 0}, {'testWallSeconds': 61}, {'testWallSeconds': True},
+        for changes in ({'testWallSeconds': 0}, {'testWallSeconds': 181}, {'testWallSeconds': True},
                         {'testWallSeconds': 0.1001}, {'memoryMb': 999}, {'memoryMb': True}, {'testCommand': ['unsafe']}, {'extra': 1}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 checked_profile(base | changes, 'PYTHON', base['image'])
@@ -31,8 +31,9 @@ class ExecutionContractTests(unittest.TestCase):
 
     def test_long_measured_budget_preserves_pinned_commands_and_resource_bounds(self):
         base=LANGUAGES['PYTHON']
-        profile=checked_profile(base | {'testWallSeconds':37.5,'memoryMb':48},'PYTHON',base['image'])
-        self.assertEqual(37.5,profile['testWallSeconds'])
+        profile=checked_profile(base | {'testWallSeconds':137.5,'memoryMb':48},'PYTHON',base['image'])
+        self.assertEqual(137.5,profile['testWallSeconds'])
+        self.assertEqual(180,checked_profile(profile | {'testWallSeconds':180},'PYTHON',base['image'])['testWallSeconds'])
         self.assertEqual(base['testCommand'],profile['testCommand'])
         self.assertEqual(base['compileCommand'],profile['compileCommand'])
         self.assertEqual(base['compileWallSeconds'],profile['compileWallSeconds'])
