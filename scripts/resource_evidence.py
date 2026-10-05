@@ -64,27 +64,52 @@ def compatible_execution_evidence(record, target):
     migrations = json.loads((Path(__file__).with_name('resource-contract-compatibility.json')).read_text())['migrations']
     approved = next((m for m in migrations if m['from'] == digest(source)
                      and m['to'] == digest(target)
-                     and m['kind'] in ('test-wall-ceiling-only-20-to-60','test-wall-ceiling-only-20-to-180','test-wall-ceiling-only-60-to-180')), None)
+                     and m['kind'] in ('test-wall-ceiling-only-20-to-60','test-wall-ceiling-only-20-to-180','test-wall-ceiling-only-60-to-180','large-input-opt-in-defaults-preserved')), None)
     if not approved or source.get('format') != target.get('format'):
         return False
     old_ceiling=approved.get('maximumLegacySeconds')
     new_ceiling=approved.get('maximumCurrentSeconds',60)
-    if (old_ceiling,new_ceiling) not in ((20,60),(20,180),(60,180)) or approved['kind'] != f'test-wall-ceiling-only-{old_ceiling}-to-{new_ceiling}':
-        return False
     if source.get('languages') != target.get('languages') or source.get('profile') != target.get('profile'):
         return False
     old_files, new_files = source.get('files', {}), target.get('files', {})
-    if set(old_files) != set(new_files) or {k for k in old_files if old_files[k] != new_files[k]} != {'runner/judge.py'}:
+    changed = {k for k in old_files if old_files[k] != new_files.get(k)}
+    if set(old_files) != set(new_files):
         return False
-    if old_files['runner/judge.py'] != approved['oldJudgeHash'] or new_files['runner/judge.py'] != approved['newJudgeHash']:
-        return False
-    current_judge = (Path(__file__).resolve().parents[1] / 'runner/judge.py').read_bytes()
-    current_literal=f'0.1 <= seconds <= {new_ceiling}'.encode()
-    previous_literal=f'0.1 <= seconds <= {old_ceiling}'.encode()
-    if (current_judge.count(current_literal) != 1
-            or hashlib.sha256(current_judge).hexdigest() != approved['newJudgeHash']
-            or hashlib.sha256(current_judge.replace(current_literal,previous_literal,1)).hexdigest() != approved['oldJudgeHash']):
-        return False
+    if approved['kind'] == 'large-input-opt-in-defaults-preserved':
+        if old_ceiling not in (20,60,180) or new_ceiling != 180 or approved.get('maximumLegacyGeneratedInput') != 8388608:
+            return False
+        if changed != {'runner/judge.py','runner/scheduling.py'}:
+            return False
+        rewrites=json.loads(Path(__file__).with_name('large-input-compatibility-rewrites.json').read_text())
+        if set(rewrites) != changed:
+            return False
+        for name, chunks in rewrites.items():
+            current=(Path(__file__).resolve().parents[1]/name).read_bytes()
+            if new_files[name] != approved['newFileHashes'][name] or old_files[name] != approved['oldFileHashes'][name] or hashlib.sha256(current).hexdigest() != new_files[name]:
+                return False
+            for chunk in chunks:
+                text=chunk['current'].encode()
+                if current.count(text) != 1:
+                    return False
+                current=current.replace(text,chunk['previous'].encode(),1)
+            if name == 'runner/judge.py':
+                literal=b'0.1 <= seconds <= 180'
+                if current.count(literal) != 1:
+                    return False
+                current=current.replace(literal,f'0.1 <= seconds <= {old_ceiling}'.encode(),1)
+            if hashlib.sha256(current).hexdigest() != old_files[name]:
+                return False
+    else:
+        if (old_ceiling,new_ceiling) not in ((20,60),(20,180),(60,180)) or approved['kind'] != f'test-wall-ceiling-only-{old_ceiling}-to-{new_ceiling}' or changed != {'runner/judge.py'}:
+            return False
+        current_judge = (Path(__file__).resolve().parents[1] / 'runner/judge.py').read_bytes()
+        current_literal=f'0.1 <= seconds <= {new_ceiling}'.encode()
+        previous_literal=f'0.1 <= seconds <= {old_ceiling}'.encode()
+        if (old_files['runner/judge.py'] != approved['oldJudgeHash'] or new_files['runner/judge.py'] != approved['newJudgeHash']
+                or current_judge.count(current_literal) != 1
+                or hashlib.sha256(current_judge).hexdigest() != approved['newJudgeHash']
+                or hashlib.sha256(current_judge.replace(current_literal,previous_literal,1)).hexdigest() != approved['oldJudgeHash']):
+            return False
     reports = list(record.get('reports', [])) + [record.get('qualified', {})]
     reports += [a.get('qualified', {}) for a in record.get('qualifiedAlternates', [])]
     slow = record.get('slow', {})
@@ -96,6 +121,10 @@ def compatible_execution_evidence(record, target):
         observed = report.get('runner_environment', {}).get('contract')
         if observed is not None and observed != source:
             return False
+        if approved['kind'] == 'large-input-opt-in-defaults-preserved':
+            for test in report.get('tests', []):
+                if test.get('kind') == 'generated' and (type(test.get('input_bytes')) is not int or not 0 < test['input_bytes'] <= 8388608):
+                    return False
     return bool(record.get('reports'))
 
 
