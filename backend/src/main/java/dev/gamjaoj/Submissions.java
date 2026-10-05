@@ -143,7 +143,7 @@ public class Submissions {
         if (input != null || problemData.has("api")) {
             var plan = input==null?(com.fasterxml.jackson.databind.node.ObjectNode)problemData.deepCopy():JudgeJson.JSON.createObjectNode().put("version", request.problemVersion()).put("output_policy", "RUN_ONLY");
             if(input!=null)plan.putArray("tests").addObject().put("id", "custom-input").put("input", input).put("output", "");
-            if(problemData.has("api"))plan.set("callable",NativeCallablePrograms.bundle(problemData.path("api").path("api"),language));
+            if(problemData.has("api"))plan.set("callable",NativeCallablePrograms.bundleForProblem(problemData,language,input!=null));
             String json = JudgeJson.canonical(plan);
             if(input==null)jdbc.sql("UPDATE submission SET callable_package=?,callable_package_sha256=? WHERE id=?").param(json).param(JudgeJson.hash(json)).param(id).update();
             else jdbc.sql("UPDATE submission SET run_input=?,run_package=?,run_package_sha256=? WHERE id=?")
