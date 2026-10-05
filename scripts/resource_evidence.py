@@ -17,6 +17,19 @@ def digest(value):
 def audit_plan(job):
     """Build the same private measurement plan for calibration and release review."""
     plan = copy.deepcopy(job['problem'])
+    # Diagnostics publishes exactly the first three original tests as examples.
+    # Operators must explicitly identify those displayed cases; never infer
+    # examples from hidden/audit positions or replace an existing sample contract.
+    published = job.get('auditPublicExampleTestIds')
+    if published is not None:
+        examples = job['problem'].get('tests', [])[:3]
+        if (job.get('diagnostic') is not True or 'api' not in job['problem']
+                or plan.get('samples') or len(examples) != 3
+                or type(published) is not list
+                or published != [test['id'] for test in examples]
+                or len(set(published)) != 3):
+            raise ValueError('diagnostic callable examples must match the three displayed original tests')
+        plan['samples'] = [dict(input=test['input'], output=test['output']) for test in examples]
     plan['tests'].extend(copy.deepcopy(job.get('auditTests', [])))
     generated = job.get('auditGenerated')
     if generated:
