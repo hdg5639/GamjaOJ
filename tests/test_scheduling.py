@@ -5,11 +5,31 @@ import unittest
 
 import os
 from unittest.mock import patch
-from runner.scheduling import execution_lock, functional_slots
+from runner.scheduling import execution_lock, functional_slots, large_input_lock
 from runner.judge import CompileCache
 
 
 class SchedulingTests(unittest.TestCase):
+    def test_large_inputs_are_bounded_without_blocking_ordinary_functional_work(self):
+        with tempfile.TemporaryDirectory() as directory, ThreadPoolExecutor(max_workers=4) as pool:
+            release=threading.Event();entered=[threading.Event() for _ in range(2)]
+            def large(i):
+                with large_input_lock(directory):
+                    entered[i].set()
+                    if not release.wait(5):raise AssertionError('release missing')
+            active=[pool.submit(large,i) for i in range(2)]
+            try:
+                self.assertTrue(all(e.wait(2) for e in entered))
+                third=threading.Event();ordinary=threading.Event()
+                def overflow():
+                    with large_input_lock(directory):third.set()
+                def small():
+                    with execution_lock('FUNCTIONAL',directory):ordinary.set()
+                waiting=pool.submit(overflow);small_work=pool.submit(small)
+                self.assertTrue(ordinary.wait(2));self.assertFalse(third.wait(.1))
+            finally:release.set()
+            for f in active+[waiting,small_work]:f.result(timeout=5)
+            self.assertTrue(third.is_set())
     def test_two_functional_slots_and_exclusive_barrier(self):
         with tempfile.TemporaryDirectory() as directory, ThreadPoolExecutor(max_workers=4) as pool:
             release = threading.Event()

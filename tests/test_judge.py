@@ -97,6 +97,53 @@ class ContractTests(unittest.TestCase):
 
 
 class GeneratedValidationTests(unittest.TestCase):
+    def test_large_input_is_opt_in_bounded_and_does_not_raise_output_or_custom_limits(self):
+        from runner.judge import GENERATED_INPUT_LIMIT, GENERATED_OUTPUT_LIMIT, LARGE_GENERATED_INPUT_LIMIT
+        self.assertEqual(8*1024*1024, GENERATED_INPUT_LIMIT)
+        self.assertEqual(8*1024*1024, GENERATED_OUTPUT_LIMIT)
+        validate_problem(self.plan(inputLimit=12*1024*1024))
+        validate_problem(self.plan(inputLimit=LARGE_GENERATED_INPUT_LIMIT))
+        validate_problem(self.plan(outputLimit=32*1024*1024))
+        for value in (True, 0, 8388607, 134217729, 12582912.0, '12582912'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_problem(self.plan(inputLimit=value))
+        for value in (True,8388607,33554433,'33554432'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_problem(self.plan(outputLimit=value))
+
+    def test_oversized_cache_admission_preserves_existing_small_inputs(self):
+        cache=GeneratedCache(max_bytes=10)
+        cache.put('small', {'input':b'12345','expected':b'1'})
+        cache.put('large', {'input':b'x'*11,'expected':b'1'})
+        self.assertIsNone(cache.get('large'))
+        self.assertEqual(b'12345',cache.get('small')['input'])
+
+    def test_cached_large_input_cannot_bypass_a_lower_generation_limit(self):
+        from runner.judge import LANGUAGES
+        runner=Runner(LANGUAGES['CPP']['image'])
+        runner.generated_cache=GeneratedCache(max_bytes=20*1024*1024)
+        version='hybrid-check-12345678-1234-1234-1234-123456789abc'
+        plan=self.plan() | {'version':version}
+        spec=plan['generated'];key=GeneratedCache.key(version,spec['generator'],spec['reference'],'7','REFERENCE')
+        runner.generated_cache.put(key, {'input':b'x'*(9*1024*1024),'expected':b'1'})
+        failed={'limit':'OUTPUT_LIMIT','exit_code':0,'oom_killed':False,'stdout':b'x'}
+        with patch.object(runner,'_aux_classes',return_value=(runner,Path('/unused'))), patch.object(runner,'sandbox',return_value=failed) as sandbox:
+            with self.assertRaises(InfrastructureError):runner._generated(plan,Path('/unused'),{'verdict':'AC','tests':[]})
+        self.assertEqual(8388608,sandbox.call_args.kwargs['output_limit'])
+
+    def test_only_large_suites_acquire_memory_gate_and_release_it_on_failure(self):
+        from runner.judge import LANGUAGES
+        runner=Runner(LANGUAGES['CPP']['image'])
+        with patch('runner.judge.large_input_lock') as gate, patch.object(runner,'_generated_inputs',side_effect=InfrastructureError('probe')):
+            with self.assertRaises(InfrastructureError):runner._generated(self.plan(),None,{})
+            gate.assert_not_called()
+            with self.assertRaises(InfrastructureError):runner._generated(self.plan(inputLimit=16*1024*1024),None,{})
+            gate.return_value.__enter__.assert_called_once()
+            gate.return_value.__exit__.assert_called_once()
+        with patch('runner.judge.large_input_lock') as gate, patch.object(runner,'_generated_inputs'):
+            runner._generated(self.plan(outputLimit=16*1024*1024),None,{})
+            gate.return_value.__enter__.assert_called_once()
+
     def plan(self, **generated):
         spec = {"generator": "public class Main{}", "reference": "public class Main{}",
                 "tests": [{"id": "large-0", "seed": "7", "expected": "REFERENCE"}]} | generated

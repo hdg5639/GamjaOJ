@@ -20,7 +20,7 @@ from functools import lru_cache
 from runner.memory_peak import MemoryPeak
 from runner.telemetry import Timings, workspace
 from runner.docker_control import EngineControl
-from runner.scheduling import execution_lock
+from runner.scheduling import execution_lock, large_input_lock
 from runner.execution_contract import PROFILE, contract
 
 EXECUTION_CONTRACT = contract()
@@ -146,7 +146,7 @@ class GeneratedCache:
             return dict(self.entries[key][1])
 
     def put(self, key, value):
-        if key is None:
+        if key is None or len(value["input"]) + len(value["expected"]) > self.max_bytes:
             return
         with self.lock:
             self.entries[key] = (time.monotonic(), dict(value))
@@ -155,7 +155,9 @@ class GeneratedCache:
 
 
 GENERATED_INPUT_LIMIT = 8 * 1024 * 1024
+LARGE_GENERATED_INPUT_LIMIT = 128 * 1024 * 1024
 GENERATED_OUTPUT_LIMIT = 8 * 1024 * 1024
+LARGE_GENERATED_OUTPUT_LIMIT = 32 * 1024 * 1024
 
 
 class InfrastructureError(Exception):
@@ -456,21 +458,35 @@ class Runner:
         return helper, classes
 
     def _generated(self, problem, classes, report):
+        spec = problem["generated"]
+        if (spec.get("inputLimit", GENERATED_INPUT_LIMIT) > GENERATED_INPUT_LIMIT
+                or spec.get("outputLimit", GENERATED_OUTPUT_LIMIT) > GENERATED_OUTPUT_LIMIT):
+            with ExitStack() as locks:
+                self.timings.call("large_input_lock_wait", locks.enter_context, large_input_lock())
+                self._generated_inputs(problem, classes, report)
+        else:
+            self._generated_inputs(problem, classes, report)
+
+    def _generated_inputs(self, problem, classes, report):
         """Large tests: a trusted generator builds the input inside the sandbox boundary and a trusted
         reference (or a fixed VALID expectation) supplies the answer. The input never leaves the Runner."""
         spec = problem["generated"]
+        input_limit = spec.get("inputLimit", GENERATED_INPUT_LIMIT)
+        output_limit = spec.get("outputLimit", GENERATED_OUTPUT_LIMIT)
         with tempfile.TemporaryDirectory(prefix="gamjaoj-generated-") as parent:
             Path(parent).chmod(0o755)
             generator = reference = None
             for test in spec["tests"]:
                 key = GeneratedCache.key(problem["version"], spec["generator"], spec.get("reference", ""), test["seed"], test["expected"])
                 data = self.generated_cache.get(key) if self.generated_cache is not None else None
+                if data is not None and (len(data["input"]) > input_limit or len(data["expected"]) > output_limit):
+                    data = None
                 entry = {"id": test["id"], "kind": "generated", "cache_hit": data is not None}
                 if data is None:
                     if generator is None:
                         generator = self._aux_classes(problem["version"], spec["generator"], parent)
                     produced = self.timings.call("generated.generator", generator[0].sandbox, generator[1], generator[0].profile["testCommand"],
-                                                 (test["seed"] + "\n").encode(), output_limit=GENERATED_INPUT_LIMIT)
+                                                 (test["seed"] + "\n").encode(), output_limit=input_limit)
                     if produced["limit"] or produced["exit_code"] or produced["oom_killed"] or not produced["stdout"].strip():
                         raise InfrastructureError("Generated input could not be produced")
                     data = {"input": produced["stdout"], "generator_wall_ms": produced["wall_ms"]}
@@ -480,18 +496,21 @@ class Runner:
                         if reference is None:
                             reference = self._aux_classes(problem["version"], spec["reference"], parent)
                         solved = self.timings.call("generated.reference", reference[0].sandbox, reference[1], reference[0].profile["testCommand"],
-                                                   data["input"], output_limit=GENERATED_OUTPUT_LIMIT)
+                                                   data["input"], output_limit=output_limit)
                         if solved["limit"] or solved["exit_code"] or solved["oom_killed"] or not solved["stdout"].strip():
                             raise InfrastructureError("Generated expected output could not be produced")
                         data["expected"], data["reference_wall_ms"] = solved["stdout"], solved["wall_ms"]
                     if self.generated_cache is not None:
                         self.generated_cache.put(key, data)
-                result = self.timings.call("test_total", self.sandbox, classes, self.profile["testCommand"], data["input"], output_limit=GENERATED_OUTPUT_LIMIT)
+                result = self.timings.call("test_total", self.sandbox, classes, self.profile["testCommand"], data["input"], output_limit=output_limit)
                 verdict = classify(result, data["expected"])
                 entry |= {"verdict": verdict, **evidence(result), "input_sha256": hashlib.sha256(data["input"]).hexdigest(),
                           "input_bytes": len(data["input"]), "expected_sha256": hashlib.sha256(data["expected"]).hexdigest(),
                           "generator_wall_ms": data.get("generator_wall_ms"), "reference_wall_ms": data.get("reference_wall_ms")}
                 report["tests"].append(entry)
+                if input_limit > GENERATED_INPUT_LIMIT or output_limit > GENERATED_OUTPUT_LIMIT:
+                    # Release the previous large input before constructing the next one.
+                    data = produced = solved = None
                 if verdict != "AC":
                     if report["verdict"] == "AC":
                         report["verdict"] = verdict
@@ -541,8 +560,14 @@ def validate_problem(problem):
         raise ValueError("Custom run requires one bounded input and no expected output")
     generated = problem.get("generated")
     if generated is not None:
-        if problem["output_policy"] != "TOKEN_EXACT" or not isinstance(generated, dict) or set(generated) - {"generator", "reference", "tests"}:
+        if problem["output_policy"] != "TOKEN_EXACT" or not isinstance(generated, dict) or set(generated) - {"generator", "reference", "tests", "inputLimit", "outputLimit"}:
             raise ValueError("Generated tests require the judge policy and a known shape")
+        input_limit = generated.get("inputLimit", GENERATED_INPUT_LIMIT)
+        if type(input_limit) is not int or not GENERATED_INPUT_LIMIT <= input_limit <= LARGE_GENERATED_INPUT_LIMIT:
+            raise ValueError("Generated input limit must be bounded between 8 and 128 MiB")
+        output_limit = generated.get("outputLimit", GENERATED_OUTPUT_LIMIT)
+        if type(output_limit) is not int or not GENERATED_OUTPUT_LIMIT <= output_limit <= LARGE_GENERATED_OUTPUT_LIMIT:
+            raise ValueError("Generated output limit must be bounded between 8 and 32 MiB")
         cases = generated.get("tests")
         if not isinstance(generated.get("generator"), str) or not 0 < len(generated["generator"].encode()) <= SOURCE_LIMIT:
             raise ValueError("Generated tests need a bounded generator")

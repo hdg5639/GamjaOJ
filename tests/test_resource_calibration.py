@@ -103,7 +103,7 @@ class CalibrationTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as folder:
    root=Path(folder);jobs,reports,_=self.complete_fixture(root);record=json.loads((reports/'test-v1-JAVA.json').read_text())
    migration=json.loads((Path(__file__).resolve().parents[1]/'scripts/resource-contract-compatibility.json').read_text())['migrations'][0]
-   previous=copy.deepcopy(cal.contract());previous['files']['runner/judge.py']=migration['oldJudgeHash'];record['executionContract']=previous
+   previous=copy.deepcopy(cal.contract());previous['files'].update(migration.get('oldFileHashes',{'runner/judge.py':migration['oldJudgeHash']}));record['executionContract']=previous
    before=copy.deepcopy(record)
    self.assertTrue(cal.compatible_execution_evidence(record,cal.contract()))
    self.assertEqual(before,record)
@@ -121,7 +121,7 @@ class CalibrationTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as folder:
    root=Path(folder);jobs,reports,_=self.complete_fixture(root);record=json.loads((reports/'test-v1-JAVA.json').read_text())
    migration=next(m for m in json.loads((Path(__file__).resolve().parents[1]/'scripts/resource-contract-compatibility.json').read_text())['migrations'] if m['maximumLegacySeconds']==60)
-   previous=copy.deepcopy(cal.contract());previous['files']['runner/judge.py']=migration['oldJudgeHash'];record['executionContract']=previous
+   previous=copy.deepcopy(cal.contract());previous['files'].update(migration.get('oldFileHashes',{'runner/judge.py':migration['oldJudgeHash']}));record['executionContract']=previous
    for report in record['reports']+[record['qualified']]:
     report['execution_profile']['testWallSeconds']=60
     report['runner_environment']={'contract':previous}
@@ -130,6 +130,21 @@ class CalibrationTests(unittest.TestCase):
    self.assertEqual(before,record)
    record['qualified']['execution_profile']['testWallSeconds']=60.001
    self.assertFalse(cal.compatible_execution_evidence(record,cal.contract()))
+ def test_opt_in_large_input_keeps_legacy_limits_and_rejects_unknown_dependencies(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder);_,reports,_=self.complete_fixture(root);record=json.loads((reports/'test-v1-JAVA.json').read_text())
+   migrations=json.loads((Path(__file__).resolve().parents[1]/'scripts/resource-contract-compatibility.json').read_text())['migrations']
+   migration=next(m for m in migrations if m['kind']=='large-input-opt-in-defaults-preserved' and m['maximumLegacySeconds']==180)
+   previous=copy.deepcopy(cal.contract());previous['files'].update(migration['oldFileHashes']);record['executionContract']=previous
+   record['reports'][0]['tests'][0].update(kind='generated',input_bytes=8388608)
+   before=copy.deepcopy(record);self.assertTrue(cal.compatible_execution_evidence(record,cal.contract()));self.assertEqual(before,record)
+   for value in (8388609,True,None,0):
+    changed=copy.deepcopy(record);changed['reports'][0]['tests'][0]['input_bytes']=value
+    self.assertFalse(cal.compatible_execution_evidence(changed,cal.contract()))
+   changed=copy.deepcopy(record);changed['executionContract']['profile']['inputLimit']=999
+   self.assertFalse(cal.compatible_execution_evidence(changed,cal.contract()))
+   changed=copy.deepcopy(record);changed['executionContract']['files']['runner/scheduling.py']='unknown locking'
+   self.assertFalse(cal.compatible_execution_evidence(changed,cal.contract()))
  def test_replay_keeps_large_generated_and_peak_memory_witness_even_when_startup_dominates(self):
   plan={'version':'test','tests':[{'id':str(i)} for i in range(5)],'generated':{'generator':'source','reference':'source','tests':[{'id':'small-slow'},{'id':'max'}]}}
   report={'tests':[{'id':str(i),'wall_ms':100-i,'memory_peak_bytes':999 if i==4 else 1} for i in range(5)]+[{'id':'small-slow','kind':'generated','wall_ms':10,'memory_peak_bytes':1,'input_bytes':10},{'id':'max','kind':'generated','wall_ms':1,'memory_peak_bytes':1,'input_bytes':1000}]}
