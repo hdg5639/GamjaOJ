@@ -29,6 +29,23 @@ class CalibrationTests(unittest.TestCase):
   self.assertNotIn('generated',tiny)
   self.assertEqual(3,len(plan['tests']));self.assertIn('generated',plan)
   with self.assertRaises(ValueError):cal.public_example_plan({'tests':[{'id':'hidden'}]})
+ def test_callable_diagnostic_control_requires_explicit_actual_displayed_examples(self):
+  original=[{'id':'T0'+str(i),'input':'call '+str(i),'output':str(i)} for i in range(1,5)]
+  job={'diagnostic':True,'problem':{'api':{},'tests':original},'auditTests':[{'id':'audit-max','input':'large','output':'5'}],
+       'auditPublicExampleTestIds':['T01','T02','T03']}
+  before=copy.deepcopy(job);plan=cal.audit_plan(job);tiny=cal.public_example_plan(plan)
+  self.assertEqual([{'id':'resource-public-example-'+str(i),'input':'call '+str(i),'output':str(i)} for i in range(1,4)],tiny['tests'])
+  self.assertEqual(before,job);self.assertNotIn('samples',job['problem']);self.assertEqual(5,len(plan['tests']))
+  for mutate in [lambda j:j.update(diagnostic=False),lambda j:j['problem'].pop('api'),
+                 lambda j:j.update(auditPublicExampleTestIds=['T01','T02','T04']),
+                 lambda j:j.update(auditPublicExampleTestIds=['T01','T01','T03']),
+                 lambda j:j.update(auditPublicExampleTestIds=['T01','T02']),
+                 lambda j:j['problem'].update(samples=[{'input':'different','output':'published'}])]:
+   changed=copy.deepcopy(job);mutate(changed)
+   with self.assertRaises(ValueError):cal.audit_plan(changed)
+  without=copy.deepcopy(job);without.pop('auditPublicExampleTestIds')
+  self.assertNotIn('samples',cal.audit_plan(without))
+  with self.assertRaises(ValueError):cal.public_example_plan(cal.audit_plan(without))
  def test_slow_measurement_selects_examples_even_when_original_has_only_two_test_bundles(self):
   with tempfile.TemporaryDirectory() as folder:
    root=Path(folder);out=root/'out';out.mkdir();path=root/'job.json'

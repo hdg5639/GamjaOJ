@@ -100,6 +100,7 @@ def prepare(root,inventory,output):
    evidence=json.loads(witness.read_text())
    if evidence.get('packageHash')!=row['packageHash'] or not (evidence.get('tests') or evidence.get('generated')) or not evidence.get('review'):raise ValueError('stale or incomplete audit witnesses: '+v)
    job.update(auditTests=evidence.get('tests',[]),auditReview=evidence['review'])
+   if 'publicExampleTestIds' in evidence:job['auditPublicExampleTestIds']=evidence['publicExampleTestIds']
    if 'profilingSeconds' in evidence:
     job['auditProfilingSeconds']=evidence['profilingSeconds']
     for language in missing:profiling_seconds(job,language)
