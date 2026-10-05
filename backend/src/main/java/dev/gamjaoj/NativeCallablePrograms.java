@@ -22,12 +22,36 @@ final class NativeCallablePrograms {
         return switch(t){case "long"->"long long";case "String"->"std::string";case "boolean"->"bool";default->t;};
     }
     static ObjectNode bundle(JsonNode api,String language) {
+        return bundle(api,language,6291456);
+    }
+    static void validateInputLimit(int inputLimit) {
+        if(inputLimit!=6291456&&(inputLimit<8388608||inputLimit>134217728))
+            throw new IllegalArgumentException("callable input limit must match fixed or trusted generated bounds");
+    }
+    /** The server selects this from its trusted package, never from a submission or custom run. */
+    static ObjectNode bundleForProblem(JsonNode problem,String language,boolean customRun) {
+        int inputLimit=6291456;
+        if(!customRun&&problem.has("generated")) {
+            var generated=problem.path("generated");
+            if(!generated.isObject())throw new IllegalArgumentException("generated tests object required");
+            var declared=generated.path("inputLimit");
+            if(declared.isMissingNode())inputLimit=8388608;
+            else {
+                if(!declared.isIntegralNumber()||!declared.canConvertToInt())throw new IllegalArgumentException("integer generated input limit required");
+                inputLimit=declared.intValue();
+                if(inputLimit<8388608)throw new IllegalArgumentException("generated input limit below minimum");
+            }
+        }
+        return bundle(problem.path("api").path("api"),language,inputLimit);
+    }
+    static ObjectNode bundle(JsonNode api,String language,int inputLimit) {
+        validateInputLimit(inputLimit);
         CallablePrograms.validate(api);
-        if(language.equals("JAVA"))return CallablePrograms.bundle(api);
+        if(language.equals("JAVA"))return CallablePrograms.bundle(api,inputLimit);
         LanguageProfiles.normalize(language);
         StringBuilder template=new StringBuilder(language.equals("CPP")?"#include <bits/stdc++.h>\nusing namespace std;\n\nclass UserSolution {\npublic:\n":"class UserSolution:\n");
-        StringBuilder driver=new StringBuilder(support(language.equals("CPP")?"cpp.cpp":"python.py"));
-        if(language.equals("CPP"))driver.append("\n#include \"UserSolution.cpp\"\nint main(){try{std::ios::sync_with_stdio(false);std::cin.tie(nullptr);std::string input;char c;while(std::cin.get(c)){gamja_callable::require(input.size()<6291456);input+=c;}auto root=gamja_callable::Parser{input}.parse();gamja_callable::require(root.kind==4&&root.array.size()>=1&&root.array.size()<=100);for(const auto& calls:root.array){gamja_callable::require(calls.kind==4&&calls.array.size()>=1&&calls.array.size()<=1000000);");
+        StringBuilder driver=new StringBuilder(support(language.equals("CPP")?"cpp.cpp":"python.py").replace("read(6291457)","read("+(inputLimit+1)+")").replace("len(data) > 6291456","len(data) > "+inputLimit));
+        if(language.equals("CPP"))driver.append("\n#include \"UserSolution.cpp\"\nint main(){try{std::ios::sync_with_stdio(false);std::cin.tie(nullptr);std::string input;char c;while(std::cin.get(c)){gamja_callable::require(input.size()<").append(inputLimit).append(");input+=c;}auto root=gamja_callable::Parser{input}.parse();gamja_callable::require(root.kind==4&&root.array.size()>=1&&root.array.size()<=100);for(const auto& calls:root.array){gamja_callable::require(calls.kind==4&&calls.array.size()>=1&&calls.array.size()<=1000000);");
         var methods=new LinkedHashMap<String,Object>();
         if(language.equals("CPP")) {
             if(api.path("mode").asText().equals("SINGLE_FUNCTION"))driver.append("gamja_callable::require(calls.array.size()==1);");

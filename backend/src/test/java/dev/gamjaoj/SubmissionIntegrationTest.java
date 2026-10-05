@@ -90,6 +90,40 @@ class SubmissionIntegrationTest {
             assertThat(task.executionProfile().path("memoryMb").asInt()).isEqualTo(192);
         } finally {jdbc.sql("UPDATE problem_version SET time_limits_json=NULL WHERE id='sum-v1'").update();}
     }
+    @Test void generatedCallableInputCeilingIsPinnedAtAdmissionAndCustomRunsRetainFixedDriver() {
+        String previous=jdbc.sql("SELECT package_json FROM problem_version WHERE id='sum-v1'").query(String.class).single();
+        var plan=(ObjectNode)JudgeJson.parse(previous);var api=CallableProgramsTest.multi();plan.set("api",CallablePrograms.bundle(api));
+        try {
+            jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id='sum-v1'").param(JudgeJson.canonical(plan)).param(JudgeJson.hash(JudgeJson.canonical(plan))).update();
+            var keys=new java.util.LinkedHashMap<String,UUID>();var oldIds=new java.util.LinkedHashMap<String,UUID>();
+            for(String language:List.of("JAVA","CPP","PYTHON")) {
+                UUID key=UUID.randomUUID();keys.put(language,key);
+                var old=submissions.submit(alice,key,new SubmissionController.Request("sum-v1",SOURCE,null,null,language));oldIds.put(language,old.id());
+            }
+            var generated=plan.putObject("generated").put("generator","public class Main {public static void main(String[] a){System.out.println(1);}}").put("reference","public class Main {public static void main(String[] a){System.out.println(3);}}").put("inputLimit",16777216);
+            generated.putArray("tests").addObject().put("id","generated-fixture").put("seed","1").put("expected","REFERENCE");
+            jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id='sum-v1'").param(JudgeJson.canonical(plan)).param(JudgeJson.hash(JudgeJson.canonical(plan))).update();
+            for(String language:List.of("JAVA","CPP","PYTHON")) {
+                var replay=submissions.submit(alice,keys.get(language),new SubmissionController.Request("sum-v1",SOURCE,null,null,language));
+                assertThat(replay.id()).isEqualTo(oldIds.get(language));
+                var oldPlan=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(replay.id()).query(String.class).single());
+                assertThat(oldPlan.path("callable")).isEqualTo(NativeCallablePrograms.bundle(api,language));assertThat(oldPlan.has("generated")).isFalse();
+                var fresh=submissions.submit(bob,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,language));
+                var stored=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(fresh.id()).query(String.class).single());
+                assertThat(stored.path("callable")).isEqualTo(NativeCallablePrograms.bundle(api,language,16777216));assertThat(stored.path("generated")).isEqualTo(generated);
+                assertThat(jdbc.sql("SELECT callable_package_sha256 FROM submission WHERE id=?").param(fresh.id()).query(String.class).single()).isEqualTo(JudgeJson.hash(JudgeJson.canonical(stored)));
+                String runUser="r"+UUID.randomUUID().toString().substring(0,8);UUID runOwner=UUID.randomUUID();
+                jdbc.sql("INSERT INTO app_user (id,username,password_hash,nickname) VALUES (?,?,?,?)").param(runOwner).param(runUser).param("test-only").param(runUser).update();
+                jdbc.sql("INSERT INTO execution_grant (user_id,source_sha256) VALUES (?,?)").param(runOwner).param(JudgeJson.hash(SOURCE)).update();
+                var run=submissions.run(runUser,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"[[[\"init\",0],[\"query\"]]]",null,null,language));
+                var custom=JudgeJson.parse(jdbc.sql("SELECT run_package FROM submission WHERE id=?").param(run.id()).query(String.class).single());
+                assertThat(custom.path("callable")).isEqualTo(NativeCallablePrograms.bundle(api,language));assertThat(custom.has("generated")).isFalse();
+            }
+            var worker=UUID.randomUUID();var leased=queue.claim(worker).orElseThrow();
+            assertThat(leased.submissionId()).isEqualTo(oldIds.get("JAVA"));assertThat(leased.problem().path("callable")).isEqualTo(CallablePrograms.bundle(api));
+            assertThat(leased.problem().has("generated")).isFalse();
+        } finally {jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id='sum-v1'").param(previous).param(JudgeJson.hash(previous)).update();}
+    }
     @Autowired TransientRuns transientRuns;
     @Autowired Diagnostics diagnostics;
     @Autowired org.springframework.context.ApplicationEventPublisher events;

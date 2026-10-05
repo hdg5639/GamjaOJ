@@ -10,9 +10,35 @@ class NativeCallableProgramsTest {
    for(String line:lines.toList()) {
     var row=JudgeJson.parse(line);if(!row.path("package").has("api"))continue;
     var bundle=CallablePrograms.publicBundle(row.path("package").path("api"));
+    for(String language:java.util.List.of("JAVA","CPP","PYTHON"))
+     ((com.fasterxml.jackson.databind.node.ObjectNode)bundle.path("languages")).set(language,NativeCallablePrograms.bundleForProblem(row.path("package"),language,false));
     Files.writeString(out.resolve(row.path("version").asText()+".json"),bundle.toString());
    }
   }
+ }
+ @Test void onlyTrustedGeneratedFormalPlansSelectLargerTypedInputReaders() throws Exception {
+  var problem=JudgeJson.JSON.createObjectNode();var api=CallableProgramsTest.multi();problem.set("api",CallablePrograms.bundle(api));
+  Path out=Path.of("target/native-callable-large-fixtures");Files.createDirectories(out);
+  for(String language:java.util.List.of("JAVA","CPP","PYTHON")) {
+   var old=NativeCallablePrograms.bundle(api,language);
+   assertThat(NativeCallablePrograms.bundleForProblem(problem,language,false)).isEqualTo(old);
+   problem.putObject("generated");
+   assertThat(NativeCallablePrograms.bundleForProblem(problem,language,false).path("driver").asText()).contains("8388608");
+   problem.withObject("generated").put("inputLimit",16777216);
+   var large=NativeCallablePrograms.bundleForProblem(problem,language,false);
+   assertThat(large.path("driver").asText()).contains("16777216").doesNotContain("6291456");
+   assertThat(large.path("template")).isEqualTo(old.path("template"));
+   assertThat(NativeCallablePrograms.bundleForProblem(problem,language,true)).isEqualTo(old);
+   Files.writeString(out.resolve(language+".json"),large.toString());
+   problem.remove("generated");
+  }
+  for(String invalid:java.util.List.of("null","true","\"16777216\"","16777216.0","6291456","8388607","134217729","9223372036854775807")) {
+   problem.set("generated",JudgeJson.parse("{\"inputLimit\":"+invalid+"}"));
+   assertThatThrownBy(()->NativeCallablePrograms.bundleForProblem(problem,"JAVA",false)).isInstanceOf(IllegalArgumentException.class);
+   assertThat(NativeCallablePrograms.bundleForProblem(problem,"JAVA",true)).isEqualTo(CallablePrograms.bundle(api));
+  }
+  for(int limit:new int[]{8388608,16777216,134217728})for(String language:java.util.List.of("JAVA","CPP","PYTHON"))
+   assertThat(NativeCallablePrograms.bundle(api,language,limit).path("driver").asText()).contains(String.valueOf(limit));
  }
  @Test void allTypedAdaptersAreRebuiltForOldPackages() throws Exception {
   var api=JudgeJson.parse("""

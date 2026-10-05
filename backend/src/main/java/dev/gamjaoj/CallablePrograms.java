@@ -117,8 +117,12 @@ final class CallablePrograms {
             .append(api.path("mode").asText().equals("MULTI_API")?"케이스마다 새 객체를 사용하며, 한 케이스의 여러 호출은 같은 객체의 상태를 공유합니다. 첫 호출은 init이며, 다시 호출된 init도 상태를 초기화해야 합니다.\n":"케이스마다 새 객체에서 solution을 정확히 한 번 호출합니다.\n").toString();
     }
     static ObjectNode bundle(JsonNode api) {
+        return bundle(api,6291456);
+    }
+    static ObjectNode bundle(JsonNode api,int inputLimit) {
+        NativeCallablePrograms.validateInputLimit(inputLimit);
         validate(api);var b=JudgeJson.JSON.createObjectNode().put("format","JAVA_CALLABLE_V1").put("sourceFile","UserSolution.java");
-        b.set("api",api.deepCopy());b.put("driver",driver(api)).put("template",template(api));return b;
+        b.set("api",api.deepCopy());b.put("driver",driver(api,inputLimit)).put("template",template(api));return b;
     }
     static ObjectNode bundleFields(JsonNode api,String language,String driver,String template) {
         var b=JudgeJson.JSON.createObjectNode().put("format",language+"_CALLABLE_V1").put("sourceFile","UserSolution."+(language.equals("CPP")?"cpp":"py"));
@@ -130,7 +134,12 @@ final class CallablePrograms {
         return result;
     }
     static String driver(JsonNode api) {
-        validate(api);StringBuilder b=new StringBuilder("public class Main {\n"+SUPPORT+"\npublic static void main(String[] ignored) throws Exception {\n Object root=new Parser(new String(readAll(),java.nio.charset.StandardCharsets.UTF_8)).parse();\n java.util.List<?> cases=list(root); if(cases.size()<1||cases.size()>100)throw new IllegalArgumentException(\"case count\");\n for(Object item:cases){UserSolution user=new UserSolution(); java.util.List<?> calls=list(item);if(calls.isEmpty()||calls.size()>1000000)throw new IllegalArgumentException(\"call count\"); int position=0;\n for(Object call:calls){java.util.List<?> c=list(call);if(c.isEmpty()||!(c.get(0) instanceof String))throw new IllegalArgumentException(\"method\");String method=(String)c.get(0);\n");
+        return driver(api,6291456);
+    }
+    static String driver(JsonNode api,int inputLimit) {
+        NativeCallablePrograms.validateInputLimit(inputLimit);
+        validate(api);String support=SUPPORT.replace("out.size()+n>6291456","out.size()+n>"+inputLimit);
+        StringBuilder b=new StringBuilder("public class Main {\n"+support+"\npublic static void main(String[] ignored) throws Exception {\n Object root=new Parser(new String(readAll(),java.nio.charset.StandardCharsets.UTF_8)).parse();\n java.util.List<?> cases=list(root); if(cases.size()<1||cases.size()>100)throw new IllegalArgumentException(\"case count\");\n for(Object item:cases){UserSolution user=new UserSolution(); java.util.List<?> calls=list(item);if(calls.isEmpty()||calls.size()>1000000)throw new IllegalArgumentException(\"call count\"); int position=0;\n for(Object call:calls){java.util.List<?> c=list(call);if(c.isEmpty()||!(c.get(0) instanceof String))throw new IllegalArgumentException(\"method\");String method=(String)c.get(0);\n");
         if(api.path("mode").asText().equals("SINGLE_FUNCTION"))b.append("if(calls.size()!=1)throw new IllegalArgumentException(\"single call required\");\n");
         else b.append("if(position==0&&!method.equals(\"init\"))throw new IllegalArgumentException(\"init required\");\n");
         b.append("position++;switch(method){\n");
