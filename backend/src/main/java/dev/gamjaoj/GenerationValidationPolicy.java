@@ -22,8 +22,9 @@ final class GenerationValidationPolicy {
         var semantic=definition.deepCopy();if(semantic.isObject())((ObjectNode)semantic).remove(List.of("validationPolicy","theme","themeDomain","recentStories","learnerFeedback","learningFocus","generatorContract","inputLayoutPolicy","permissionNote","runtime"));
         String raw=JudgeJson.canonical(semantic).toLowerCase(Locale.ROOT), text=normalized(raw);
         var selected=result.putArray("profiles");
+        boolean graphRecipe="graph-recipe-v1".equals(definition.path("contractFamily").asText());
         for(var profile:POLICY.path("profiles")) {
-            boolean match="input-contract".equals(profile.path("id").asText())||("command".equals(profile.path("id").asText())&&(definition.has("callable")||definition.has("api")));
+            boolean match="input-contract".equals(profile.path("id").asText())||(graphRecipe&&profile.path("id").asText().equals(definition.path("recipe").path("weighted").asBoolean()?"shortest-path":"bfs"))||("command".equals(profile.path("id").asText())&&(definition.has("callable")||definition.has("api")));
             for(var alias:profile.path("aliases")) {
                 String key=normalized(alias.asText());
                 if(alias.asText().matches("[A-Za-z0-9_-]+")) {

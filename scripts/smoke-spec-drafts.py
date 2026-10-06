@@ -24,6 +24,7 @@ def sql(query):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--request',help='Override the synthetic problem request')
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--build',action='store_true',help='Also author implementation and run preliminary Runner checks')
     parser.add_argument('--review',action='store_true',help='Also independently review and verify boundary/mutant evidence')
@@ -70,7 +71,7 @@ def main():
             password=secrets.token_urlsafe(24)
             assert call('/api/auth/signup','POST',dict(username=name,password=password,nickname='초안 검증',inviteCode=invitation))[0]==201
             assert call('/api/auth/login','POST',dict(username=name,password=password),form=True)[0]==204
-        request={'request':'동적 계획법으로 푸는 0/1 선택 문제를 만들어 주세요. 같은 항목을 중복 선택하는 습관이면 틀리는 문제이고, 창고가 아닌 탐사 장비 테마를 원합니다. 작은 N에서는 모든 부분집합을 열거하여 독립 검증할 수 있도록 해 주세요.'}
+        request={'request':args.request or '동적 계획법으로 푸는 0/1 선택 문제를 만들어 주세요. 같은 항목을 중복 선택하는 습관이면 틀리는 문제이고, 창고가 아닌 탐사 장비 테마를 원합니다. 작은 N에서는 모든 부분집합을 열거하여 독립 검증할 수 있도록 해 주세요.'}
         path='/api/generation/spec-drafts'
         assert a(path,'POST',request,key)[0]==200
         assert a(path,'POST',request,key)[1]['id']==key
