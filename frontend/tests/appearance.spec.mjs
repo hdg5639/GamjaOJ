@@ -14,6 +14,8 @@ async function open(page){
  await page.goto(base+'/#practice');await expect(page.getByLabel('Main.java',{exact:true})).toBeVisible();
 }
 async function settings(page,tab='화면 색상'){
+ // Reload first renders the anonymous header; wait for the authenticated one.
+ await expect(page.getByRole('button',{name:'로그아웃',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'화면 설정',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'화면 설정',exact:true});await expect(dialog).toBeVisible();
  await dialog.getByRole('button',{name:tab,exact:true}).click();return dialog;
