@@ -34,10 +34,10 @@ dialog.modal[open] { animation:modal-enter 180ms var(--motion-ease); }
  :root .signed-in .app-main .workspace[data-sidebar-collapsed="true"] .workspace-nav button .nav-label { max-width:0; transition-duration:90ms; transition-delay:70ms; }
  :root .signed-in .app-main .workspace[data-sidebar-collapsed="true"] .workspace-nav button .nav-label-text { opacity:0; transform:translateX(-8px); transition-duration:70ms; transition-delay:0ms; }
  :root .signed-in .app-main .workspace .sidebar-heading { position:relative; height:32px; margin-bottom:12px; }
- :root .signed-in .app-main .workspace .sidebar-heading .nav-section-label { display:block; overflow:hidden; opacity:1; transition:opacity 120ms ease-out 300ms; }
+ :root .signed-in .app-main .workspace .sidebar-heading .nav-section-label { display:block; padding-left:44px; overflow:hidden; opacity:1; transition:opacity 120ms ease-out 300ms; }
  :root .signed-in .app-main .workspace[data-sidebar-collapsed="true"] .sidebar-heading .nav-section-label { opacity:0; transition-duration:70ms; transition-delay:0ms; }
- :root .signed-in .app-main .workspace .sidebar-toggle { position:absolute; right:0; margin:0; width:28px; height:32px; min-height:32px; transition:right 160ms var(--motion-ease),background-color 140ms; }
- :root .signed-in .app-main .workspace[data-sidebar-collapsed="true"] .sidebar-toggle { right:5px; }
+ :root .signed-in .app-main .workspace .sidebar-toggle { position:absolute; left:8px; right:auto; margin:0; border:0; width:28px; height:32px; min-height:32px; transform:translateX(0); transition:transform 150ms var(--motion-ease) 300ms,background-color 140ms; }
+ :root .signed-in .app-main .workspace[data-sidebar-collapsed="true"] .sidebar-toggle { transform:translateX(-2px); transition-duration:160ms; transition-delay:0ms; }
  :root .signed-in .app-main .workspace .navigation-note { display:block; padding:32px 12px 0; overflow:hidden; opacity:1; transition:opacity 120ms ease-out 300ms; }
  :root .signed-in .app-main .workspace .navigation-note p { width:128px; }
  :root .signed-in .app-main .workspace .navigation-note small { white-space:nowrap; }
