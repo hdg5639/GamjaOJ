@@ -32,6 +32,7 @@ final class GenerationResources {
         if(saved.isEmpty()){jdbc.sql("UPDATE generation_resource_check SET status='SUPERSEDED' WHERE pipeline=? AND job_id=? AND fence<>? AND status NOT IN ('PASSED','SUPERSEDED')").param(pipeline).param(job).param(fence).update();if("RULE".equals(pipeline))jdbc.sql("UPDATE hybrid_generation SET deadline_at=CASE WHEN deadline_at<? THEN ? ELSE deadline_at END WHERE id=? AND status IN ('HELD','REVIEWING')").param(OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(30)).param(OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(30)).param(job).update();jdbc.sql("INSERT INTO generation_resource_check(id,pipeline,job_id,problem_version,fence,input_json,status) VALUES (?,?,?,?,?,?,'QUEUED')").param(UUID.randomUUID()).param(pipeline).param(job).param(version).param(fence).param(raw).update();return null;}
         var row=saved.get();
         if("PASSED".equals(row[1]))return row[2];
+        if("FAILED".equals(row[1])&&row[3]!=null&&row[3].startsWith("RESOURCE_REFERENCE_"))throw new HybridArtifacts.Invalid(row[3]);
         if("FAILED".equals(row[1])||"NEEDS_REVIEW".equals(row[1]))throw new HybridArtifacts.Invalid("RESOURCE_RETRY_LIMIT_"+(row[3]==null?"CHECK_FAILED":row[3]));
         return null;
     }
@@ -176,6 +177,12 @@ final class GenerationResources {
     private static void fail(JdbcClient jdbc,UUID id,String error) {
         var row=jdbc.sql("SELECT retries,completion_json,artifacts_json,token FROM generation_resource_check WHERE id=? FOR UPDATE").param(id).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4)}).single();
         int attempts=Integer.parseInt(row[0]);
+        if(error.matches("RESOURCE_(validator|measure-JAVA-[01]|replay-JAVA)_(RE|CE|TLE|MLE)")) {
+            var history=JudgeJson.JSON.createObjectNode().put("failure",error).put("recoveryScope","IMPLEMENTATION");var links=history.putArray("executions");
+            jdbc.sql("SELECT role,submission_id FROM generation_resource_execution WHERE check_id=?").param(id).query((r,n)->JudgeJson.JSON.createObjectNode().put("role",r.getString(1)).put("submissionId",r.getString(2))).list().forEach(links::add);
+            if(jdbc.sql("SELECT count(*) FROM generation_resource_attempt WHERE check_id=? AND attempt=?").param(id).param(attempts).query(Integer.class).single()==0)jdbc.sql("INSERT INTO generation_resource_attempt(check_id,attempt,completion_json,artifacts_json,report_json) VALUES (?,?,?,?,?)").param(id).param(attempts).param(row[1]).param(row[2]).param(history.toString()).update();
+            jdbc.sql("UPDATE generation_resource_check SET status='FAILED',error_code=? WHERE id=?").param("RESOURCE_REFERENCE_"+error.substring("RESOURCE_".length()).toUpperCase(Locale.ROOT)).param(id).update();return;
+        }
         boolean telemetry=error.equals("RESOURCE_EXECUTION_PROFILE_MISMATCH")||error.equals("RESOURCE_MEMORY_OBSERVATION_MISSING")||error.equals("RESOURCE_TIME_OBSERVATION_MISSING");
         if(!GenerationDraftRecovery.stopped(error)&&attempts<2) {
             var history=JudgeJson.JSON.createObjectNode().put("failure",error);var links=history.putArray("executions");

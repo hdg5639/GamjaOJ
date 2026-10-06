@@ -41,6 +41,7 @@ class HybridPublicationIntegrationTest {
     final HybridGenerationIntegrationTest f=new HybridGenerationIntegrationTest();
     final HybridRunnerIntegrationTest runner=new HybridRunnerIntegrationTest();
     final Map<String,Object> overrides=new HashMap<>();
+    @Autowired AiSettings resourceSettings;
     @BeforeEach void setup() {
         env.getPropertySources().remove("publication-test");overrides.clear();
         env.getPropertySources().addFirst(new MapPropertySource("publication-test",overrides));
@@ -114,6 +115,39 @@ class HybridPublicationIntegrationTest {
     com.fasterxml.jackson.databind.node.ObjectNode accepted(HybridExecution.Work work) {
         var p=JudgeJson.JSON.createObjectNode().put("schemaVersion","1").put("inputHash",work.request().assignment().inputHash())
                 .put("proseEquivalent",true).put("teachingCorrect",true).put("implementationAligned",true).put("reasoning","Fixture content review, not provider semantic evidence.");p.putArray("issues");if(work.request().assignment().input().has("requirements"))p.set("requirementsReview",GenerationRequirementsTest.accepted());if(work.request().assignment().input().has("thinkingRubric"))p.set("thinking",ThinkingDifficulty.template(GenerationType.SUM));return p;
+    }
+    UUID ruleResourceReady(){
+        UUID id=checked(false);jdbc.sql("UPDATE hybrid_generation SET resource_validation=true WHERE id=?").param(id).update();var work=review();execution.finish(work.attemptId(),result(accepted(work)),null);publication.advance();
+        var resource=GenerationResources.claim(jdbc,resourceSettings);assertThat(resource).isNotNull();var sources=JudgeJson.JSON.createObjectNode().put("cpp","int main(){}").put("python","print(1)").put("ordinaryJava","public class Main { /* ordinary */ }").put("maximumGenerator","public class Main { /* maximum */ }");
+        var coverage=sources.putArray("coverage");var policy=resource.spec().path("validationPolicy");for(int i=0;i<4;i++){var item=coverage.addObject().put("seed",i).put("reason","Fixture queue contract, not semantic evidence");var list=item.putArray("checks");for(var check:policy.path("commonChecks"))list.add(check);for(var profile:policy.path("profiles"))for(var check:profile.path("checks"))list.add(check);}
+        var accepted=JudgeJson.JSON.createObjectNode().put("accepted",true);accepted.putArray("issues");GenerationResources.complete(jdbc,resource.id(),resource.token(),sources,accepted,null,null);return id;
+    }
+    @Test void successfulRuleValidationCanRunThreeLanguageResourceQueueAndOnlyThenPublish(){
+        UUID id=ruleResourceReady();assertThat(jobs.view("owner",id).status()).isEqualTo("REVIEWING");assertThat(published()).isZero();
+        var seen=new HashSet<String>();int count=0;
+        for(int stage=0;stage<2;stage++) {
+            Optional<JudgeQueue.Assignment> next;while((next=queue.claim(UUID.randomUUID())).isPresent()) {
+                var a=next.get();assertThat(a.runnerPolicy()).isEqualTo(a.executionProfile().path("policy").asText());assertThat(a.runtimeImage()).isEqualTo(a.executionProfile().path("image").asText());seen.add(a.language());count++;
+                var report=new GenerationIntegrationTest().report(a,"AC");for(var test:report.path("tests"))((com.fasterxml.jackson.databind.node.ObjectNode)test).put("memory_peak_bytes",32*1048576L).put("memory_measurement","cgroup-peak-observed");queue.complete(a.submissionId(),a.token(),report);
+            }
+            GenerationResources.advance(jdbc);publication.advance();
+        }
+        assertThat(count).isEqualTo(13);assertThat(seen).containsExactlyInAnyOrder("JAVA","CPP","PYTHON");assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");
+    }
+    @Test void ruleMaximumValidatorFailureRebuildsCoreAndKeepsFrozenContract(){
+        UUID id=ruleResourceReady();String contract=jobs.view("owner",id).contractHash();Optional<JudgeQueue.Assignment> next;
+        while((next=queue.claim(UUID.randomUUID())).isPresent()) {
+            var a=next.get();String role=jdbc.sql("SELECT role FROM generation_resource_execution WHERE submission_id=?").param(a.submissionId()).query(String.class).single();var report=new GenerationIntegrationTest().report(a,"AC");if(role.equals("validator")){report.put("verdict","RE");var tests=(com.fasterxml.jackson.databind.node.ArrayNode)report.path("tests");int failed=a.problem().path("tests").size();while(tests.size()>failed+1)tests.remove(tests.size()-1);((com.fasterxml.jackson.databind.node.ObjectNode)tests.get(failed)).put("verdict","RE").put("stderr","StackOverflowError in whole-input regex");}
+            for(var test:report.path("tests"))((com.fasterxml.jackson.databind.node.ObjectNode)test).put("memory_peak_bytes",32*1048576L).put("memory_measurement","cgroup-peak-observed");queue.complete(a.submissionId(),a.token(),report);
+        }
+        GenerationResources.advance(jdbc);publication.advance();assertThat(jobs.view("owner",id).error()).isEqualTo("RESOURCE_REFERENCE_VALIDATOR_RE");
+        var repaired=execution.claimCodex();assertThat(repaired).isNotNull();assertThat(repaired.spec().path("role").asText()).isEqualTo("CORE");
+        assertThat(jobs.view("owner",id).contractHash()).isEqualTo(contract);assertThat(jdbc.sql("SELECT count(*) FROM generation_recovery_attempt WHERE job_id=? AND scope='CORE'").param(id).query(Integer.class).single()).isEqualTo(1);
+    }
+    @Test void cancelledRuleStillFencesResourceQueueDespitePreviouslySuccessfulValidation(){
+        UUID id=ruleResourceReady();jobs.cancel("owner",id);assertThat(queue.claim(UUID.randomUUID())).isEmpty();
+        assertThat(jdbc.sql("SELECT count(*) FROM judge_job j JOIN generation_resource_execution e ON e.submission_id=j.submission_id WHERE j.status='FINISHED' AND j.verdict='IE'").query(Integer.class).single()).isEqualTo(9);
+        assertThat(published()).isZero();
     }
     @Test void originalRequestIsFrozenIntoReviewAndFidelityRejectionPreventsPublication() {
         UUID id=checked(false);var work=review();

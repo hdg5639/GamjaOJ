@@ -287,6 +287,19 @@ class GenerationIntegrationTest {
         assertThat(jdbc.sql("SELECT retries FROM generation_resource_check").query(Integer.class).single()).isEqualTo(1);
         finishResourceChecks(true);finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("PASSED");
     }
+    @Test void originalValidatorRuntimeFailureReturnsToImplementationWithoutReauthoringMaximumInputs(){
+        var id=resourceFixture();var work=GenerationResources.claim(jdbc,aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");GenerationResources.complete(jdbc,work.id(),work.token(),resourceSources(),review,null,null);
+        java.util.Optional<JudgeQueue.Assignment> next;while((next=queue.claim(UUID.randomUUID())).isPresent()) {
+            var a=next.get();String role=jdbc.sql("SELECT role FROM generation_resource_execution WHERE submission_id=?").param(a.submissionId()).query(String.class).single();var report=report(a,"AC");if(role.equals("validator")){report.put("verdict","RE");var tests=(com.fasterxml.jackson.databind.node.ArrayNode)report.path("tests");int failed=a.problem().path("tests").size();while(tests.size()>failed+1)tests.remove(tests.size()-1);((ObjectNode)tests.get(failed)).put("verdict","RE").put("stderr","StackOverflowError in whole-input regex");}
+            for(var test:report.path("tests"))((ObjectNode)test).put("memory_peak_bytes",32*1048576L).put("memory_measurement","cgroup-peak-observed");queue.complete(a.submissionId(),a.token(),report);
+        }
+        GenerationResources.advance(jdbc);assertThat(GenerationResources.claim(jdbc,aiSettings)).isNull();
+        assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("FAILED");
+        assertThatThrownBy(()->GenerationResources.ensure(jdbc,"DIRECT",id,"experimental-check-"+id,draftSpec(),artifacts().path("reference").asText(),artifacts().path("inputValidator").asText(),null)).hasMessage("RESOURCE_REFERENCE_VALIDATOR_RE");
+        jdbc.sql("UPDATE generation_spec_draft SET status='FINAL_FAILED',auto_recovery=true,error_code='RESOURCE_REFERENCE_VALIDATOR_RE' WHERE id=?").param(id).update();generation.advance();
+        assertThat(drafts.view("other",id).status()).isEqualTo("BUILD_QUEUED");assertThat(drafts.view("other",id).recovery().path("scope").asText()).isEqualTo("IMPLEMENTATION");
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_resource_execution").query(Integer.class).single()).isEqualTo(9);
+    }
     @Test void missingCgroupObservationRemeasuresIdenticalArtifactsWithoutAnotherModelCall(){
         var id=resourceFixture();String hash=drafts.view("other",id).specHash();var work=GenerationResources.claim(jdbc,aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");
         GenerationResources.complete(jdbc,work.id(),work.token(),resourceSources(),review,null,null);finishResourceChecks(false);

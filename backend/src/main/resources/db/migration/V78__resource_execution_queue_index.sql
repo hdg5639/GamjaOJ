@@ -1,0 +1,1 @@
+CREATE INDEX generation_resource_submission ON generation_resource_execution(submission_id);
