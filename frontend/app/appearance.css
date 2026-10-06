@@ -92,3 +92,23 @@
 @font-face { font-family:'JetBrains Mono'; src:url('/fonts/jetbrains-mono-regular.woff2') format('woff2'); font-weight:400; font-style:normal; font-display:swap; }
 @font-face { font-family:'Fira Code'; src:url('/fonts/fira-code-regular.woff2') format('woff2'); font-weight:400; font-style:normal; font-display:swap; }
 @font-face { font-family:'D2Coding'; src:url('/fonts/d2coding-regular.woff2') format('woff2'); font-weight:400; font-style:normal; font-display:swap; }
+
+/* Keep the glass shell still while only the settings pane scrolls. Live
+   backdrop sampling over the editor is expensive on some Chrome/GPU setups. */
+:root:root:root dialog.modal.appearance-dialog {
+ max-height:90dvh; overflow:hidden;
+ background:color-mix(in srgb,var(--surface) 88%,transparent);
+ -webkit-backdrop-filter:none; backdrop-filter:none;
+}
+:root:root:root dialog.modal.appearance-dialog::backdrop {
+ -webkit-backdrop-filter:none; backdrop-filter:none;
+}
+.appearance-dialog .modal-body { display:flex; flex-direction:column; max-height:90dvh; min-height:0; overflow:hidden; }
+.appearance-dialog .modal-head { flex:0 0 auto; }
+.appearance-dialog .appearance-settings { flex:1 1 auto; min-height:0; }
+.appearance-dialog .appearance-content { min-height:0; overflow-y:auto; overscroll-behavior-y:contain; contain:layout paint; }
+.appearance-dialog .appearance-nav { min-height:0; overflow-y:auto; }
+@media(max-width:760px) {
+ .appearance-dialog .appearance-settings { grid-template-rows:auto minmax(0,1fr); }
+ .appearance-dialog .appearance-nav { overflow:visible; }
+}
