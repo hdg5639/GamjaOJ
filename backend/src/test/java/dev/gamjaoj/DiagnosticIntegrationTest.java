@@ -336,6 +336,14 @@ class DiagnosticIntegrationTest {
         preparation.prepare(user,plan.id(),true);
         assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isEqualTo(2);
         assertThat(generation.claim()).isNull();
+        assertThat(preparation.state(plan.id()).status()).isEqualTo("FAILED");
+        String replacement=catalogProblem("recover-",other,true,false,false,"동적 계획법","EASY");
+        assertThat(preparation.prepare(user,plan.id(),true).problemVersion()).isEqualTo(replacement);
+        // A background pass must not turn this recovered mapping back into the old draft failure.
+        assertThat(preparation.prepare(user,plan.id(),false).status()).isEqualTo("MAPPED");
+        assertThat(curricula.overview(user).getFirst().steps().getFirst().candidate().version()).isEqualTo(replacement);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isEqualTo(2);
+        assertThat(generation.claim()).isNull();
     }
     @Test void oneClickCodeGoalsPreserveManualPlansAndExcludeCorrectionsStrengthsAndHypotheses() {
         var d=start();var submitted=submit(d.current());finish("AC");diagnostics.skip(user,d.id(),diagnostics.detail(user,d.id()).current().itemId(),"NO_TIME");

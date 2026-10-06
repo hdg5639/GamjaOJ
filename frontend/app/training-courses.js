@@ -5,7 +5,7 @@ import Modal from './modal';
 import Pager,{usePage} from './pager';
 import ThinkingDifficulty from './thinking-difficulty';
 
-export default function TrainingCourses({api,userId,visible,sessions=[],onSessionsChange,onOpen,onToolsHost,locked,activity}) {
+export default function TrainingCourses({api,userId,visible,sessions=[],onSessionsChange,onOpen,onToolsHost,locked,activity,resumeEnrollment}) {
  const [catalog,setCatalog]=useState([]),[enrollments,setEnrollments]=useState([]),[selected,setSelected]=useState(''),[browsing,setBrowsing]=useState(true),[kind,setKind]=useState('전체'),[loaded,setLoaded]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[pending,setPending]=useState(null),[preview,setPreview]=useState(null),[focused,setFocused]=useState(null),[switching,setSwitching]=useState(null),[note,setNote]=useState('');
  const revision=useRef(0),lock=useRef(false);
  const storageKey=`gamjaoj-course-request-${userId}`,choiceKey=`gamjaoj-course-selected-${userId}`;
@@ -14,6 +14,7 @@ export default function TrainingCourses({api,userId,visible,sessions=[],onSessio
  const active=sessions.find(s=>s.status==='ACTIVE');
  useEffect(()=>{if(!visible)return;refresh();window.addEventListener('gamjaoj-training-changed',refresh);window.addEventListener('focus',refresh);const timer=active?setInterval(refresh,5000):null;return()=>{revision.current++;clearInterval(timer);window.removeEventListener('gamjaoj-training-changed',refresh);window.removeEventListener('focus',refresh);};},[visible,activity,active?.id]);
  const track=enrollments.find(e=>e.enrollmentId===selected)||enrollments[0];
+ useEffect(()=>{if(!visible||!resumeEnrollment)return;setSelected(resumeEnrollment);setFocused(null);setBrowsing(false);},[resumeEnrollment,visible]);
  const steps=track?.steps||[],next=steps.find(s=>s.sessionId===active?.id)||steps.find(s=>s.available&&!s.solved)||steps.find(s=>s.available)||steps[0];
  const chosen=steps.find(s=>s.position===focused)||next;
  const paging=usePage(steps,5),coursePaging=usePage(catalog.filter(c=>kind==='전체'||c.course.kind===kind),6);
