@@ -1,4 +1,5 @@
 'use client';
+import GenerationProgress from './generation-progress';
 import ProblemStatement from './problem-statement';
 import ProblemReview from './problem-review';
 import {useEffect,useRef,useState} from 'react';
@@ -49,6 +50,7 @@ export default function SpecDrafts({api,generationActive,onActive,onOpen,visible
     {!loaded&&!error&&<p role="status">초안 기록을 불러오고 있어요…</p>}
     <div aria-live="polite">{itemPaging.visible.map((item,index)=><details className="generation-job" key={item.id} open={(itemPaging.offset+index)===0||active([item])||['DRAFT_READY','CHECKED','REVIEW_CHECKED'].includes(item.status)}>
       <summary><strong>{item.spec?.title||'새 문제 초안'}</strong><span className="generation-status">{item.problemHeld?'문제 검토 중 · 새 풀이 보류':states[item.status]||item.status}</span></summary><div className="generation-job-body">
+      <GenerationProgress recovery={item.recovery} resource={item.resources}/>
       <p className="draft-help">요청: {item.request}</p>
       {item.error&&<p>{errors[item.error]||'작성 또는 예비 검사를 완료하지 못했어요.'} 기존 요청은 기록에 남아 있습니다.</p>}
       {item.status==='DRAFT_READY'&&<button className="secondary" disabled={busy||!!pending.current||generationActive||active(items)} onClick={()=>build(item)}>코드 작성·예비 검사</button>}

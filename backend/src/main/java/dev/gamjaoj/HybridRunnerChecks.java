@@ -39,7 +39,7 @@ class HybridRunnerChecks {
         UUID attempt=UUID.randomUUID();
         jdbc.sql("INSERT INTO ai_attempt(id,month_key,status,reserved_usd,settings_json) VALUES (?,?,'HYBRID_RESERVED',?,?)")
                 .param(attempt).param(java.time.YearMonth.now(java.time.ZoneOffset.UTC).toString()).param(amount).param(JudgeJson.canonical(JudgeJson.JSON.valueToTree(model))).update();
-        jdbc.sql("INSERT INTO hybrid_api_reservation(attempt_id,generation_id,revision,role,retry) VALUES (?,?,?,'READER',?)").param(attempt).param(s.generation).param(s.revision).param(readers.size()).update();
+        jdbc.sql("INSERT INTO hybrid_api_reservation(attempt_id,generation_id,revision,role,retry) VALUES (?,?,?,'READER',?)").param(attempt).param(s.generation).param(s.revision).param((Integer)last[1]+1).update();
         // The retry gets its own time: a new reader call plus a full validation pass.
         long seconds;try{seconds=Math.max(240,Math.min(1200,Long.parseLong(settings.value("HYBRID_READER_RETRY_SECONDS","480").trim())));}catch(NumberFormatException e){seconds=480;}
         jdbc.sql("UPDATE hybrid_generation SET status='BUILDING',error_code=NULL,deadline_at=CASE WHEN deadline_at<? THEN ? ELSE deadline_at END,updated_at=? WHERE id=?")

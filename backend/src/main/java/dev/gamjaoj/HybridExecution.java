@@ -40,6 +40,7 @@ class HybridExecution {
                 +HybridModels.schema(role).toString().getBytes(StandardCharsets.UTF_8).length+4096L
                 +(role==READER?0L:(role==CONTENT_REVIEW?GenerationRequirements.REVIEW:GenerationRequirements.AUTHOR).getBytes(StandardCharsets.UTF_8).length)
                 +(role==CONTENT_REVIEW?GenerationRequirements.schema().toString().getBytes(StandardCharsets.UTF_8).length+ThinkingDifficulty.REVIEW.getBytes(StandardCharsets.UTF_8).length+ThinkingDifficulty.schema().toString().getBytes(StandardCharsets.UTF_8).length:0L)
+                +65536L // bounded common validation-profile guidance
                 +(role==PRESENTATION?8192L:0L) // bounded registered teaching and retheming instructions
                 +(HybridModels.author(role)?8192L:0L); // profile-specific author guidance
         return model.inputRate().multiply(BigDecimal.valueOf(bound))
@@ -241,7 +242,7 @@ class HybridExecution {
     }
     @Transactional
     void recover() {
-        lock();jobs.expirePending();publication.advance();routeBlockedAuthors();releaseStopped();
+        lock();jobs.expirePending();publication.advance();routeBlockedAuthors();releaseStopped();HybridStageRecovery.advance(jdbc,jobs,config,ledger);
         // No automatic retry for a possibly billed request. Late receipts can still settle its cost.
         jdbc.sql("UPDATE ai_attempt SET status='HYBRID_UNKNOWN',error_code='INTERRUPTED_USAGE_UNKNOWN' WHERE status='HYBRID_RUNNING' AND id IN (SELECT r.attempt_id FROM hybrid_api_reservation r JOIN hybrid_generation g ON g.id=r.generation_id WHERE g.deadline_at<=CURRENT_TIMESTAMP)").update();
     }

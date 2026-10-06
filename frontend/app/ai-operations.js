@@ -1,4 +1,5 @@
 'use client';
+import GenerationProgress from './generation-progress';
 import ProblemStatement from './problem-statement';
 import SelectControl from './select-control';
 import HybridGeneration from './hybrid-generation';
@@ -142,6 +143,7 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
     {loaded&&jobs.length===0&&<p>아직 만든 문제가 없어요. 연습 포인트를 선택해 첫 문제를 만들어 보세요.</p>}
     <div aria-live="polite">{jobPaging.visible.map((job,index)=><details className="generation-job" key={job.id} open={(jobPaging.offset+index)===0||activeStates.includes(job.status)||job.status==='THEME_FAILED'}>
       <summary><strong>{job.artifacts?.title||'새 연습 문제'}</strong><span className="generation-status">{job.problemHeld?'문제 검토 중':job.status==='QUEUED'&&themeStates[job.theme?.status]||states[job.status]||job.status}</span></summary><div className="generation-job-body">
+      <GenerationProgress recovery={job.recovery} resource={job.resources}/>
       <p className="draft-help">{job.preview?.contractTitle||(job.preview?.templateId==='parentheses-v1'?'올바른 괄호':'')}</p>
       {job.preview?.structure&&<p className="draft-help">{job.preview.structure.category} · {job.preview.structure.reused?'내 검증 구조 활용 · 본문과 힌트 새로 작성':'새 구조 작성'} · 모든 테스트 재검증</p>}
       {job.preview?.structure?.learningTags?.length>0&&<p className="draft-help">연습 태그: {job.preview.structure.learningTags.join(" · ")}</p>}
@@ -156,7 +158,8 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
       {job.artifacts?.context&&<p>{job.artifacts.context}</p>}
       {job.status==='READY'&&<><button className="primary" disabled={busy||job.problemHeld} onClick={()=>open(job)}>이 문제 풀기</button>
       <ProblemReview item={job} api={api} relatedStructures onHeld={held=>{setJobs(items=>items.map(item=>item.id===held.id?held:item));refresh().catch(e=>setError(e.message));}}/></>}
-      {job.status==='AWAITING_REVIEW'&&<button className="secondary" disabled={busy} onClick={()=>resume(job)}>테스트 검증 시작</button>}
+      {job.status==='AWAITING_REVIEW'&&job.prose&&<p className="draft-help" role="status">독립 본문 검수 중 · 통과하면 실행 검증이 자동으로 시작돼요.</p>}
+      {job.status==='AWAITING_REVIEW'&&(!job.prose||job.prose.status==='PASSED')&&<button className="secondary" disabled={busy} onClick={()=>resume(job)}>테스트 검증 시작</button>}
       {job.status==='FAILED'&&<p>정답과 테스트의 검증을 통과하지 못해 문제를 추가하지 않았어요. 새 문제를 요청할 수 있습니다.</p>}
       {job.error==='STRUCTURE_EVIDENCE_REVOKED'&&job.status!=='READY'&&<p className="notice">원본 검증 근거가 보류되어 이 문제의 게시도 중단했어요. 기존 기록은 유지됩니다.</p>}
       {job.error&&<details><summary>진행 정보</summary><p>{job.error}</p></details>}

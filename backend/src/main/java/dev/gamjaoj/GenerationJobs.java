@@ -17,7 +17,7 @@ public class GenerationJobs {
     private final GenerationSpecDrafts drafts;
     private final VerificationLedger ledger; private final GenerationEvidence executionEvidence; private final JdbcClient jdbc; private final Submissions submissions; private final AiSettings settings; private final AiTasks ai; private final GenerationStructures structures;
     public GenerationJobs(JdbcClient jdbc,Submissions submissions,AiSettings settings,AiTasks ai,GenerationStructures structures,GenerationSpecDrafts drafts,GenerationEvidence executionEvidence,VerificationLedger ledger) { this.ledger=ledger; this.executionEvidence=executionEvidence; this.drafts=drafts; this.structures=structures;this.jdbc=jdbc;this.submissions=submissions;this.settings=settings;this.ai=ai; }
-    public record View(UUID id,String status,int revision,String model,String effort,String artifactHash,JsonNode artifacts,JsonNode validation,String error,JsonNode preview,String problemVersion,ThemeView theme,boolean problemHeld,String reviewReason) {}
+    public record View(UUID id,String status,int revision,String model,String effort,String artifactHash,JsonNode artifacts,JsonNode validation,String error,JsonNode preview,String problemVersion,ThemeView theme,boolean problemHeld,String reviewReason,JsonNode recovery,JsonNode resources,JsonNode prose) {}
     public record ThemeView(String status,String domain,JsonNode result,String error) {}
     public record Assignment(UUID id,UUID token,int revision,String model,String effort,JsonNode spec,String feedback,JsonNode repair,JsonNode reuse) {}
     private void lock() { jdbc.sql("SELECT id FROM ai_budget_lock WHERE id=1 FOR UPDATE").query(Integer.class).single(); }
@@ -57,7 +57,7 @@ public class GenerationJobs {
         if(!List.of("low","medium","high","xhigh","max").contains(effort)) throw new AccountException(503,"Codex reasoning 설정을 확인해 주세요.");
         jdbc.sql("INSERT INTO generation_job (id,owner_id,template_id,status,model,effort,focus) VALUES (?,?,?,'QUEUED',?,?,?)")
                 .param(key).param(owner).param(template).param(model).param(effort).param(focus).update();
-        jdbc.sql("UPDATE generation_job SET share_on_publish=? WHERE id=?").param(shared).param(key).update();
+        jdbc.sql("UPDATE generation_job SET resource_validation=true,share_on_publish=? WHERE id=?").param(shared).param(key).update();
         if(learning!=null)jdbc.sql("UPDATE generation_job SET source_analysis_id=?,learning_context_json=? WHERE id=?")
                 .param(sourceAnalysis).param(learning.toString()).param(key).update();
         structures.select(key,owner,type,focus);
@@ -105,7 +105,14 @@ public class GenerationJobs {
                     r.getString("error_code"),r.getString("template_id"),r.getBoolean("problem_held"),r.getString("review_reason")))
                 .optional().orElseThrow(()->new AccountException(404,"생성 작업을 찾을 수 없어요."));
         return new View(id,row.status,row.revision,row.model,row.effort,row.hash,row.artifacts,row.validation,row.error,
-                preview(id,GenerationType.of(row.template)),row.status.equals("READY")?version(id,row.revision):null,themeFor(id),row.held,row.reviewReason);
+                preview(id,GenerationType.of(row.template)),row.status.equals("READY")?version(id,row.revision):null,themeFor(id),row.held,row.reviewReason,recoveryInfo(id,row.revision),GenerationResources.progress(jdbc,"TAG",id),GenerationProseReview.progress(jdbc,id,row.revision));
+    }
+    private JsonNode recoveryInfo(UUID id,int revision) {
+        if(revision==0)return null;
+        var raw=jdbc.sql("SELECT repair_json FROM generation_job WHERE id=?").param(id).query(String.class).optional().orElse(null);
+        if(raw==null)return null;var repair=JudgeJson.parse(raw);boolean prose=true;
+        for(var field:repair.path("fields"))if(!List.of("title","context","hints","editorial").contains(field.asText()))prose=false;
+        return JudgeJson.JSON.createObjectNode().put("attempt",revision).put("limit",GenerationResources.enabled(jdbc,"TAG",id)?3:1).put("scope",prose?"PROSE":"IMPLEMENTATION");
     }
     private JsonNode preview(UUID id,GenerationType type) {
         var preview=type.spec().put("contractTitle",type.title);preview.set("structure",structures.summary(id,type));return preview;
@@ -138,6 +145,7 @@ public class GenerationJobs {
         if(learning!=null)spec.set("learnerFeedback",JudgeJson.parse(learning));
         var theme=themeFor(id);
         if(theme!=null&&theme.result()!=null){spec.set("theme",theme.result());spec.put("themeDomain",theme.domain());spec.set("recentStories",recentStories(id));}
+        GenerationValidationPolicy.attach(spec,spec);
         return spec;
     }
     private JsonNode repairFor(UUID id) {
@@ -152,7 +160,10 @@ public class GenerationJobs {
     @Transactional
     public Assignment claim() {
         lock();drafts.expire();
-        if(drafts.running())return null;
+        if(drafts.running()||GenerationResources.running(jdbc))return null;
+        var proseWork=GenerationProseReview.claim(jdbc,settings);if(proseWork!=null)return proseWork;
+        if(jdbc.sql("SELECT count(*) FROM generation_prose_review WHERE status='GENERATING'").query(Integer.class).single()>0)return null;
+        var resourceWork=GenerationResources.claim(jdbc,settings);if(resourceWork!=null)return resourceWork;
         jdbc.sql("UPDATE generation_job SET status='NEEDS_REVIEW',error_code='GENERATION_INTERRUPTED' WHERE status='GENERATING' AND lease_until<CURRENT_TIMESTAMP").update();
         if(jdbc.sql("SELECT count(*) FROM generation_job WHERE status='GENERATING'").query(Integer.class).single()>0) return null;
         var id=jdbc.sql("SELECT id FROM generation_job WHERE status='QUEUED' AND (theme_task_id IS NULL OR EXISTS (SELECT 1 FROM ai_task a WHERE a.id=theme_task_id AND a.status='COMPLETED')) ORDER BY created_at LIMIT 1 FOR UPDATE").query(UUID.class).optional();
@@ -168,6 +179,15 @@ public class GenerationJobs {
     @Transactional
     public void complete(UUID id,UUID token,JsonNode artifacts,JsonNode oracle,JsonNode usage,String error) {
         lock();
+        if(GenerationProseReview.contains(jdbc,id)){
+            var decision=GenerationProseReview.complete(jdbc,id,token,artifacts,oracle,usage,error);if(decision==null)return;
+            if(!decision.accepted()){
+                if(GenerationDraftRecovery.stopped(decision.error()))jdbc.sql("UPDATE generation_job SET status='NEEDS_REVIEW',error_code=? WHERE id=?").param(decision.error()).param(decision.job()).update();
+                else fail(find(decision.job()),decision.error(),java.util.Set.of("title","context"));return;
+            }
+            String username=jdbc.sql("SELECT u.username FROM app_user u JOIN generation_job g ON g.owner_id=u.id WHERE g.id=?").param(decision.job()).query(String.class).single();review(username,decision.job(),decision.hash(),true);return;
+        }
+        if(GenerationResources.contains(jdbc,id)){GenerationResources.complete(jdbc,id,token,artifacts,oracle,usage,error);return;}
         if(drafts.contains(id)){drafts.complete(id,token,artifacts,oracle,usage,error);return;}
         View job=find(id);
         String savedToken=jdbc.sql("SELECT token FROM generation_job WHERE id=?").param(id).query(UUID.class).single().toString();
@@ -180,14 +200,15 @@ public class GenerationJobs {
             throw new AccountException(409,"생성 작업의 유효 시간이 지났어요.");
         if(audit.length()>600_000) throw new AccountException(400,"생성 결과가 너무 커요.");
         String cliVersion=usage==null?"unknown":usage.path("cliVersion").asText("unknown");
-        if(!List.of("0.154.0","0.155.1").contains(cliVersion))cliVersion="unknown";
+        if(!List.of("0.154.0","0.155.1","0.160.0").contains(cliVersion))cliVersion="unknown";
         jdbc.sql("UPDATE generation_attempt SET result_json=?,cli_version=? WHERE job_id=? AND revision=?")
                 .param(audit).param(cliVersion).param(id).param(job.revision()).update();
         if(!ledger.valid(id)) {ledger.block(id);return;}
         if(error!=null) {
+            if(List.of("INVALID_CODEX_ARTIFACT","CODEX_OUTPUT_LIMIT").contains(error)){retryInvalidArtifact(job,error);return;}
             jdbc.sql("UPDATE generation_job SET status='NEEDS_AUTH',error_code=? WHERE id=?").param(error.substring(0,Math.min(80,error.length()))).param(id).update();return;
         }
-        validateArtifacts(artifacts,oracle);
+        try{validateArtifacts(artifacts,oracle);}catch(AccountException invalid){retryInvalidArtifact(job,"INVALID_GENERATION_ARTIFACT");return;}
         JsonNode repair=repairFor(id);
         if(repair==null)structures.enforce(id,artifacts,oracle);
         if(repair!=null) {
@@ -206,6 +227,7 @@ public class GenerationJobs {
         if(job.theme()!=null&&GenerationThemes.duplicate(artifacts,recentStories(id))) {
             fail(find(id),"STORY_TOO_SIMILAR",java.util.Set.of("title","context"));return;
         }
+        if(GenerationResources.enabled(jdbc,"TAG",id)){GenerationProseReview.start(jdbc,find(id),specFor(id),typeFor(id).statement(),typeFor(id).sample());return;}
         String username=jdbc.sql("SELECT u.username FROM app_user u JOIN generation_job g ON g.owner_id=u.id WHERE g.id=?").param(id).query(String.class).single();
         review(username,id,hash,true);
 
@@ -231,6 +253,7 @@ public class GenerationJobs {
         if(!job.status().equals("AWAITING_REVIEW")||!java.util.Objects.equals(job.artifactHash(),hash)) throw new AccountException(409,"현재 산출물을 다시 확인해 주세요.");
         if(!approve) { fail(job,"SEMANTIC_REVIEW_REJECTED");return find(id); }
         if(!ledger.valid(id)) {ledger.block(id);return find(id);}
+        if(GenerationResources.enabled(jdbc,"TAG",id)&&!GenerationProseReview.passed(jdbc,id,job.revision(),hash))throw new AccountException(409,"독립 본문 검수가 끝나면 실행 검증이 시작돼요.");
         var type=typeFor(id);String ver=version(id,job.revision());
         var problem=JudgeJson.JSON.createObjectNode().put("version",ver).put("title",job.artifacts().path("title").asText())
                 .put("statement",job.artifacts().path("context").asText()+"\n\n"+type.statement()).put("output_policy","TOKEN_EXACT");
@@ -283,6 +306,11 @@ public class GenerationJobs {
         jdbc.sql("INSERT INTO generation_execution (job_id,revision,role,submission_id,expected_verdict) VALUES (?,?,?,?,?)")
                 .param(job.id()).param(job.revision()).param(role).param(submission).param(expected).update();
     }
+    private void retryInvalidArtifact(View job,String error) {
+        if(job.artifacts()!=null){var repair=repairFor(job.id());var fields=new java.util.HashSet<String>();if(repair!=null)repair.path("fields").forEach(f->fields.add(f.asText()));if(fields.isEmpty())fields.addAll(List.of("title","context","reference","generator","inputValidator","editorial","hints","oracle"));fail(job,error,fields);return;}
+        int maximum=GenerationResources.enabled(jdbc,"TAG",job.id())?3:1;
+        jdbc.sql("UPDATE generation_job SET status=?,revision=?,error_code=?,repair_json=NULL WHERE id=?").param(job.revision()<maximum?"QUEUED":"FAILED").param(job.revision()<maximum?job.revision()+1:job.revision()).param(error).param(job.id()).update();
+    }
     private void fail(View job,String error) {
         fail(job,error,java.util.Set.of("title","context","reference","generator","inputValidator","editorial","hints","oracle"));
     }
@@ -292,14 +320,16 @@ public class GenerationJobs {
         var checks=repair.putArray("failedChecks");
         jdbc.sql("SELECT e.role,j.verdict FROM generation_execution e JOIN judge_job j ON j.submission_id=e.submission_id WHERE e.job_id=? AND e.revision=? AND j.status='FINISHED' AND j.verdict<>e.expected_verdict")
                 .param(job.id()).param(job.revision()).query((r,n)->r.getString(1)+":"+r.getString(2)).list().forEach(checks::add);
-        // One repair budget per problem; preserve unrelated artifacts, then rerun every execution gate.
+        if(error.equals("PROSE_REVIEW_REJECTED")||error.equals("INVALID_PROSE_REVIEW"))jdbc.sql("SELECT completion_json FROM generation_prose_review WHERE job_id=? AND revision=?").param(job.id()).param(job.revision()).query(String.class).optional().filter(java.util.Objects::nonNull).map(JudgeJson::parse).ifPresent(receipt->{for(var issue:receipt.path("artifacts").path("issues"))checks.add("PROSE:"+issue.asText());});
+        // New jobs permit three targeted repairs; old jobs keep their original single-repair contract.
+        int maximumRepairs=GenerationResources.enabled(jdbc,"TAG",job.id())?3:1;
         jdbc.sql("UPDATE generation_job SET status=?,revision=?,error_code=?,repair_json=?,review_sha256=NULL WHERE id=?")
-                .param(job.revision()<1?"QUEUED":"FAILED").param(job.revision()<1?1:job.revision()).param(error)
+                .param(job.revision()<maximumRepairs?"QUEUED":"FAILED").param(job.revision()<maximumRepairs?job.revision()+1:job.revision()).param(error)
                 .param(repair.toString()).param(job.id()).update();
     }
     @Transactional
     public void advance() {
-        lock();drafts.advance();
+        lock();GenerationResources.advance(jdbc);drafts.advance();
         jdbc.sql("UPDATE generation_job SET status='THEME_FAILED',error_code='THEME_PREPARATION_FAILED' WHERE status='QUEUED' AND EXISTS (SELECT 1 FROM ai_task a WHERE a.id=theme_task_id AND a.status IN ('FAILED','UNKNOWN'))").update();
         jdbc.sql("UPDATE generation_job SET status='NEEDS_REVIEW',error_code='GENERATION_INTERRUPTED' WHERE status='GENERATING' AND lease_until<CURRENT_TIMESTAMP").update();
         var jobs=jdbc.sql("SELECT id FROM generation_job WHERE status='VALIDATING'").query(UUID.class).list();
@@ -393,7 +423,9 @@ public class GenerationJobs {
                 long referenceMs=rows.stream().filter(r->r[0].contains("reference")).mapToLong(r->ProblemTimeLimits.maximum(JudgeJson.parse(r[4]))).max().orElse(0);
                 String limits;
                 try {limits=ProblemTimeLimits.measured(referenceMs);}catch(HybridArtifacts.Invalid invalid){fail(job,invalid.getMessage(),java.util.Set.of("reference"));continue;}
-                report.set("timeLimits",JudgeJson.parse(limits));
+                try{limits=GenerationResources.ensure(jdbc,"TAG",id,ver,specFor(id),job.artifacts().path("reference").asText(),job.artifacts().path("inputValidator").asText(),limits);}catch(HybridArtifacts.Invalid invalid){if(GenerationDraftRecovery.stopped(invalid.getMessage()))jdbc.sql("UPDATE generation_job SET status='NEEDS_REVIEW',error_code=? WHERE id=?").param(invalid.getMessage()).param(id).update();else fail(job,invalid.getMessage(),java.util.Set.of("reference","generator","inputValidator","oracle"));continue;}
+                if(limits==null)continue;
+                report.set("timeLimits",JudgeJson.parse(limits));report.put("threeLanguagesMeasured",GenerationResources.enabled(jdbc,"TAG",id));
                 report.put("evidenceId",ledger.freeze(id,job.revision(),report).toString());
                 var teaching=JudgeJson.JSON.createObjectNode().put("editorial",job.artifacts().path("editorial").asText());teaching.set("hints",job.artifacts().path("hints"));
                 jdbc.sql("UPDATE problem_version SET ready=true,time_limits_json=?,teaching_json=?,shared=(SELECT share_on_publish FROM generation_job WHERE id=?) WHERE id=? AND ready=false").param(limits).param(teaching.toString()).param(job.id()).param(ver).update();

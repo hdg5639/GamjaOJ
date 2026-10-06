@@ -20,6 +20,7 @@ class HybridRunnerIntegrationTest {
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     final HybridGenerationIntegrationTest f=new HybridGenerationIntegrationTest();
     @BeforeEach void setup(){
+        jdbc.sql("DELETE FROM generation_resource_attempt").update();jdbc.sql("DELETE FROM generation_resource_execution").update();jdbc.sql("DELETE FROM generation_resource_check").update();
         env.getPropertySources().remove("finite-profile-test");
         jdbc.sql("DELETE FROM hybrid_execution_check").update();jdbc.sql("DELETE FROM submission").update();
         jdbc.sql("DELETE FROM hybrid_generation").update();jdbc.sql("DELETE FROM problem_version WHERE id LIKE 'hybrid-check-%'").update();

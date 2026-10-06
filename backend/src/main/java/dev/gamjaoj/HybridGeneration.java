@@ -30,7 +30,7 @@ class HybridGeneration {
     record Progress(UUID id,String pipelineVersion,int revision,String status,int repairRounds,boolean shared,
                     String contractHash,String publicHash,String error,OffsetDateTime acceptedAt,
                     OffsetDateTime deadlineAt,Map<Role,String> branches,String publishedVersionId,boolean problemHeld,String profileId,
-                    boolean referenceReused) {}
+                    boolean referenceReused,JsonNode recovery,JsonNode resources) {}
     private OffsetDateTime now(){return OffsetDateTime.now(ZoneOffset.UTC);}
     private AccountException conflict(){return new AccountException(409,"현재 출제 단계와 맞지 않는 결과예요.");}
     private Job job(UUID id,boolean lock) {
@@ -79,6 +79,7 @@ class HybridGeneration {
     }
     private Branch enqueue(Job j,Role role,JsonNode input,String state) {
         int attempt=branches(j.id,j.revision).stream().filter(b->b.role==role).mapToInt(Branch::attempt).max().orElse(-1)+1;
+        if(role==Role.PRESENTATION||role==Role.READER)attempt=Math.max(attempt,jdbc.sql("SELECT COALESCE(MAX(r.retry),-1) FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id WHERE r.generation_id=? AND r.revision=? AND r.role=? AND a.status='HYBRID_RESERVED' AND r.branch_id IS NULL").param(j.id).param(j.revision).param(role.name()).query(Integer.class).single());
         String payload=JudgeJson.canonical(HybridArtifacts.bounded(input));UUID id=UUID.randomUUID();
         jdbc.sql("INSERT INTO hybrid_branch(id,generation_id,revision,role,attempt,status,input_json,input_sha256,contract_sha256,public_sha256,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
                 .param(id).param(j.id).param(j.revision).param(role.name()).param(attempt).param(state).param(payload)
@@ -109,7 +110,7 @@ class HybridGeneration {
         for(Role role:Role.values())states.put(role,"NOT_STARTED");latest(j).forEach((r,b)->states.put(r,b.status));
         return new Progress(id,HybridArtifacts.VERSION,j.revision,j.status,j.repairs,j.shared,j.contractHash,j.publicHash,
                 j.error,j.acceptedAt,j.deadlineAt,Collections.unmodifiableMap(states),jdbc.sql("SELECT published_version_id FROM hybrid_generation WHERE id=?").param(id).query(String.class).optional().orElse(null),jdbc.sql("SELECT count(*) FROM problem_version WHERE id=(SELECT published_version_id FROM hybrid_generation WHERE id=?) AND review_hold=true").param(id).query(Integer.class).single()>0,jdbc.sql("SELECT profile_id FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).optional().orElse(null),
-                jdbc.sql("SELECT count(*) FROM hybrid_public_request WHERE generation_id=? AND reference_artifact_id IS NOT NULL").param(id).query(Integer.class).single()>0);
+                jdbc.sql("SELECT completion_json FROM hybrid_branch WHERE generation_id=? AND role='CORE' AND status='SUCCEEDED' ORDER BY attempt DESC LIMIT 1").param(id).query(String.class).optional().filter(Objects::nonNull).map(JudgeJson::parse).map(c->HybridRuleRegistry.REUSED_EXECUTOR.equals(c.path("usage").path("executor").asText())).orElse(false),GenerationDraftRecovery.progress(jdbc,"RULE",id),GenerationResources.progress(jdbc,"RULE",id));
     }
     @Transactional
     Assignment claim(UUID id,Role role) {
@@ -275,6 +276,19 @@ class HybridGeneration {
         }
         if(role==Role.PRESENTATION)jdbc.sql("UPDATE hybrid_generation SET public_sha256=NULL WHERE id=?").param(id).update();
         enqueue(job(id,false),role,old.input,"QUEUED");return view(username,id);
+    }
+    /** Called only under the execution budget lock after affected role reservations were admitted. */
+    void recoverStage(UUID id,Role role,JsonNode issues) {
+        Job j=job(id,true);Branch previous=latest(j).get(role);
+        if(!j.status.equals("HELD")||previous==null)throw conflict();
+        var affected=EnumSet.of(role,Role.VALIDATION,Role.CONTENT_REVIEW);if(role==Role.PRESENTATION)affected.add(Role.READER);
+        cancelPending(id,j.revision,affected);
+        for(var dependent:affected){var prior=latest(j).get(dependent);if(prior!=null)jdbc.sql("UPDATE hybrid_branch SET status='SUPERSEDED' WHERE id=?").param(prior.id).update();}
+        var input=(com.fasterxml.jackson.databind.node.ObjectNode)previous.input.deepCopy();
+        if(role!=Role.READER&&issues.isArray())input.put("recoveryFeedback",JudgeJson.canonical(issues));
+        var now=now();jdbc.sql("UPDATE hybrid_generation SET status='BUILDING',error_code=NULL,deadline_at=?,updated_at=? WHERE id=?").param(now.plusMinutes(20)).param(now).param(id).update();
+        if(role==Role.PRESENTATION)jdbc.sql("UPDATE hybrid_generation SET public_sha256=NULL WHERE id=?").param(id).update();
+        enqueue(job(id,false),role,input,"QUEUED");
     }
     @Transactional
     Progress reviseContract(String username,UUID id,int revision,String expectedContractHash) {

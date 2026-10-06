@@ -128,6 +128,9 @@ class ExperimentalPublication {
                     long maximum=results.values().stream().filter(r->r.role().startsWith("final-package-")||r.role().startsWith("final-stress-")&&!r.role().contains("validator")).mapToLong(r->ProblemTimeLimits.maximum(r.report())).max().orElse(0);
                     var assessment=json(id,"review_payload_json").path("requirementsReview");
                     String limits=assessment.isMissingNode()?null:ProblemTimeLimits.reviewed(assessment,maximum);
+                    limits=GenerationResources.ensure(jdbc,"DIRECT",id,"experimental-check-"+id,json(id,"spec_json"),artifacts.path("reference").asText(),artifacts.path("inputValidator").asText(),limits);
+                    if(limits==null)continue;
+                    report.set("timeLimits",JudgeJson.parse(limits));report.put("threeLanguagesMeasured",GenerationResources.enabled(jdbc,"DIRECT",id));
                     jdbc.sql("UPDATE problem_version SET ready=true,time_limits_json=?,teaching_json=?,catalog_category=?,shared=(SELECT share_on_publish FROM generation_spec_draft WHERE id=?) WHERE id=? AND ready=false").param(limits).param(teaching.toString()).param(ProblemCategories.display(json(id,"spec_json").path("category").asText())).param(id).param("experimental-check-"+id).update();
                     ThinkingDifficulty.publish(jdbc,"experimental-check-"+id,json(id,"review_payload_json").path("thinking"),"MODEL");
                     jdbc.sql("UPDATE generation_spec_draft SET status='PUBLISHED',final_report_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").param(report.toString()).param(id).update();

@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** Private experimental definitions and preliminary checks; never publishes a ready problem. */
 @Service
 class GenerationSpecDrafts {
-    record View(UUID id,String status,String mode,String request,JsonNode spec,String specHash,String error,JsonNode checks,JsonNode review,JsonNode publication,String problemVersion,boolean problemHeld,String reviewReason) {}
+    record View(UUID id,String status,String mode,String request,JsonNode spec,String specHash,String error,JsonNode checks,JsonNode review,JsonNode publication,String problemVersion,boolean problemHeld,String reviewReason,JsonNode recovery,JsonNode resources) {}
     private final ExperimentalChecks checks;
     private final ExperimentalReview reviews;
     private final ExperimentalPublication publication;
@@ -46,7 +46,7 @@ class GenerationSpecDrafts {
         if(!List.of("low","medium","high","xhigh","max").contains(effort))throw new AccountException(503,"Codex reasoning 설정을 확인해 주세요.");
         jdbc.sql("INSERT INTO generation_spec_draft (id,owner_id,request_text,status,model,effort) VALUES (?,?,?,'QUEUED',?,?)")
                 .param(id).param(owner).param(request).param(model).param(effort).update();
-        jdbc.sql("UPDATE generation_spec_draft SET share_on_publish=? WHERE id=?").param(shared).param(id).update();
+        jdbc.sql("UPDATE generation_spec_draft SET resource_validation=true,auto_recovery=true,share_on_publish=? WHERE id=?").param(shared).param(id).update();
         return view(username,id);
     }
     List<View> list(String username) {
@@ -55,12 +55,12 @@ class GenerationSpecDrafts {
     }
     View view(String username,UUID id) {
         return jdbc.sql("SELECT d.*,p.review_hold,p.review_reason FROM generation_spec_draft d LEFT JOIN problem_version p ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE d.id=? AND d.owner_id=?").param(id).param(submissions.owner(username,false))
-                .query((r,n)->new View(id,r.getString("status"),"EXPERIMENTAL",r.getString("request_text"),r.getString("spec_json")==null?null:JudgeJson.parse(r.getString("spec_json")),r.getString("spec_sha256"),r.getString("error_code"),r.getString("build_report_json")==null?null:JudgeJson.parse(r.getString("build_report_json")),r.getString("review_report_json")==null?null:JudgeJson.parse(r.getString("review_report_json")),r.getString("final_report_json")==null?null:JudgeJson.parse(r.getString("final_report_json")),r.getString("status").equals("PUBLISHED")?"experimental-check-"+id:null,r.getBoolean("review_hold"),r.getString("review_reason")))
+                .query((r,n)->new View(id,r.getString("status"),"EXPERIMENTAL",r.getString("request_text"),r.getString("spec_json")==null?null:JudgeJson.parse(r.getString("spec_json")),r.getString("spec_sha256"),r.getString("error_code"),r.getString("build_report_json")==null?null:JudgeJson.parse(r.getString("build_report_json")),r.getString("review_report_json")==null?null:JudgeJson.parse(r.getString("review_report_json")),r.getString("final_report_json")==null?null:JudgeJson.parse(r.getString("final_report_json")),r.getString("status").equals("PUBLISHED")?"experimental-check-"+id:null,r.getBoolean("review_hold"),r.getString("review_reason"),GenerationDraftRecovery.progress(jdbc,"DIRECT",id),GenerationResources.progress(jdbc,"DIRECT",id)))
                 .optional().orElseThrow(()->new AccountException(404,"출제 초안을 찾을 수 없어요."));
     }
     // Called under the same transaction/lock and concurrency guard as ordinary generation.
     GenerationJobs.Assignment claim() {
-        var row=jdbc.sql("SELECT id,request_text,model,effort,status,spec_json FROM generation_spec_draft WHERE status IN ('QUEUED','BUILD_QUEUED','REVIEW_QUEUED','FINAL_QUEUED') ORDER BY created_at,id LIMIT 1 FOR UPDATE")
+        var row=jdbc.sql("SELECT id,request_text,model,effort,status,spec_json FROM generation_spec_draft WHERE status IN ('QUEUED','BUILD_QUEUED','REVIEW_QUEUED','FINAL_QUEUED') AND (retry_after IS NULL OR retry_after<=CURRENT_TIMESTAMP) ORDER BY created_at,id LIMIT 1 FOR UPDATE")
                 .query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4),r.getString(5),r.getString(6)}).optional();
         if(row.isEmpty())return null;
         var data=row.get();UUID id=UUID.fromString(data[0]),token=UUID.randomUUID();
@@ -70,6 +70,7 @@ class GenerationSpecDrafts {
         var spec=JudgeJson.JSON.createObjectNode().put("phase","EXPERIMENTAL_SPEC_DRAFT").put("request",data[1]).put("runtime","Java 8 / Main / STDIO");
         if(review) {
             spec.put("requirementsPolicy","v1");spec.put("thinkingRubric","v1");
+            if(recoveryEnabled(id))spec.put("failureScopePolicy","v1");
             long maximum=jdbc.sql("SELECT j.result_json FROM generation_spec_execution e JOIN judge_job j ON j.submission_id=e.submission_id WHERE e.draft_id=? AND e.role LIKE 'reference-%' AND j.status='FINISHED'")
                     .param(id).query(String.class).list().stream().map(JudgeJson::parse).mapToLong(ProblemTimeLimits::maximum).max().orElse(0);
             spec.putObject("timeEvidence").put("javaMaxWallMs",maximum).put("otherLanguagesMeasured",false)
@@ -77,9 +78,17 @@ class GenerationSpecDrafts {
             jdbc.sql("UPDATE generation_spec_draft SET review_requirements=true,review_thinking=true WHERE id=?").param(id).update();
         }
         if(build||review||finish){spec.put("phase",finish?"EXPERIMENTAL_FINAL_PLAN":review?"EXPERIMENTAL_REVIEW":"EXPERIMENTAL_IMPLEMENTATION");var definition=(com.fasterxml.jackson.databind.node.ObjectNode)JudgeJson.parse(data[5]);if(review||finish){definition.remove("referenceStrategy");definition.remove("oracleStrategy");}spec.set("definition",definition);}
+        String recoveryScope=jdbc.sql("SELECT recovery_scope FROM generation_spec_draft WHERE id=?").param(id).query(String.class).optional().orElse(null);
+        String feedback=jdbc.sql("SELECT recovery_feedback FROM generation_spec_draft WHERE id=?").param(id).query(String.class).optional().orElse(null);
+        if("PROSE".equals(recoveryScope)&&!build&&!review&&!finish){spec.put("phase","EXPERIMENTAL_PROSE_REPAIR");spec.set("definition",JudgeJson.parse(data[5]));}
+        if(feedback!=null)spec.put("recoveryFeedback",feedback);
+        GenerationValidationPolicy.attach(spec,data[5]==null?spec:JudgeJson.parse(data[5]));
         return new GenerationJobs.Assignment(id,token,0,data[2],data[3],spec,null,null,null);
     }
+    boolean recoveryEnabled(UUID id){return jdbc.sql("SELECT auto_recovery FROM generation_spec_draft WHERE id=?").param(id).query(Boolean.class).single();}
     void complete(UUID id,UUID token,JsonNode artifacts,JsonNode oracle,JsonNode usage,String error) {
+        String archived=GenerationDraftRecovery.receipt(jdbc,id,token);
+        if(archived!=null){var receipt=JudgeJson.JSON.createObjectNode();receipt.set("artifacts",artifacts);receipt.set("oracle",oracle);receipt.set("usage",usage);receipt.put("error",error);if(archived.equals(JudgeJson.canonical(receipt)))return;throw new AccountException(409,"보존된 이전 시도의 결과와 달라요.");}
         if(jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE id=? AND final_token=?").param(id).param(token).query(Integer.class).single()>0){completeFinal(id,artifacts,oracle,usage,error);return;}
         if(jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE id=? AND review_token=?").param(id).param(token).query(Integer.class).single()>0){completeReview(id,artifacts,oracle,usage,error);return;}
         if(jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE id=? AND build_token=?").param(id).param(token).query(Integer.class).single()>0){completeBuild(id,artifacts,oracle,usage,error);return;}
@@ -92,6 +101,7 @@ class GenerationSpecDrafts {
         if(row[2]!=null){if(row[2].equals(audit))return;throw new AccountException(409,"이미 저장된 초안 결과와 달라요.");}
         if(!row[1].equals("GENERATING")||jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE id=? AND lease_until>CURRENT_TIMESTAMP").param(id).query(Integer.class).single()!=1)
             throw new AccountException(409,"초안 작업의 유효 시간이 지났어요.");
+        if("PROSE".equals(jdbc.sql("SELECT recovery_scope FROM generation_spec_draft WHERE id=?").param(id).query(String.class).optional().orElse(null))){completeProse(id,artifacts,oracle,audit,error);return;}
         String state="DRAFT_READY",failure=null,spec=null;
         if(error!=null){state="FAILED";failure=Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH","CODEX_QUOTA_EXHAUSTED").contains(error)?error:"CODEX_DRAFT_FAILED";}
         else {
@@ -185,7 +195,26 @@ class GenerationSpecDrafts {
         jdbc.sql("UPDATE generation_spec_draft SET final_plan_json=?,final_plan_sha256=? WHERE id=?").param(payload).param(JudgeJson.hash(payload)).param(id).update();
         publication.start(id,artifacts,oracle);
     }
-    void advance(){expire();checks.advance();reviews.advance();publication.advance();}
+    void advance(){expire();checks.advance();reviews.advance();publication.advance();GenerationDraftRecovery.advance(jdbc);}
+    private void completeProse(UUID id,JsonNode artifacts,JsonNode oracle,String audit,String error){
+        String failure=error;
+        if(failure==null&&(artifacts==null||!artifacts.isObject()||artifacts.size()!=2||!artifacts.has("title")||!artifacts.has("statement")||oracle!=null&&!oracle.isNull()))failure="INVALID_PROSE_REPAIR";
+        if(failure==null)try{text(artifacts.path("title"),100);text(artifacts.path("statement"),6000);}catch(IllegalArgumentException e){failure="INVALID_PROSE_REPAIR";}
+        jdbc.sql("UPDATE generation_spec_draft SET completion_json=?,status='REVIEW_REJECTED',error_code=? WHERE id=?").param(audit).param(failure).param(id).update();
+        if(failure!=null)return;
+        if(!reviews.intact(id)){jdbc.sql("UPDATE generation_spec_draft SET error_code='PROSE_ARTIFACT_FENCE_MISMATCH' WHERE id=?").param(id).update();return;}
+        var definition=(com.fasterxml.jackson.databind.node.ObjectNode)JudgeJson.parse(jdbc.sql("SELECT spec_json FROM generation_spec_draft WHERE id=?").param(id).query(String.class).single());
+        String oldHash=JudgeJson.hash(JudgeJson.canonical(definition));
+        definition.set("title",artifacts.path("title"));definition.set("statement",artifacts.path("statement"));try{validate(definition);}catch(IllegalArgumentException invalid){jdbc.sql("UPDATE generation_spec_draft SET error_code='INVALID_PROSE_REPAIR' WHERE id=?").param(id).update();return;}
+        String spec=JudgeJson.canonical(definition),hash=JudgeJson.hash(spec);
+        var report=(com.fasterxml.jackson.databind.node.ObjectNode)JudgeJson.parse(jdbc.sql("SELECT build_report_json FROM generation_spec_draft WHERE id=?").param(id).query(String.class).single());
+        report.put("previousSpecHash",oldHash).put("specHash",hash).put("proseOnlyRebase",true);
+        var packageNode=(com.fasterxml.jackson.databind.node.ObjectNode)JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id=? AND ready=false").param("experimental-check-"+id).query(String.class).single());
+        if(!JudgeJson.hash(JudgeJson.canonical(packageNode)).equals(jdbc.sql("SELECT package_sha256 FROM problem_version WHERE id=?").param("experimental-check-"+id).query(String.class).single())){jdbc.sql("UPDATE generation_spec_draft SET error_code='PROSE_PACKAGE_FENCE_MISMATCH' WHERE id=?").param(id).update();return;}
+        packageNode.set("title",definition.path("title"));packageNode.set("statement",definition.path("statement"));String pack=JudgeJson.canonical(packageNode);
+        jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id=? AND ready=false").param(pack).param(JudgeJson.hash(pack)).param("experimental-check-"+id).update();
+        jdbc.sql("UPDATE generation_spec_draft SET spec_json=?,spec_sha256=?,build_report_json=?,status='REVIEW_QUEUED',recovery_scope=NULL,error_code=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?").param(spec).param(hash).param(report.toString()).param(id).update();
+    }
     static void validate(JsonNode spec) {
         Set<String> fields=Set.of("title","category","tags","statement","inputDefinition","outputDefinition","constraints","samples","referenceStrategy","oracleStrategy","boundaryClasses","mutantIdeas");
         if(spec==null||!spec.isObject()||spec.size()!=fields.size())throw new IllegalArgumentException();

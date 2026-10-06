@@ -1,0 +1,587 @@
+{
+  "version": "GENERATION_VALIDATION_V1",
+  "timePolicy": {
+    "version": "LEARNER_FRIENDLY_V1",
+    "mode": "GENERAL",
+    "multiplier": 3,
+    "startupMs": 1000,
+    "floors": {
+      "CPP": 3,
+      "JAVA": 5,
+      "PYTHON": 8
+    }
+  },
+  "commonChecks": [
+    "input-contract/full-domain",
+    "input-contract/batch-bound",
+    "input-contract/overflow",
+    "input-contract/token-output",
+    "input-contract/reset-isolation"
+  ],
+  "profiles": [
+    {
+      "id": "input-contract",
+      "label": "입력·출력 계약",
+      "aliases": [
+        "구현",
+        "implementation",
+        "기초"
+      ],
+      "checks": [
+        "input-contract/full-domain",
+        "input-contract/batch-bound",
+        "input-contract/overflow",
+        "input-contract/token-output",
+        "input-contract/reset-isolation"
+      ],
+      "guidance": [
+        "명시된 모든 상한과 테스트 묶음 수를 함께 검사한다.",
+        "자료형·출력·불가능·동률 규칙을 별도로 검사한다."
+      ]
+    },
+    {
+      "id": "sequence",
+      "label": "배열·문자열",
+      "aliases": [
+        "배열·문자열",
+        "배열",
+        "수열",
+        "sequences",
+        "sequence"
+      ],
+      "checks": [
+        "sequence/empty-single",
+        "sequence/all-equal",
+        "sequence/signed-extremes",
+        "sequence/maximum-length"
+      ],
+      "guidance": [
+        "최대 길이에서 파싱·출력·누적 값 범위를 검사한다."
+      ]
+    },
+    {
+      "id": "strings",
+      "label": "문자열",
+      "aliases": [
+        "문자열",
+        "strings",
+        "string"
+      ],
+      "checks": [
+        "strings/empty-single",
+        "strings/repeated-prefix",
+        "strings/unicode-contract",
+        "strings/maximum-output"
+      ],
+      "guidance": [
+        "길이·문자 집합·반복 접두·인덱스 경계를 분리한다."
+      ]
+    },
+    {
+      "id": "sorting",
+      "label": "정렬",
+      "aliases": [
+        "정렬",
+        "sort",
+        "sorting"
+      ],
+      "checks": [
+        "sorting/ascending-descending",
+        "sorting/all-equal",
+        "sorting/tie-order",
+        "sorting/maximum-size"
+      ],
+      "guidance": [
+        "역순·동률·안정성 및 O(N²) 퇴화 조건을 확인한다."
+      ]
+    },
+    {
+      "id": "stack",
+      "label": "스택",
+      "aliases": [
+        "스택",
+        "stack",
+        "괄호",
+        "parentheses"
+      ],
+      "checks": [
+        "stack/empty-pop",
+        "stack/deep-nesting",
+        "stack/long-monotone",
+        "stack/unbalanced"
+      ],
+      "guidance": [
+        "빈 상태·최대 깊이·연속 push/pop와 괄호 조기 종료를 검사한다."
+      ]
+    },
+    {
+      "id": "queue",
+      "label": "큐",
+      "aliases": [
+        "큐",
+        "queue"
+      ],
+      "checks": [
+        "queue/empty-pop",
+        "queue/wraparound",
+        "queue/refill",
+        "queue/maximum-operations"
+      ],
+      "guidance": [
+        "포인터 순환·소진 후 재사용·선두 삭제 복잡도를 검사한다."
+      ]
+    },
+    {
+      "id": "deque",
+      "label": "덱",
+      "aliases": [
+        "덱",
+        "deque"
+      ],
+      "checks": [
+        "deque/both-ends",
+        "deque/wraparound",
+        "deque/all-delete",
+        "deque/maximum-operations"
+      ],
+      "guidance": [
+        "양 끝 혼합 연산과 삭제 후 복구 경계를 검사한다."
+      ]
+    },
+    {
+      "id": "linked-list",
+      "label": "연결 리스트",
+      "aliases": [
+        "연결리스트",
+        "연결 리스트",
+        "linked-list"
+      ],
+      "checks": [
+        "linked-list/head-tail",
+        "linked-list/single-delete",
+        "linked-list/id-reuse",
+        "linked-list/long-chain"
+      ],
+      "guidance": [
+        "머리/꼬리·ID 재사용·연쇄 삭제에서 인덱스 일관성을 검사한다."
+      ]
+    },
+    {
+      "id": "heap",
+      "label": "우선순위·힙",
+      "aliases": [
+        "힙",
+        "heap",
+        "우선순위",
+        "priority"
+      ],
+      "checks": [
+        "heap/tie-order",
+        "heap/stale-entry",
+        "heap/repeated-update",
+        "heap/maximum-operations"
+      ],
+      "guidance": [
+        "동률·lazy 삭제·재삽입·모든 값이 같은 경우를 검사한다."
+      ]
+    },
+    {
+      "id": "hash",
+      "label": "해시·인덱스",
+      "aliases": [
+        "해시",
+        "hash",
+        "자료구조",
+        "기초 자료구조"
+      ],
+      "checks": [
+        "hash/duplicate-id",
+        "hash/missing-id",
+        "hash/delete-reinsert",
+        "hash/index-consistency"
+      ],
+      "guidance": [
+        "중복 키·없는 키·복수 인덱스 동기화를 검사한다."
+      ]
+    },
+    {
+      "id": "window",
+      "label": "투 포인터·슬라이딩 윈도",
+      "aliases": [
+        "투포인터",
+        "두 포인터",
+        "슬라이딩윈도우",
+        "슬라이딩 윈도",
+        "two-pointer"
+      ],
+      "checks": [
+        "window/zero-negative",
+        "window/left-right-boundary",
+        "window/whole-window",
+        "window/no-solution"
+      ],
+      "guidance": [
+        "단조성이 필요한 풀이에서 0·음수 허용 여부를 확인한다."
+      ]
+    },
+    {
+      "id": "prefix",
+      "label": "누적 합",
+      "aliases": [
+        "누적합",
+        "누적 합",
+        "prefix"
+      ],
+      "checks": [
+        "prefix/zero-negative",
+        "prefix/prefix-origin",
+        "prefix/whole-range",
+        "prefix/overflow"
+      ],
+      "guidance": [
+        "구간 양끝과 초기 prefix, 누적 오버플로를 검사한다."
+      ]
+    },
+    {
+      "id": "binary-search",
+      "label": "이분 탐색",
+      "aliases": [
+        "이진탐색",
+        "이분 탐색",
+        "binary-search"
+      ],
+      "checks": [
+        "binary-search/monotonicity",
+        "binary-search/first-last",
+        "binary-search/no-solution",
+        "binary-search/answer-bound"
+      ],
+      "guidance": [
+        "탐색 대상의 단조성·종료조건·답의 상한을 검증한다."
+      ]
+    },
+    {
+      "id": "bfs",
+      "label": "너비 우선 탐색",
+      "aliases": [
+        "BFS",
+        "너비 우선 탐색",
+        "bfs"
+      ],
+      "checks": [
+        "bfs/disconnected",
+        "bfs/start-equals-goal",
+        "bfs/revisit-state",
+        "bfs/maximum-frontier"
+      ],
+      "guidance": [
+        "방문 상태는 좌표뿐 아니라 이동 모드·자원·시간을 포함하는지 검사한다."
+      ]
+    },
+    {
+      "id": "dfs",
+      "label": "깊이 우선 탐색",
+      "aliases": [
+        "DFS",
+        "깊이 우선 탐색",
+        "dfs"
+      ],
+      "checks": [
+        "dfs/disconnected",
+        "dfs/long-chain",
+        "dfs/cycle",
+        "dfs/recursion-depth"
+      ],
+      "guidance": [
+        "최대 깊이와 재귀 스택, 연결되지 않은 성분을 검사한다."
+      ]
+    },
+    {
+      "id": "backtracking",
+      "label": "조합·백트래킹",
+      "aliases": [
+        "백트래킹",
+        "부분집합",
+        "순열",
+        "조합",
+        "중복순열",
+        "중복조합",
+        "backtracking"
+      ],
+      "checks": [
+        "backtracking/maximum-state-space",
+        "backtracking/duplicates",
+        "backtracking/empty-choice",
+        "backtracking/pruning-soundness"
+      ],
+      "guidance": [
+        "최대 분기 수·중복 처리·독립 작은 완전탐색과 가지치기 정확성을 검사한다."
+      ]
+    },
+    {
+      "id": "dp",
+      "label": "동적 계획법",
+      "aliases": [
+        "DP",
+        "동적 계획법",
+        "dp"
+      ],
+      "checks": [
+        "dp/base-case",
+        "dp/transition-order",
+        "dp/unreachable-state",
+        "dp/maximum-state-memory"
+      ],
+      "guidance": [
+        "갱신 순서·도달 불가·차원 최대치와 다른 정상 점화식을 검사한다."
+      ]
+    },
+    {
+      "id": "greedy",
+      "label": "탐욕법",
+      "aliases": [
+        "그리디",
+        "탐욕법",
+        "greedy"
+      ],
+      "checks": [
+        "greedy/tie-order",
+        "greedy/exchange-counterexample",
+        "greedy/impossible",
+        "greedy/maximum-size"
+      ],
+      "guidance": [
+        "독립 작은 전수로 교환 논리와 동률 정렬 반례를 확인한다."
+      ]
+    },
+    {
+      "id": "shortest-path",
+      "label": "최단 경로",
+      "aliases": [
+        "최단경로",
+        "최단 경로",
+        "그래프·최단 경로",
+        "다익스트라",
+        "dijkstra"
+      ],
+      "checks": [
+        "shortest-path/unreachable",
+        "shortest-path/zero-cost",
+        "shortest-path/parallel-edges",
+        "shortest-path/stale-distance",
+        "shortest-path/distance-overflow"
+      ],
+      "guidance": [
+        "가중치 범위·중복 간선·거리 오버플로 및 상태 확장 필요성을 검사한다."
+      ]
+    },
+    {
+      "id": "mst",
+      "label": "최소 신장 트리",
+      "aliases": [
+        "MST",
+        "최소 신장 트리",
+        "mst"
+      ],
+      "checks": [
+        "mst/disconnected",
+        "mst/parallel-edges",
+        "mst/equal-weight",
+        "mst/strict-second-best"
+      ],
+      "guidance": [
+        "같은 비용의 다른 트리와 엄격히 큰 차선 트리를 구분한다."
+      ]
+    },
+    {
+      "id": "dsu",
+      "label": "서로소 집합",
+      "aliases": [
+        "서로소집합",
+        "서로소 집합",
+        "union-find",
+        "dsu"
+      ],
+      "checks": [
+        "dsu/same-root",
+        "dsu/long-chain",
+        "dsu/rollback-boundary",
+        "dsu/maximum-unions"
+      ],
+      "guidance": [
+        "경로 압축과 rollback의 충돌·반복 합집합을 검사한다."
+      ]
+    },
+    {
+      "id": "topology",
+      "label": "위상 정렬",
+      "aliases": [
+        "위상정렬",
+        "위상 정렬",
+        "topological"
+      ],
+      "checks": [
+        "topology/cycle",
+        "topology/multiple-ready",
+        "topology/disconnected",
+        "topology/maximum-edges"
+      ],
+      "guidance": [
+        "여러 후보의 동률/사전순·사이클·중복 의존성을 검사한다."
+      ]
+    },
+    {
+      "id": "recursion",
+      "label": "재귀·분할 정복",
+      "aliases": [
+        "재귀",
+        "분할정복",
+        "분할 정복",
+        "recursion"
+      ],
+      "checks": [
+        "recursion/base-case",
+        "recursion/maximum-depth",
+        "recursion/odd-split",
+        "recursion/output-size"
+      ],
+      "guidance": [
+        "종료·홀수 분할·복구 상태·최대 출력량을 검사한다."
+      ]
+    },
+    {
+      "id": "tree-range",
+      "label": "트리·구간 질의",
+      "aliases": [
+        "세그먼트트리",
+        "세그먼트 트리",
+        "트리",
+        "구간",
+        "tree"
+      ],
+      "checks": [
+        "tree-range/whole-range",
+        "tree-range/single-range",
+        "tree-range/lazy-order",
+        "tree-range/update-query-interleave"
+      ],
+      "guidance": [
+        "닫힌/열린 구간·lazy 적용순서·갱신과 질의 혼합을 검사한다."
+      ]
+    },
+    {
+      "id": "order-statistics",
+      "label": "순서 통계",
+      "aliases": [
+        "순서통계",
+        "순서 통계",
+        "median",
+        "중앙값"
+      ],
+      "checks": [
+        "order-statistics/duplicates",
+        "order-statistics/extreme-rank",
+        "order-statistics/delete-reinsert",
+        "order-statistics/maximum-operations"
+      ],
+      "guidance": [
+        "중복 원소 개수·k 경계·삭제 후 순위·정수 중간값을 검사한다."
+      ]
+    },
+    {
+      "id": "geometry",
+      "label": "계산 기하",
+      "aliases": [
+        "계산기하",
+        "계산 기하",
+        "geometry"
+      ],
+      "checks": [
+        "geometry/collinear",
+        "geometry/coincident",
+        "geometry/orientation-overflow",
+        "geometry/boundary-touch"
+      ],
+      "guidance": [
+        "공선·중복 좌표·교차 경계·외적 범위를 검사한다."
+      ]
+    },
+    {
+      "id": "number-theory",
+      "label": "정수론",
+      "aliases": [
+        "정수론",
+        "number-theory"
+      ],
+      "checks": [
+        "number-theory/zero-one",
+        "number-theory/prime-composite",
+        "number-theory/modulo-sign",
+        "number-theory/integer-overflow"
+      ],
+      "guidance": [
+        "정수 경계·모듈러 부호·곱셈·실수 오차를 검사한다."
+      ]
+    },
+    {
+      "id": "flow",
+      "label": "네트워크 유량",
+      "aliases": [
+        "네트워크유량",
+        "네트워크 유량",
+        "flow"
+      ],
+      "checks": [
+        "flow/zero-capacity",
+        "flow/residual-reverse",
+        "flow/multiple-paths",
+        "flow/capacity-overflow"
+      ],
+      "guidance": [
+        "역방향 잔여 간선·유량 초기화·용량 범위를 검사한다."
+      ]
+    },
+    {
+      "id": "simulation",
+      "label": "시뮬레이션",
+      "aliases": [
+        "시뮬레이션",
+        "simulation",
+        "exam-a-simulation"
+      ],
+      "checks": [
+        "simulation/simultaneous-events",
+        "simulation/operation-order",
+        "simulation/boundary-contact",
+        "simulation/reset-isolation"
+      ],
+      "guidance": [
+        "동시 갱신·충돌·진행 순서와 종료를 검사한다."
+      ]
+    },
+    {
+      "id": "command",
+      "label": "명령 처리",
+      "aliases": [
+        "명령",
+        "COMMAND",
+        "command",
+        "exam-b",
+        "명령 처리",
+        "명령처리형",
+        "COMMAND_MULTI",
+        "COMMAND_SINGLE"
+      ],
+      "checks": [
+        "command/maximum-operations",
+        "command/id-reuse",
+        "command/stale-entry",
+        "command/reset-isolation",
+        "command/index-consistency"
+      ],
+      "guidance": [
+        "명령열 전체 상한·ID 재사용·취소/복구·초기화·여러 인덱스 일관성을 검사한다."
+      ]
+    }
+  ]
+}

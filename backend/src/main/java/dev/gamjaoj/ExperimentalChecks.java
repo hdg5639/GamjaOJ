@@ -35,8 +35,10 @@ class ExperimentalChecks {
         var cases=new ArrayList<JsonNode>();int index=0;
         for(var sample:spec.path("samples"))cases.add(test("sample-"+index++,sample.path("input").asText(),sample.path("output").asText()));
         String json=JudgeJson.canonical(plan(id,cases,false).put("title",spec.path("title").asText()).put("statement",spec.path("statement").asText()));
+        if(jdbc.sql("SELECT count(*) FROM problem_version WHERE id=?").param(version(id)).query(Integer.class).single()==0) {
         jdbc.sql("INSERT INTO problem_version (id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id) SELECT ?,?,?,p.runtime_image,p.runner_policy,false,d.owner_id FROM problem_version p JOIN generation_spec_draft d ON d.id=? WHERE p.id='total-v1'")
                 .param(version(id)).param(json).param(JudgeJson.hash(json)).param(id).update();
+        } else if(jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id=? AND ready=false").param(json).param(JudgeJson.hash(json)).param(version(id)).update()!=1)throw new AccountException(409,"이미 게시된 문제는 복구할 수 없어요.");
         execute(id,"reference-samples",artifacts.path("reference").asText(),cases,false);
         execute(id,"oracle-samples",oracle.path("source").asText(),cases,false);
         execute(id,"validator-samples",artifacts.path("inputValidator").asText(),cases.stream().map(t->(JsonNode)((ObjectNode)t.deepCopy()).put("output","VALID\n")).toList(),false);
