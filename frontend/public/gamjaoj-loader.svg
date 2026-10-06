@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38" role="img" aria-labelledby="gamjaoj-loader-title gamjaoj-loader-desc">
+  <title id="gamjaoj-loader-title">GamjaOJ 로딩</title>
+  <desc id="gamjaoj-loader-desc">GamjaBox 육각형 안에 왼쪽 코드 괄호, 정답 체크, 오른쪽 코드 괄호가 차례로 나타난 뒤 작아지며 사라집니다.</desc>
+  <defs>
+    <linearGradient id="gamjaoj-loader-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c8ff58"/>
+      <stop offset="1" stop-color="#62ffa8"/>
+    </linearGradient>
+    <style>
+      /* GamjaBox entrance / pop / exit rhythm, with an extra 0.2 s completed hold. */
+      .gamjaoj-loader-symbol {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: gamjaoj-loader-pop 1.9s infinite;
+      }
+      .gamjaoj-loader-hex { animation: gamjaoj-loader-hex 1.9s infinite; }
+      .gamjaoj-loader-left { animation: gamjaoj-loader-left 1.9s infinite; }
+      .gamjaoj-loader-check {
+        stroke-dasharray: 1;
+        stroke-dashoffset: 0;
+        animation: gamjaoj-loader-check 1.9s infinite;
+      }
+      .gamjaoj-loader-right { animation: gamjaoj-loader-right 1.9s infinite; }
+      @keyframes gamjaoj-loader-pop {
+        0% { transform: scale(.88); animation-timing-function: cubic-bezier(.22,.7,.2,1); }
+        16.105% { transform: scale(1); animation-timing-function: cubic-bezier(.18,.9,.24,1.28); }
+        30.421% { transform: scale(1.085); animation-timing-function: cubic-bezier(.3,.75,.25,1); }
+        40.263% { transform: scale(1.025); animation-timing-function: cubic-bezier(.55,.02,.85,.35); }
+        54.579%,65.105% { transform: scale(1); animation-timing-function: cubic-bezier(.55,.02,.82,.25); }
+        80.316%,100% { transform: scale(.58); }
+      }
+      @keyframes gamjaoj-loader-hex {
+        0%,4.474% { opacity: 0; animation-timing-function: cubic-bezier(.2,.7,.2,1); }
+        16.105% { opacity: 1; }
+        65.105% { opacity: 1; animation-timing-function: cubic-bezier(.55,.02,.82,.25); }
+        80.316%,100% { opacity: 0; }
+      }
+      @keyframes gamjaoj-loader-left {
+        0%,16.105% { opacity: 0; transform: translateX(-.7px); animation-timing-function: cubic-bezier(.2,.7,.2,1); }
+        24.158%,65.105% { opacity: 1; transform: translateX(0); }
+        80.316%,100% { opacity: 0; transform: translateX(0); }
+      }
+      @keyframes gamjaoj-loader-check {
+        0%,24.158% { opacity: 0; stroke-dashoffset: 1; }
+        25.053% { opacity: 1; stroke-dashoffset: 1; animation-timing-function: cubic-bezier(.25,.6,.3,1); }
+        37.579%,65.105% { opacity: 1; stroke-dashoffset: 0; }
+        80.316%,100% { opacity: 0; stroke-dashoffset: 0; }
+      }
+      @keyframes gamjaoj-loader-right {
+        0%,37.579% { opacity: 0; transform: translateX(.7px); animation-timing-function: cubic-bezier(.2,.7,.2,1); }
+        45.632%,65.105% { opacity: 1; transform: translateX(0); }
+        80.316%,100% { opacity: 0; transform: translateX(0); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .gamjaoj-loader-symbol,.gamjaoj-loader-hex,.gamjaoj-loader-left,.gamjaoj-loader-check,.gamjaoj-loader-right {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+        }
+        .gamjaoj-loader-check { stroke-dashoffset: 0 !important; }
+      }
+    </style>
+  </defs>
+  <g class="gamjaoj-loader-symbol">
+    <path class="gamjaoj-loader-hex" fill="url(#gamjaoj-loader-gradient)" d="M19 2.5 32.8 10v16L19 33.5 5.2 26V10L19 2.5Z"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path class="gamjaoj-loader-left" stroke="#07100a" stroke-width="1.9" d="M13.5 13.7 9.7 19l3.8 5.3"/>
+      <path class="gamjaoj-loader-check" stroke="#067543" stroke-width="2.1" pathLength="1" d="m15.9 19.1 2.7 2.7 4-5.3"/>
+      <path class="gamjaoj-loader-right" stroke="#07100a" stroke-width="1.9" d="m24.5 13.7 3.8 5.3-3.8 5.3"/>
+    </g>
+  </g>
+</svg>
