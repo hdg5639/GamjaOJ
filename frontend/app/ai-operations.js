@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import GenerationProgress from './generation-progress';
 import ProblemStatement from './problem-statement';
 import SelectControl from './select-control';
@@ -93,7 +94,7 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
     <section className="generation-compose" aria-label="태그로 문제 요청">
     <div className="generation-section-heading"><h3>어떤 연습을 할까요?</h3><a href="#tag-generation-results">진행·결과로 이동</a></div>
     <p className="draft-help">카테고리와 연습 태그를 선택하세요. 새 소재로 문제와 힌트를 작성합니다.</p>
-    {optionsError?<p role="alert" className="notice error">카테고리를 불러오지 못했어요: {optionsError} <button className="secondary" onClick={()=>setOptionsAttempt(n=>n+1)}>카테고리 다시 불러오기</button></p>:!choice&&<p role="status">카테고리와 태그를 불러오고 있어요…</p>}
+    {optionsError?<p role="alert" className="notice error">카테고리를 불러오지 못했어요: {optionsError} <button className="secondary" onClick={()=>setOptionsAttempt(n=>n+1)}>카테고리 다시 불러오기</button></p>:!choice&&<LoadingIndicator>카테고리와 태그를 불러오고 있어요…</LoadingIndicator>}
     <label>카테고리<SelectControl aria-label="카테고리" value={category} disabled={busy||!!pending.current||!choice} onChange={e=>{setCategory(e.target.value);setTags(['basics']);setSourceAnalysisId('');}}>
       {!choice&&<option value={category}>불러오는 중…</option>}
       {options.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}
@@ -138,7 +139,7 @@ export default function AiOperations({api,onOpen,userId,initialMode='tags',ruleD
     <p className="draft-help">소재 생성 API는 서비스 예산을 사용합니다. 검증 실패 시 최대 한 번 자동 수정합니다.</p>
     {error&&<p role="alert" className="notice error">{error}</p>}
     </section><section className="generation-results" aria-label="태그 생성 진행과 결과"><h3 id="tag-generation-results" tabIndex={-1}>진행·결과 <span className="muted">{loaded?jobs.length:''}</span></h3><p className="draft-help">검증이 끝나면 바로 풀 수 있어요. 기다리는 동안 다른 문제를 풀어도 됩니다.</p>
-    {!loaded&&!error&&<p role="status">생성 기록을 불러오고 있어요…</p>}
+    {!loaded&&!error&&<LoadingIndicator>생성 기록을 불러오고 있어요…</LoadingIndicator>}
     {!loaded&&error&&<button className="secondary" onClick={()=>refresh().catch(e=>setError(e.message))}>다시 불러오기</button>}
     {loaded&&jobs.length===0&&<p>아직 만든 문제가 없어요. 연습 포인트를 선택해 첫 문제를 만들어 보세요.</p>}
     <div aria-live="polite">{jobPaging.visible.map((job,index)=><details className="generation-job" key={job.id} open={(jobPaging.offset+index)===0||activeStates.includes(job.status)||job.status==='THEME_FAILED'}>

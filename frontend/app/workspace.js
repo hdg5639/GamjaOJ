@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import {callableLanguage} from './callable-language';
 import ProblemStatement from './problem-statement';
 import SelectControl from './select-control';
@@ -32,7 +33,7 @@ const TrainingHub = dynamic(() => import('./training-hub'));
 const AiOperations = dynamic(() => import('./ai-operations'));
 
 const CodeEditor = dynamic(() => import('./code-editor'), { ssr: false,
-  loading: () => <div id="source" role="status">편집기를 불러오고 있어요…</div>,
+  loading: () => <div id="source"><LoadingIndicator>편집기를 불러오고 있어요…</LoadingIndicator></div>,
 });
 
 const starter = `import java.util.Scanner;
@@ -342,7 +343,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
   const myPageView = useMemo(()=>(opened('mypage')&&<div className="training-view" hidden={screen!=='mypage'}><MyPage activity={activity} api={api} user={user} problems={problems} onChoose={chooseProblem} onDiagnostic={()=>setScreen('diagnostic')}/></div>),[activity,api,user,problems,chooseProblem,setScreen,screen,visited]);
   const diagnosticView = useMemo(()=>(<div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{opened('diagnostic') && <DiagnosticPanel requestedReport={diagnosticReport} onLearning={openLearning} visible={screen==='diagnostic'} user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onRuleDraft={draft=>{setRuleDraft({...(typeof draft==='string'?{text:draft}:draft),key:crypto.randomUUID()});setGenerationMode('hybrid');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>),[diagnosticReport,screen,visited,user,api,busy,pending,chooseProblem,setScreen]);
   const trainingView = useMemo(()=>(<div className="training-view training-hub-view" hidden={screen !== 'training'}>
-      {!loaded&&<p role="status">훈련 정보를 불러오는 중…</p>}
+      {!loaded&&<LoadingIndicator>훈련 정보를 불러오는 중…</LoadingIndicator>}
       {loaded&&opened('training')&&<TrainingHub user={user} api={api} problem={problem} problems={problems} sessions={sessions} onChange={updateSessions} activity={activity} onOpen={openTraining} onDiagnostic={sessionId=>{setDiagnosticReport(sessionId?{id:sessionId,key:crypto.randomUUID()}:null);setScreen('diagnostic');}} onGeneration={()=>setScreen('generation')} locked={busy||!!pending} visible={screen==='training'} initialEvaluation={learningEvaluation}/>}
     </div>),[loaded,screen,visited,user,api,problem,problems,sessions,activity,busy,pending,learningEvaluation,chooseProblem,setScreen]);
   const generationView = useMemo(()=>(<div className="training-view" hidden={screen !== 'generation'}>{opened('generation') && <AiOperations visible={screen==='generation'} api={api} userId={user.id} initialMode={generationMode} ruleDraft={ruleDraft} onOpen={async generatedVersion => {
@@ -356,7 +357,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       <nav className="workspace-nav" aria-label="작업 화면">{[
         ['home','문제 탐색'],['practice','문제 풀기'],['diagnostic','선택 진단'],['generation','내 문제 생성'],['training','훈련 기록'],['mypage','마이페이지']
       ].map(([id,title])=><button key={id} title={title} aria-label={title} aria-pressed={screen===id||(id==='home'&&screen==='catalog')} className={screen===id||(id==='home'&&screen==='catalog')?'active':''} onClick={()=>setScreen(id)}><NavIcon name={id}/><span className="nav-label" aria-hidden="true"><span className="nav-label-text">{title}</span></span></button>)}</nav>
-      <div className="navigation-note"><img className="brand-symbol" src="/gamjaoj-favicon.svg" alt="" width="36" height="36"/><p>한 문제씩,<br/>내 것으로.</p><small>GamjaOJ · CODE & LEARN</small></div>
+      <div className="navigation-note"><img className="brand-symbol" src="/gamjaoj-favicon.svg?v=hex-check-v1" alt="" width="36" height="36"/><p>한 문제씩,<br/>내 것으로.</p><small>GamjaOJ · CODE & LEARN</small></div>
     </aside>
     <div className="workspace-heading"><div><span className="page-kicker">{['home','catalog'].includes(screen)?'PROBLEM LIBRARY':screen==='practice'?'WORKSPACE':'MY LEARNING'}</span><h1 className="workspace-title">{{home:'문제 탐색',catalog:'문제 탐색',practice:'문제 풀기',diagnostic:'선택 진단',generation:'내 문제 생성',training:'훈련 기록',mypage:'마이페이지'}[screen]}</h1></div>
       {screen==='practice'&&<span className="muted">{currentSession ? `훈련 중 · ${currentSession.goal || '자유 연습'}` : activeSession ? `자유 풀이 · ${shortProblemId(activeSession.problemVersion)} 훈련은 유지 중` : `${lang.label} · ${lang.file}`}</span>}
@@ -465,7 +466,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
         </article>}
       </div>
     </aside></div>}
-    {!loaded && !error && <p role="status">문제와 내 제출 기록을 불러오고 있어요…</p>}
+    {!loaded && !error && <LoadingIndicator>문제와 내 제출 기록을 불러오고 있어요…</LoadingIndicator>}
     {!problem && error && <p role="alert" className="notice error">{error}</p>}
     {loaded && !problem && <p className="muted">현재 풀이할 수 있는 문제가 없어요.</p>}
     </>}</div>

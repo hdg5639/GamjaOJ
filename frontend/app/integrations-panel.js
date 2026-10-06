@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import SelectControl from './select-control';
 import {useEffect,useState} from 'react';
 import {shortProblemId} from './problem-id';
@@ -55,7 +56,7 @@ export default function IntegrationsPanel({api}){
  useEffect(()=>{if(!deliveries.some(d=>['QUEUED','RUNNING','RETRY'].includes(d.status)))return;let live=true;const timer=setTimeout(()=>api('/api/integrations/deliveries').then(d=>{if(live)setDeliveries(d);}).catch(e=>{if(live)setError(e.message);}),5000);return()=>{live=false;clearTimeout(timer);};},[deliveries,api]);
  return <section className="integrations settings-section" aria-labelledby="integrations-heading"><div className="settings-section-heading"><h2 id="integrations-heading" tabIndex={-1}>풀이 자동 저장</h2>
   <p className="muted">정식 제출에서 통과한 내 코드와 문제 링크를 저장해요. 같은 문제·언어는 최신 통과 코드로 갱신하고, Notion에 직접 쓴 회고는 유지해요. 진단평가와 코드 실행은 제외해요.</p></div>
-  {!connections&&!error&&<p role="status">연결 상태를 불러오고 있어요…</p>}
+  {!connections&&!error&&<LoadingIndicator>연결 상태를 불러오고 있어요…</LoadingIndicator>}
   <div className="export-providers">{connections?.map(c=><Destination key={c.provider+':'+c.status+':'+c.connected} connection={c} api={api} onChange={refresh}/>)}</div>
   <section className="export-history" aria-labelledby="export-history-heading"><div className="export-heading"><h3 id="export-history-heading" tabIndex={-1}>최근 저장 내역</h3><button className="secondary" disabled={busy} onClick={async()=>{setBusy(true);setError('');try{await refresh();}catch(e){setError(e.message);}finally{setBusy(false);}}}>새로고침</button></div>
   {connections&&!deliveries.length&&<p className="muted">아직 저장 내역이 없어요. 이전 풀이도 문제의 제출 기록에서 저장할 수 있어요.</p>}

@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import GenerationProgress from './generation-progress';
 import ProblemStatement from './problem-statement';
 import ProblemReview from './problem-review';
@@ -47,7 +48,7 @@ export default function SpecDrafts({api,generationActive,onActive,onOpen,visible
     {loaded&&!items.length&&<p className="generation-empty">아직 요청한 문제가 없어요. 원하는 문제를 적어 첫 초안을 만들어 보세요.</p>}
     {loadError&&<p className="notice error" role="alert">초안 기록을 불러오지 못했어요. 잠시 후 다시 확인합니다. {loadError}</p>}
     {error&&<p className="notice error" role="alert">{error}</p>}
-    {!loaded&&!error&&<p role="status">초안 기록을 불러오고 있어요…</p>}
+    {!loaded&&!error&&<LoadingIndicator>초안 기록을 불러오고 있어요…</LoadingIndicator>}
     <div aria-live="polite">{itemPaging.visible.map((item,index)=><details className="generation-job" key={item.id} open={(itemPaging.offset+index)===0||active([item])||['DRAFT_READY','CHECKED','REVIEW_CHECKED'].includes(item.status)}>
       <summary><strong>{item.spec?.title||'새 문제 초안'}</strong><span className="generation-status">{item.problemHeld?'문제 검토 중 · 새 풀이 보류':states[item.status]||item.status}</span></summary><div className="generation-job-body">
       <GenerationProgress recovery={item.recovery} resource={item.resources}/>

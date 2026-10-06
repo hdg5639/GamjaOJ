@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import FollowupGoal from './followup-goal';
 import { useEffect, useState } from 'react';
 import ProblemReflection from './problem-reflection';
@@ -55,7 +56,7 @@ export default function AiFeedback({ submission, api, review=false, compact=fals
     {error&&<p role="alert" className="notice error">{error}</p>}
     {compact? <>
       {loaded&&!error&&!items.length&&<p className="muted feedback-empty">아직 분석 기록이 없어요. 풀이 분석을 요청하거나 궁금한 점을 질문해 보세요.</p>}
-      {!loaded&&!error&&<p role="status">분석 기록을 불러오는 중…</p>}
+      {!loaded&&!error&&<LoadingIndicator>분석 기록을 불러오는 중…</LoadingIndicator>}
       {items[0]&&entry(items[0])}
       {!review&&<details className="feedback-question"><summary>추가 질문·맞춤 힌트</summary>{hint}</details>}
       {reflection&&<details className="feedback-reflection"><summary>풀이 자신감·회고 남기기</summary>{reflection}</details>}
