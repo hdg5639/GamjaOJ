@@ -148,7 +148,7 @@ class CodexCli(GenerationAdapter):
         if not self.version_checked:
             version = subprocess.run([self.binary, '--version'], capture_output=True, timeout=10, check=True)
             self.cli_version = version.stdout.decode().strip().removeprefix('codex-cli ')
-            if self.cli_version not in ('0.154.0', '0.155.1'):
+            if self.cli_version not in ('0.160.0',):
                 raise RuntimeError('CODEX_VERSION_MISMATCH')
             self.version_checked = True
         contract = directory / 'schema.json'
