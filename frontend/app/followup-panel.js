@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import ProblemStatement from './problem-statement';
 import {useEffect,useState} from 'react';
 import Pager,{usePage} from './pager';
@@ -27,7 +28,7 @@ export default function FollowupPanel({api,onOpen,onGeneration,locked,visible=tr
     <h2>피드백에서 이어지는 연습</h2>
     <p className="muted">풀이 피드백에서 연습할 지점을 확인하면 이곳에 이어서 기록합니다. 정답 한 번으로 숙련도를 확정하지 않아요.</p>
     {error&&<p role="alert" className="notice error">{error} <button className="secondary" disabled={busy} onClick={async()=>{try{await refresh();}catch(e){setError(e.message);}}}>목록 다시 불러오기</button></p>}
-    {!loaded&&!error&&<p role="status">다음 연습 목표를 불러오는 중…</p>}
+    {!loaded&&!error&&<LoadingIndicator>다음 연습 목표를 불러오는 중…</LoadingIndicator>}
     {loaded&&!items.length&&!error&&<p className="training-empty">제출 코드의 피드백에서 ‘다음 훈련 준비’를 선택하면 목표와 연습 후보가 여기에 모여요.</p>}
     {paging.visible.map((item,index)=><details key={item.id} open={index===0} className="followup-record"><summary>{item.round||1}차 · {labels[item.status]||item.status} · {item.goal.length>120?item.goal.slice(0,120)+'…':item.goal}</summary>
       <p>{item.goal}</p>

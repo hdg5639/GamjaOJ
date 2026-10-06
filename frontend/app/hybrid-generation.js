@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import GenerationProgress from './generation-progress';
 import SelectControl from './select-control';
 
@@ -89,7 +90,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
       <div className="generation-section-heading"><h3 id="hybrid-heading">정해진 규칙으로 새 문제 만들기</h3><a href="#hybrid-generation-results">진행·결과로 이동</a></div>
       <p className="draft-help">실험 기능 · 연습할 유형을 선택하고 규칙을 확인해 주세요. 목록에 없는 규칙은 직접 요청하기를 이용해 주세요.</p>
       {optionsError&&<p className="notice error" role="alert">출제 가능 여부를 불러오지 못했어요. {optionsError} <button className="secondary" onClick={loadOptions}>출제 가능 여부 다시 확인</button></p>}
-      {!options&&!optionsError&&<p role="status">지원 규칙을 불러오고 있어요…</p>}
+      {!options&&!optionsError&&<LoadingIndicator>지원 규칙을 불러오고 있어요…</LoadingIndicator>}
       {options?.profiles?.length>0&&<label className="field">문제 유형<SelectControl value={profileId} disabled={busy||!!pending||running||otherActive||!options.enabled} onChange={e=>{setProfileId(e.target.value);setConsent(false);}}>{options.profiles.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</SelectControl></label>}
       {profile&&<div className="hybrid-scope"><h4>{profile.label}</h4><p>{profile.description}</p><ul>{profile.rules.map(rule=><li key={rule}>{rule}</li>)}</ul>{profile.verifiedReference&&<p className="draft-help">이 규칙은 검증을 통과한 정답 코드를 다시 사용해 코드 작성 단계를 생략합니다. 본문·힌트·해설과 실행 검증·최종 검토는 새로 진행합니다.</p>}</div>}
       {options&&!options.enabled&&<p className="notice">{options.message}</p>}
@@ -122,7 +123,7 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
       <h3 id="hybrid-generation-results" tabIndex={-1} ref={results}>진행·결과</h3>
       <p className="draft-help">최근 30건 · 화면을 벗어나도 접수된 요청은 계속됩니다. 다음에 돌아와 이어서 확인할 수 있어요.</p>
       {listError&&<p className="notice error" role="alert">진행 상태를 새로 확인하지 못했어요. {listError} <button className="secondary" onClick={refresh} disabled={busy}>상태 다시 확인</button></p>}
-      {!loaded&&!listError&&<p role="status">출제 기록을 불러오고 있어요…</p>}
+      {!loaded&&!listError&&<LoadingIndicator>출제 기록을 불러오고 있어요…</LoadingIndicator>}
       {loaded&&!jobs.length&&<p>아직 요청한 문제가 없어요.</p>}
       <div aria-live="polite">{jobPaging.visible.map((job,index)=><details key={job.id} className="generation-job" open={(jobPaging.offset+index)===0||active(job)}>
         <summary><strong>{profileLabel(job.profileId)}</strong><span className="generation-status">{job.problemHeld?'게시 후 검토 보류':job.status==='HELD'&&handoffs.includes(job.error)?'다음 단계 준비 중':states[job.status]||'진행 상태 확인 필요'}</span></summary>

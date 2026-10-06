@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
@@ -131,7 +132,7 @@ export default function Home() {
 
   return <div className={`shell ${user ? 'signed-in' : ''}`} data-sidebar-collapsed={sidebarCollapsed}>
     <a className="skip-link" href="#main-content">본문으로 이동</a>
-    <AppHeader key={user?.id || 'anonymous'}><a href="/" className="brand"><img className="brand-symbol" src="/gamjaoj-favicon.svg" alt="" width="34" height="34"/><span>Gamja<span className="brand-accent">OJ</span></span></a>
+    <AppHeader key={user?.id || 'anonymous'}><a href="/" className="brand"><img className="brand-symbol" src="/gamjaoj-favicon.svg?v=hex-check-v1" alt="" width="34" height="34"/><span>Gamja<span className="brand-accent">OJ</span></span></a>
       <span className="header-note">문제를 풀고, 나의 다음 단계를 찾다.</span>
       {user ? <nav className="account-nav" aria-label="계정 메뉴"><span className="user-name">{user.nickname}님</span>
         <ThemeToggle/><AppearanceSettings/>
@@ -147,7 +148,7 @@ export default function Home() {
         <div className="intro-path" aria-label="학습 흐름"><span>01 <strong>탐색</strong></span><span>02 <strong>풀이</strong></span><span>03 <strong>다음 훈련</strong></span></div><p className="intro-detail">함께 만든 문제, 선택 진단, 나에게 맞는 연습.<br/>Java · C++ · Python으로 한 곳에서 이어가세요.</p>
       </section>
       <section className={user ? 'settings-container' : 'card'} aria-label={user ? '내 계정' : '계정 시작하기'}>
-        {loading ? <p role="status">내 연습장을 불러오고 있어요…</p> : user ? <>
+        {loading ? <LoadingIndicator>내 연습장을 불러오고 있어요…</LoadingIndicator> : user ? <>
           <header className="settings-heading">
             <div><h1 className="workspace-title">내 설정</h1><p className="muted">프로필과 연습 목표, 풀이를 기록할 곳을 관리해요.</p></div>
             <span className="settings-username">@{user.username}</span>
