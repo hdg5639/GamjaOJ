@@ -67,10 +67,10 @@ class Calibration:
    if witness and (not complete_qualification(slow.get('small',{}),language,slow['sourceHash'],public_example_plan(plan),LANGUAGES[language]|proposal) or (job.get('intent',{}).get('efficiencyRequired') and slow.get('large',{}).get('verdict') not in ('TLE','MLE'))):return False
    return True
   except (KeyError,TypeError,ValueError):return False
- def run(self,language,source,plan,limits):
+ def run(self,language,source,plan,limits,*,judge_all=True):
   with tempfile.TemporaryDirectory(prefix='gamja-resource-audit-') as directory:
    runner=Runner(LANGUAGES[language]['image'],directory);runner.profile=checked_profile(LANGUAGES[language]|limits,language,runner.image)
-   runner.execution_mode='FUNCTIONAL';runner.judge_all=True;runner.compile_cache=self.cache;runner.generated_cache=self.generated
+   runner.execution_mode='FUNCTIONAL';runner.judge_all=judge_all;runner.compile_cache=self.cache;runner.generated_cache=self.generated
    result=runner.judge(source.encode(),plan)
    if result['verdict']=='IE':raise RuntimeError('Runner infrastructure: '+result.get('error',''))
    return result
@@ -107,9 +107,13 @@ class Calibration:
    witness=job.get('slow',{}).get(language)
    if witness:
     tiny=public_example_plan(plan)
-    small=self.run(language,witness,tiny,proposal);large=self.run(language,witness,plan,proposal)
-    record['slow']=dict(sourceHash=hashlib.sha256(witness.encode()).hexdigest(),small=small,large=large);write(out,record)
+    small=self.run(language,witness,tiny,proposal)
+    record['slow']=dict(sourceHash=hashlib.sha256(witness.encode()).hexdigest(),small=small);write(out,record)
     if small['verdict']!='AC':raise ValueError('slow witness is not correct on public examples: '+small['verdict'])
+    # A single actual resource failure separates this control. Correct references
+    # and public examples still require complete test coverage and memory evidence.
+    large=self.run(language,witness,plan,proposal,judge_all=False)
+    record['slow']['large']=large;write(out,record)
     if job.get('intent',{}).get('efficiencyRequired') and large['verdict'] not in ('TLE','MLE'):raise ValueError('intended inefficient solution not separated by calibrated limits')
    record['status']='MEASURED';record['intentReviewRequired']=not bool(job.get('intentCertificate'));write(out,record)
   except Exception as error:

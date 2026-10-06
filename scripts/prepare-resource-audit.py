@@ -98,9 +98,10 @@ def prepare(root,inventory,output):
   witness=output.parent/'witness-overrides'/(v+'.json')
   if witness.exists():
    evidence=json.loads(witness.read_text())
-   if evidence.get('packageHash')!=row['packageHash'] or not (evidence.get('tests') or evidence.get('generated')) or not evidence.get('review'):raise ValueError('stale or incomplete audit witnesses: '+v)
+   if evidence.get('packageHash')!=row['packageHash'] or not (evidence.get('tests') or evidence.get('generated') or evidence.get('additionalGenerated')) or not evidence.get('review'):raise ValueError('stale or incomplete audit witnesses: '+v)
    job.update(auditTests=evidence.get('tests',[]),auditReview=evidence['review'])
    if 'publicExampleTestIds' in evidence:job['auditPublicExampleTestIds']=evidence['publicExampleTestIds']
+   if 'publicStdioExampleTestIds' in evidence:job['auditPublicStdioExampleTestIds']=evidence['publicStdioExampleTestIds']
    if 'profilingSeconds' in evidence:
     job['auditProfilingSeconds']=evidence['profilingSeconds']
     for language in missing:profiling_seconds(job,language)
@@ -108,6 +109,7 @@ def prepare(root,inventory,output):
    if evidence.get('generated'):
     if pack.get('generated'):raise ValueError('audit generator cannot replace an existing problem generator: '+v)
     job['auditGenerated']=evidence['generated']
+   if 'additionalGenerated' in evidence:job['auditAdditionalGenerated']=evidence['additionalGenerated']
   # Reject invalid private witnesses before handing a long batch to the Runner.
   validate_problem(audit_plan(job))
   write(output/(v+'.json'),job);jobs.append(dict(version=v,packageHash=row['packageHash'],languages=list(sources),generated=bool(pack.get('generated')),callable='api' in pack,diagnostic=row['diagnostic']))

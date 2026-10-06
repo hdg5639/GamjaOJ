@@ -3,6 +3,7 @@ import hashlib
 import json
 import copy
 import math
+import re
 from pathlib import Path
 
 
@@ -14,15 +15,126 @@ def digest(value):
     return hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
+def additional_generated_plan(plan, supplemental):
+    """Append private witnesses; retain every original seed and the original oracle.
+
+    The Runner accepts one generator per plan. A seed dispatcher runs the
+    unchanged body of either generator, passing original stdin bytes verbatim.
+    This does not replace the canonical package or widen transport limits.
+    """
+    original = plan.get('generated')
+    if (not isinstance(original, dict)
+            or not isinstance(supplemental, dict)
+            or set(supplemental) - {'generator', 'tests', 'inputLimit', 'outputLimit'}):
+        raise ValueError('additional generated witnesses require an existing generator')
+    if 'api' in plan:
+        # Callable packages already run their generated Java oracle through the
+        # canonical typed driver. Retain that exact port and oracle; compose only
+        # generators, just as for STDIO, without replacing a driver or API schema.
+        port = plan['api']
+        schema = port.get('api') if isinstance(port, dict) else None
+        driver = port.get('driver') if isinstance(port, dict) else None
+        reference = original.get('reference')
+        if (not isinstance(schema, dict) or schema.get('mode') != 'MULTI_API'
+                or not isinstance(schema.get('methods'), list) or not schema['methods']
+                or port.get('format') != 'JAVA_CALLABLE_V1'
+                or port.get('sourceFile') != 'UserSolution.java'
+                or not isinstance(driver, str) or not driver.strip()
+                or not isinstance(reference, str) or driver not in reference
+                or not re.search(r'\bclass\s+UserSolution\b', reference)
+                or not re.search(r'\bpublic\s+class\s+Main\b', driver)):
+            raise ValueError('additional callable witnesses require the unchanged canonical typed Java oracle/driver')
+    tests = supplemental.get('tests')
+    old_tests = original.get('tests', [])
+    if (not isinstance(tests, list) or not tests or not isinstance(old_tests, list) or not old_tests
+            or len(old_tests) + len(tests) > 4):
+        raise ValueError('additional witnesses must preserve the bounded original test set')
+    ids = {test['id'] for test in plan.get('tests', [])} | {test['id'] for test in old_tests}
+    reserved = [str(-9000000000000000000 + i + 1) for i in range(len(tests))]
+    if any(not isinstance(test.get('seed'), str) or not re.fullmatch(r'-?[0-9]{1,19}', test['seed'])
+           or test['seed'] in reserved
+           for test in old_tests):
+        raise ValueError('original seeds collide with the private dispatch namespace')
+    appended = []
+    dispatch = []
+    for index, test in enumerate(tests):
+        if (not isinstance(test, dict) or set(test) != {'id', 'seed', 'expected'}
+                or not isinstance(test['id'], str) or not test['id'] or test['id'] in ids
+                or not isinstance(test['seed'], str) or not re.fullmatch(r'-?[0-9]{1,19}', test['seed'])
+                or test['expected'] != 'REFERENCE'):
+            raise ValueError('additional witnesses require unique IDs, explicit seeds and the original oracle')
+        ids.add(test['id'])
+        appended.append({**test, 'seed': reserved[index]})
+        dispatch.append('  if (seed.equals("' + reserved[index] + '")) { payload = "' + test['seed']
+                        + '\\n".getBytes(java.nio.charset.StandardCharsets.UTF_8); extra = true; }\n')
+    for key in ('inputLimit', 'outputLimit'):
+        limit = supplemental.get(key, original.get(key, 8388608))
+        if type(limit) is not int or limit != original.get(key, 8388608):
+            raise ValueError('additional witnesses cannot widen existing generated transport limits')
+
+    def generator_body(source, name):
+        # Restrict composition to the private helper form; reject packages,
+        # annotations or self references instead of guessing at Java rewriting.
+        if not isinstance(source, str):
+            raise ValueError('invalid additional generator source')
+        header = re.match(r'\A\s*((?:import\s+(?:static\s+)?[\w.*]+\s*;\s*)*)public\s+class\s+Main\b', source)
+        if not header or len(re.findall(r'\bMain\b', source)) != 1:
+            raise ValueError('generator cannot be safely composed without changing its body')
+        return header.group(1), 'class ' + name + source[header.end():]
+
+    old_imports, old_body = generator_body(original.get('generator'), 'OriginalResourceGenerator')
+    extra_imports, extra_body = generator_body(supplemental.get('generator'), 'SupplementalResourceGenerator')
+    wrapper = '''public class Main {
+ public static void main(String[] args) throws Exception {
+  java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+  byte[] buffer = new byte[1024]; int n;
+  while ((n = System.in.read(buffer)) != -1) bytes.write(buffer, 0, n);
+  byte[] payload = bytes.toByteArray();
+  String seed = new String(payload, java.nio.charset.StandardCharsets.UTF_8).trim();
+  boolean extra = false;
+DISPATCH
+  System.setIn(new java.io.ByteArrayInputStream(payload));
+  if (extra) SupplementalResourceGenerator.main(args);
+  else OriginalResourceGenerator.main(args);
+ }
+}
+'''
+    return {**copy.deepcopy(original),
+            'generator': old_imports + extra_imports + wrapper.replace('DISPATCH\n', ''.join(dispatch)) + old_body + '\n' + extra_body,
+            'tests': copy.deepcopy(old_tests) + appended}
+
+
 def audit_plan(job):
     """Build the same private measurement plan for calibration and release review."""
     plan = copy.deepcopy(job['problem'])
-    # Diagnostics publishes exactly the first three original tests as examples.
+    # STDIO diagnostics publishes its first test, followed only by EX-prefixed
+    # tests (Diagnostics.examples). Bind that exact prefix explicitly; T02/T03
+    # must never become examples merely because they follow T01.
+    stdio_published = job.get('auditPublicStdioExampleTestIds')
+    if stdio_published is not None:
+        examples = []
+        for index, test in enumerate(job['problem'].get('tests', [])):
+            if index and not test.get('id', '').startswith('EX'):
+                break
+            examples.append(test)
+        if (job.get('diagnostic') is not True or 'api' in plan
+                or plan.get('samples') or not examples
+                or type(stdio_published) is not list
+                or stdio_published != [test['id'] for test in examples]
+                or len(set(stdio_published)) != len(stdio_published)
+                or job.get('auditPublicExampleTestIds') is not None):
+            raise ValueError('diagnostic STDIO examples must match the displayed first/EX test prefix')
+        plan['samples'] = [dict(input=test['input'], output=test['output']) for test in examples]
+    # Callable exam diagnostics currently displays three first/EX tests.
     # Operators must explicitly identify those displayed cases; never infer
     # examples from hidden/audit positions or replace an existing sample contract.
     published = job.get('auditPublicExampleTestIds')
     if published is not None:
-        examples = job['problem'].get('tests', [])[:3]
+        examples = []
+        for index, test in enumerate(job['problem'].get('tests', [])):
+            if index and not test.get('id', '').startswith('EX'):
+                break
+            examples.append(test)
         if (job.get('diagnostic') is not True or 'api' not in job['problem']
                 or plan.get('samples') or len(examples) != 3
                 or type(published) is not list
@@ -36,6 +148,10 @@ def audit_plan(job):
         if 'generated' in plan:
             raise ValueError('audit generator cannot replace an existing problem generator')
         plan['generated'] = copy.deepcopy(generated)
+    if 'auditAdditionalGenerated' in job:
+        if generated:
+            raise ValueError('additional generated witnesses cannot combine with replacement witnesses')
+        plan['generated'] = additional_generated_plan(plan, job['auditAdditionalGenerated'])
     return plan
 
 
