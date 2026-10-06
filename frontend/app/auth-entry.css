@@ -1,0 +1,77 @@
+/* Login keeps the product's glass/relief surfaces; the brand story is a distinct
+   dark editorial panel. No live blur is animated or placed over form controls. */
+.shell:not(.signed-in) { max-width:1240px; }
+.shell:not(.signed-in) .login-page { grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:24px; align-items:stretch; padding:28px 0; min-height:calc(100dvh - 168px); }
+.login-page > .auth-story { display:flex; flex-direction:column; justify-content:space-between; gap:36px; padding:40px; margin:0; max-width:none; border-radius:22px; color:#eff5ef; background:color-mix(in srgb,var(--green) 20%,#101c16); box-shadow:var(--surface-raised); }
+.auth-story .eyebrow { display:block; color:#bdcdbf; font-size:11px; letter-spacing:.04em; }
+.auth-story h1 { margin:24px 0 20px; font-size:clamp(42px,4.6vw,64px); line-height:1.12; letter-spacing:-.055em; }
+.auth-story h1 span { color:#c8ff58; }
+.auth-story-copy > p { margin:0; color:#b7c8bc; font-size:14px; line-height:1.85; }
+.auth-learning-path { list-style:none; padding:0; margin:0; display:grid; gap:24px; }
+.auth-learning-path li { display:flex; gap:18px; position:relative; }
+.auth-learning-path li:not(:last-child)::after { content:""; position:absolute; left:13px; top:32px; bottom:-16px; width:1px; background:#c8ff5826; }
+.auth-step-number { flex:0 0 28px; height:28px; display:grid; place-items:center; color:#c8ff58; font-size:11px; font-weight:700; background:#c8ff5810; border-radius:8px; }
+.auth-learning-path h2 { margin:1px 0 6px; font-size:15px; font-weight:650; letter-spacing:-.03em; }
+.auth-learning-path p { margin:0; font-size:12px; line-height:1.75; color:#a5bbae; }
+.auth-story-footer { display:flex; flex-direction:column; gap:6px; padding-top:20px; border-top:1px solid #c8ff5814; font-size:12px; color:#c7d7cc; }
+.auth-story-footer small { color:#94ad9c; font-size:10px; letter-spacing:.035em; }
+:root:root:root .login-page > .card { display:flex; flex-direction:column; justify-content:center; min-width:0; padding:36px 40px; border-radius:22px; }
+.auth-form-eyebrow { margin:0 0 18px; font-size:11px; color:var(--muted); letter-spacing:.025em; }
+.login-page .tabs { margin:0 0 26px; padding:4px; gap:4px; border:0; border-radius:10px; background:color-mix(in srgb,var(--subtle) 65%,transparent); box-shadow:var(--surface-inset); }
+.login-page .tabs button { border:0; border-radius:7px; min-height:38px; background:transparent; }
+.login-page .tabs button.selected { background:var(--glass-panel,var(--surface)); box-shadow:var(--surface-raised); }
+.login-page .card > h2 { margin:0 0 8px; font-size:26px; letter-spacing:-.04em; }
+.login-page .card > .muted { margin:0 0 26px; font-size:13px; }
+.login-page .card > form { gap:18px; }
+.login-page .card > form input { min-height:44px; }
+.login-page .card > form > .primary { min-height:46px; margin-top:4px; }
+.auth-start-guide { margin-top:28px; padding-top:24px; border-top:1px solid var(--surface-edge,var(--line)); }
+.auth-start-guide h3 { margin:0 0 14px; font-size:12px; font-weight:650; }
+.auth-start-guide dl { margin:0; display:grid; gap:12px; }
+.auth-start-guide dl > div { display:grid; grid-template-columns:126px minmax(0,1fr); align-items:baseline; gap:8px; }
+.auth-start-guide dt { font-size:12px; }
+.auth-start-guide dd { margin:0; font-size:11px; color:var(--muted); line-height:1.6; }
+.login-page .card > .help { margin:22px 0 0; font-size:11px; }
+.auth-intro-overlay { position:fixed; inset:0; z-index:80; pointer-events:none; }
+.auth-intro-wash { position:absolute; inset:0; background-color:var(--canvas); background-image:var(--canvas-wash); animation:auth-wash-out 2400ms both; }
+.auth-brand-flight { position:absolute; display:flex; align-items:center; justify-content:center; transform-origin:top left; animation:auth-brand-land 2400ms cubic-bezier(.22,1,.36,1) both; }
+.auth-brand-flight > img { flex:0 0 95.2px; width:95.2px; height:95.2px; }
+.auth-brand-text { overflow:hidden; white-space:nowrap; max-width:0; animation:auth-brand-write 2400ms cubic-bezier(.4,0,.2,1) both; }
+.auth-intro-skip { position:absolute; right:32px; bottom:28px; pointer-events:auto; font-size:12px; }
+.shell[data-login-intro="playing"] .brand { opacity:0; visibility:hidden; }
+.shell[data-login-intro="playing"] .auth-story { animation:auth-panel-in 500ms ease-out 1350ms both; }
+.shell[data-login-intro="playing"] .login-page > .card { animation:auth-panel-in 450ms ease-out 1650ms both; }
+@keyframes auth-brand-land {
+  0% { opacity:0; transform:translate(var(--flight-x),var(--flight-y)) scale(1); }
+  8%,43% { opacity:1; transform:translate(var(--flight-x),var(--flight-y)) scale(1); }
+  100% { opacity:1; transform:translate(0,0) scale(.3571428571); }
+}
+@keyframes auth-brand-write { 0%,18% { max-width:0; opacity:0; margin-left:0; } 43%,100% { max-width:500px; opacity:1; margin-left:22.4px; } }
+@keyframes auth-wash-out { 0%,38% { opacity:1; } 70%,100% { opacity:0; } }
+@keyframes auth-panel-in { from { opacity:0; transform:translateY(12px); visibility:hidden; } to { opacity:1; transform:none; visibility:visible; } }
+@media(max-width:1023px) {
+ .shell:not(.signed-in) .login-page { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; }
+ .login-page > .auth-story { padding:28px; }
+ :root:root:root .login-page > .card { padding:28px; }
+ .auth-story h1 { font-size:44px; }
+ .auth-start-guide dl > div { grid-template-columns:1fr; gap:2px; }
+}
+@media(max-width:700px) {
+ .shell:not(.signed-in) .login-page { grid-template-columns:minmax(0,1fr); gap:16px; min-height:0; padding:18px 0; }
+ .login-page > .auth-story { padding:24px; gap:0; border-radius:16px; }
+ .auth-story h1 { font-size:36px; margin:14px 0 12px; }
+ .auth-story-copy > p { font-size:12px; }
+ .auth-learning-path,.auth-story-footer { display:none; }
+ :root:root:root .login-page > .card { max-width:none; width:100%; margin:0; padding:24px; border-radius:16px; }
+ .auth-form-eyebrow { display:none; }
+ .login-page .card > h2 { font-size:23px; }
+ .auth-start-guide { margin-top:22px; padding-top:18px; }
+ .auth-start-guide dl > div { grid-template-columns:116px minmax(0,1fr); gap:8px; }
+}
+@media(prefers-reduced-motion:reduce) {
+ .auth-intro-overlay { display:none; }
+ .shell[data-login-intro="playing"] .brand { opacity:1; visibility:visible; }
+ .shell[data-login-intro="playing"] .auth-story,.shell[data-login-intro="playing"] .login-page > .card { animation:none; opacity:1; visibility:visible; transform:none; }
+}
+
+@media(min-width:1024px) { .shell[data-login-intro="pending"] .auth-story { opacity:0; visibility:hidden; } }
