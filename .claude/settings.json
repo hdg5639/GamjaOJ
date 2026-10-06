@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh ocr-serv:*)",
+      "Bash(./scripts/deploy-web.sh)",
+      "Bash(./scripts/install-generation-container.sh)",
+      "Bash(./scripts/prod-read.sh:*)"
+    ]
+  }
+}

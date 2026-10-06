@@ -187,7 +187,7 @@ class GenerationWorkerTests(unittest.TestCase):
             root=Path(path)
             (root/'auth.json').write_text('{"auth_mode":"chatgpt"}')
             cli=root/'fake-codex'
-            cli.write_text('#!' + sys.executable + '\n' + "import json, os, pathlib, sys\nif '--version' in sys.argv:\n    print('codex-cli 0.155.1'); sys.exit(0)\nargs=sys.argv[1:]\noutput=pathlib.Path(args[args.index('--output-last-message')+1])\noutput.write_text('{}')\noutput.with_name('captured.json').write_text(json.dumps({'args':args,'prompt':sys.stdin.read(),'hasApiKey':'OPENAI_API_KEY' in os.environ}))\nprint(json.dumps({'type':'turn.completed','usage':{'input_tokens':1}}))\n")
+            cli.write_text('#!' + sys.executable + '\n' + "import json, os, pathlib, sys\nif '--version' in sys.argv:\n    print('codex-cli 0.160.0'); sys.exit(0)\nargs=sys.argv[1:]\noutput=pathlib.Path(args[args.index('--output-last-message')+1])\noutput.write_text('{}')\noutput.with_name('captured.json').write_text(json.dumps({'args':args,'prompt':sys.stdin.read(),'hasApiKey':'OPENAI_API_KEY' in os.environ}))\nprint(json.dumps({'type':'turn.completed','usage':{'input_tokens':1}}))\n")
             cli.chmod(0o700)
             adapter=CodexCli(root,str(cli))
             assignment={'model':'gpt-5.6-sol','effort':'medium',

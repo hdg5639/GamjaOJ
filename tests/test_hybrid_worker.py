@@ -183,7 +183,7 @@ class HybridWorkerTests(unittest.TestCase):
             cli = root / 'fake-codex'
             cli.write_text('#!' + sys.executable + '\n' + '''import json, pathlib, sys, os
 if '--version' in sys.argv:
-    print('codex-cli 0.155.1'); sys.exit(0)
+    print('codex-cli 0.160.0'); sys.exit(0)
 a=sys.argv[1:]
 p=pathlib.Path(a[a.index('--output-last-message')+1])
 p.write_text('{}')
@@ -215,7 +215,7 @@ print(json.dumps({'type':'turn.completed','usage':{'input_tokens':1}}))
             cli = root / 'fake-codex'
             cli.write_text('#!' + sys.executable + '\n' + '''import json, pathlib, sys, os
 if '--version' in sys.argv:
-    print('codex-cli 0.155.1'); sys.exit(0)
+    print('codex-cli 0.160.0'); sys.exit(0)
 a=sys.argv[1:]
 p=pathlib.Path(a[a.index('--output-last-message')+1])
 p.write_text('{}')
@@ -259,7 +259,7 @@ print(json.dumps({'type':'turn.completed','usage':{'input_tokens':1}}))
             cli.write_text('#!' + sys.executable + '''
 import json, sys
 if '--version' in sys.argv:
-    print('codex-cli 0.155.1'); sys.exit(0)
+    print('codex-cli 0.160.0'); sys.exit(0)
 sys.stdin.read()
 print(json.dumps({'type': 'turn.failed', 'error': {'message': "You've hit your usage limit. PRIVATE_ACCOUNT_DETAIL"}}))
 sys.exit(1)
