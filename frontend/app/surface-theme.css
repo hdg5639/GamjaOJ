@@ -168,3 +168,7 @@
 /* Hover feedback uses color instead of filtering each button into a GPU layer. */
 :root:root:root .primary:hover:not(:disabled) { background:color-mix(in srgb,var(--green) 94%,var(--ink)); }
 :root:root:root :is(.secondary,.appearance-preset,.solving-layout-choice > button,.pane-order-preview > button):hover:not(:disabled) { background:color-mix(in srgb,var(--surface) 75%,transparent); }
+
+:root:root:root .my-view-tabs { background:color-mix(in srgb,var(--subtle) 30%,transparent); box-shadow:var(--surface-inset); }
+:root:root:root .my-view-tabs button { background:transparent; border-color:transparent; box-shadow:none; }
+:root:root:root .my-view-tabs button[aria-pressed="true"] { background:color-mix(in srgb,var(--surface) 56%,transparent); color:var(--green); box-shadow:var(--surface-raised); }

@@ -21,11 +21,12 @@ for(const width of [390,1440])test(`problem history and personal activity stay s
  await page.locator('#submission-results li button').first().click();
  await page.getByLabel('풀이할 문제').selectOption('v2');
  await expect(page.locator('#submission-heading')).toHaveCount(0);
+ await page.getByRole('button',{name:'제출 기록',exact:true}).click();
  await page.getByText('최근 제출 내역',{exact:false}).click();
  await expect(page.locator('#submission-results .record-list')).toContainText('v2');
  await expect(page.locator('#submission-results .record-list')).not.toContainText('v1');
  await page.getByRole('button',{name:'마이페이지',exact:true}).click();
- const my=page.getByRole('region',{name:'마이페이지',exact:true});
+ const my=page.getByRole('region',{name:'마이페이지',exact:true});await my.getByRole('button',{name:'풀이 기록',exact:false}).click();
  await expect(my.getByText('문제 v1',{exact:true})).toBeVisible();
  await expect(my.getByText('문제 v2',{exact:true})).toBeVisible();
  await my.getByRole('button',{name:'전체 제출',exact:true}).click();
@@ -59,7 +60,7 @@ for(const width of [390,1440])test(`my problem pages reset on tab change and cla
   }
   return route.fulfill({json:data});
  });
- await page.goto(base+'/#mypage');const my=page.getByRole('region',{name:'마이페이지',exact:true});
+ await page.goto(base+'/#mypage');const my=page.getByRole('region',{name:'마이페이지',exact:true});await my.getByRole('button',{name:'풀이 기록',exact:false}).click();
  const top=my.getByRole('navigation',{name:'상단 기록 페이지',exact:true}),bottom=my.getByRole('navigation',{name:'기록 페이지',exact:true});
  await expect(my.locator('.my-records li')).toHaveCount(20);await expect(top).toBeInViewport();
  await page.screenshot({path:`/tmp/gamja-my-pagination-top-${width}.png`,fullPage:true});
@@ -71,4 +72,34 @@ for(const width of [390,1440])test(`my problem pages reset on tab change and cla
  total=3;await my.getByRole('button',{name:'기록 새로고침',exact:true}).click();await expect(my.locator('.my-records li')).toHaveCount(3);
  await expect(my.locator('#my-records-heading')).toContainText('1–3번째');await expect(top).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+for(const width of [390,1440])test(`growth and archive tabs load on demand and retain pages at ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:900});let reads=0,learningReads=0;
+ const problems=Array.from({length:41},(_,i)=>({version:`tab-${i}`,title:`탭 문제 ${i+1}`,attempts:1,accepted:1,lastSubmitted:'2026-10-01T00:00:00Z',submissionsEnabled:true}));
+ await page.route('**/api/**',route=>{const url=new URL(route.request().url());let data=[];
+ if(url.pathname==='/api/me')data={id:'tabs-user',nickname:'감자'};
+ if(url.pathname==='/api/problems')data=problems;
+ if(url.pathname==='/api/my/summary')data={submitted:41,attemptedProblems:41,solvedProblems:41};
+ if(url.pathname==='/api/my/growth')data={layer:1,nextLayer:2,nextSolved:0,required:5,eligibleProblems:41,categories:1,evidence:Array(9).fill(0)};
+ if(url.pathname==='/api/my/learning'){learningReads++;data={start:'2026-10-01',days:[{date:'2026-10-01',solved:1},{date:'2026-10-02',solved:0}],categories:Array.from({length:13},(_,i)=>({category:`분야 ${i}`,attempted:13-i,solved:1})),explore:[],revisit:[]};}
+ if(url.pathname==='/api/my/problems'){reads++;const index=Number(url.searchParams.get('page'));data={total:41,items:problems.slice(index*20,(index+1)*20)};}
+ return route.fulfill({json:data});});
+ await page.goto(base+'/#mypage');const my=page.getByRole('region',{name:'마이페이지',exact:true}),nav=my.getByRole('navigation',{name:'마이페이지 보기'});
+ await expect(my.getByRole('region',{name:'풀이 잔디'})).toBeVisible();expect(reads).toBe(0);
+ await my.getByRole('button',{name:'2026-10-01 정답 1문제',exact:true}).click();
+ await my.getByRole('navigation',{name:'유형 분포 페이지'}).getByRole('button',{name:'다음',exact:true}).click();
+ await my.getByRole('button',{name:'내 풀이 기록',exact:true}).click();await expect(my.locator('.my-records li')).toHaveCount(20);
+ await my.getByRole('navigation',{name:'상단 기록 페이지'}).getByRole('button',{name:'다음',exact:true}).click();await expect(my.locator('.my-records li').first()).toContainText('탭 문제 21');
+ await my.locator('.my-records li').last().scrollIntoViewIfNeeded();const scroll=await my.evaluate(el=>el.closest('.training-view').scrollTop),calls=reads;
+ await nav.getByRole('button',{name:/성장 현황/}).evaluate(el=>el.click());await expect(my.getByRole('region',{name:'문제와 제출 기록'})).toHaveCount(0);
+ await expect(my.locator('.activity-calendar-footer [role="status"]')).toContainText('2026-10-01');await expect(my.locator('.category-range')).toContainText('7–12번째');
+ await nav.getByRole('button',{name:/풀이 기록/}).evaluate(el=>el.click());await expect(my.locator('.my-records li').first()).toContainText('탭 문제 21');
+ expect(reads).toBe(calls);expect(learningReads).toBe(1);await expect.poll(()=>my.evaluate(el=>el.closest('.training-view').scrollTop)).toBe(scroll);
+ await nav.getByRole('button',{name:/성장 현황/}).click();await nav.getByRole('button',{name:/풀이 기록/}).focus();await page.keyboard.press('Enter');await expect(my.getByRole('region',{name:'문제와 제출 기록'})).toBeVisible();
+ await nav.getByRole('button',{name:/성장 현황/}).click();const beforeRefresh=reads;
+ await my.getByRole('button',{name:'기록 새로고침',exact:true}).click();await expect.poll(()=>learningReads).toBe(2);expect(reads).toBe(beforeRefresh);
+ await nav.getByRole('button',{name:/풀이 기록/}).click();await expect.poll(()=>reads).toBe(beforeRefresh+1);await expect(my.locator('.my-records li').first()).toContainText('탭 문제 21');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.screenshot({path:`/tmp/gamja-my-tabs-${width}.png`,fullPage:true});
 });

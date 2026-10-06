@@ -1,13 +1,15 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {thinkingLayers} from './thinking-difficulty';
 
-export default function GrowthSummary({api,onTarget,onNavigate,activity=0}){
+export default function GrowthSummary({api,onTarget,onNavigate,activity=0,visible=true}){
+ const loaded=useRef(null);
+ useEffect(()=>{if(visible)return;const invalidate=()=>{loaded.current=null;};window.addEventListener('gamjaoj-problems-changed',invalidate);return()=>window.removeEventListener('gamjaoj-problems-changed',invalidate);},[visible]);
  const [growth,setGrowth]=useState(null),[error,setError]=useState(''),[refresh,setRefresh]=useState(0);
- useEffect(()=>{let live=true,request=0;
-  async function load(event){const token=++request;try{const value=await api('/api/my/growth',{fresh:!!event});if(!Number.isInteger(value.layer)||!Array.isArray(value.evidence))throw new Error('성장 기록을 불러오지 못했어요.');if(live&&token===request){setGrowth(value);setError('');}}catch(e){if(live&&token===request)setError(e.message);}}
-  load();window.addEventListener('gamjaoj-problems-changed',load);window.addEventListener('focus',load);return()=>{live=false;window.removeEventListener('gamjaoj-problems-changed',load);window.removeEventListener('focus',load);};
- },[api,activity,refresh]);
+ useEffect(()=>{if(!visible)return;let live=true,request=0;const key=JSON.stringify([activity,refresh]);
+  async function load(event){const token=++request;try{const value=await api('/api/my/growth',{fresh:!!event});if(!Number.isInteger(value.layer)||!Array.isArray(value.evidence))throw new Error('성장 기록을 불러오지 못했어요.');if(live&&token===request){loaded.current=key;setGrowth(value);setError('');}}catch(e){if(live&&token===request)setError(e.message);}}
+  if(loaded.current!==key)load();window.addEventListener('gamjaoj-problems-changed',load);window.addEventListener('focus',load);return()=>{live=false;window.removeEventListener('gamjaoj-problems-changed',load);window.removeEventListener('focus',load);};
+ },[api,activity,refresh,visible]);
  return <section className="growth-summary" aria-label="나의 성장 겹">
   {!growth?<div className="growth-loading"><p role={error?'alert':'status'}>{error||'성장 기록을 불러오는 중…'}</p>{error&&<button className="secondary" onClick={()=>setRefresh(x=>x+1)}>성장 기록 다시 불러오기</button>}</div>:<>
    <div className="growth-identity"><span className="growth-mark" data-layer={growth.layer} aria-hidden="true">{growth.layer||'—'}<small>겹</small></span><div><span className="eyebrow">나의 성장 겹</span><h2>{growth.layer?`${growth.layer}겹 · ${thinkingLayers[growth.layer-1][0]}`:'첫 겹을 쌓는 중'}</h2><p>검토된 문제 {growth.eligibleProblems}개 해결 · {growth.categories}개 분야</p></div></div>
