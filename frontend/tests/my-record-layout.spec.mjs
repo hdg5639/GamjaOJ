@@ -23,7 +23,7 @@ for(const width of [390,820,1440])test(`record layout, long notes and recoverabl
   }
   await route.fulfill({json:data});
  });
- await page.goto(base+'/#mypage');const records=page.getByRole('region',{name:'문제와 제출 기록'});
+ await page.goto(base+'/#mypage');await page.getByRole('navigation',{name:'마이페이지 보기'}).getByRole('button',{name:'풀이 기록',exact:false}).click();const records=page.getByRole('region',{name:'문제와 제출 기록'});
  await expect(records.locator('.my-problem-row')).toHaveCount(4);
  await records.getByText('메모 보기',{exact:true}).click();await expect(records.getByText(note,{exact:true})).toBeVisible();
  await expect(records.locator('.my-problem-row').nth(2).getByRole('button',{name:'문제 풀기'})).toHaveCount(0);

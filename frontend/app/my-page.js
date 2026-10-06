@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import ThinkingDifficulty from './thinking-difficulty';
 import GrowthSummary from './growth-summary';
 import ProblemId,{shortProblemId} from './problem-id';
@@ -14,27 +14,39 @@ import {confidenceLabels} from './problem-reflection';
 
 export default function MyPage({api,user,problems,onChoose,onDiagnostic,activity=0}) {
  const pageSize=20;
+ const [view,setView]=useState('growth');
+ const root=useRef(null),positions=useRef({growth:0,records:0}),loadedRecords=useRef(null);
+ function switchView(next){if(next===view)return;const container=root.current?.closest('.training-view');if(container)positions.current[view]=container.scrollTop;if(next==='growth'){reviewRequest.current++;setReviewBusy(null);setDetailId(null);}setView(next);}
+ useLayoutEffect(()=>{const container=root.current?.closest('.training-view');if(container)container.scrollTop=positions.current[view];},[view]);
  const [detailError,setDetailError]=useState(''),[detailRefresh,setDetailRefresh]=useState(0);
  const moving=useRef(false);
  const reviewRequest=useRef(0);
  const [learningRefresh,setLearningRefresh]=useState(0),[reviewBusy,setReviewBusy]=useState(null);
  const [tab,setTab]=useState('problems'),[page,setPage]=useState(0),[summary,setSummary]=useState(null),[items,setItems]=useState([]),[total,setTotal]=useState(0),[detail,setDetail]=useState(null),[detailId,setDetailId]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[refresh,setRefresh]=useState(0);
- useEffect(()=>{let live=true;reviewRequest.current++;setReviewBusy(null);setBusy(true);setError('');setItems([]);setDetailId(null);setDetail(null);
-  Promise.all([api('/api/my/summary'),api(tab==='problems'?`/api/my/problems?page=${page}`:`/api/submissions?page=${page}&size=${pageSize}`)]).then(([stats,data])=>{if(live){const count=tab==='problems'?data.total:stats.submitted,last=Math.max(0,Math.ceil(count/pageSize)-1);setSummary(stats);setTotal(count);if(page>last){setPage(last);return;}setItems(tab==='problems'?data.items:data);}}).catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setBusy(false);});return()=>{live=false;};
- },[tab,page,refresh,user.id,activity]);
+ useEffect(()=>{let live=true;api('/api/my/summary').then(stats=>{if(live)setSummary(stats);}).catch(()=>{});return()=>{live=false;};},[api,refresh,user.id,activity]);
+ useEffect(()=>{
+  if(view!=='records')return;
+  const key=JSON.stringify([tab,page,refresh,user.id,activity]);
+  if(loadedRecords.current===key)return;
+  loadedRecords.current=null;let live=true;reviewRequest.current++;setReviewBusy(null);setBusy(true);setError('');setItems([]);setDetailId(null);setDetail(null);
+  Promise.all([api('/api/my/summary'),api(tab==='problems'?`/api/my/problems?page=${page}`:`/api/submissions?page=${page}&size=${pageSize}`)]).then(([stats,data])=>{if(live){const count=tab==='problems'?data.total:stats.submitted,last=Math.max(0,Math.ceil(count/pageSize)-1);setSummary(stats);setTotal(count);if(page>last){setPage(last);return;}setItems(tab==='problems'?data.items:data);loadedRecords.current=key;}}).catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setBusy(false);});return()=>{live=false;};
+ },[api,view,tab,page,refresh,user.id,activity]);
  useEffect(()=>{let live=true;setDetail(null);setDetailError('');if(detailId)api(`/api/submissions/${detailId}`).then(value=>{if(live)setDetail(value);}).catch(e=>{if(live)setDetailError(e.message);});return()=>{live=false;};},[detailId,user.id,detailRefresh]);
 
  const pages=Math.max(1,Math.ceil(total/pageSize));
  function changePage(value){moving.current=true;setPage(value-1);}
  async function openReview(version){const token=++reviewRequest.current;setReviewBusy(version);setError('');try{const reflection=await api(`/api/my/reflections?problemVersion=${encodeURIComponent(version)}`);if(token===reviewRequest.current)setDetailId(reflection.latestAcceptedSubmissionId);}catch(e){if(token===reviewRequest.current)setError(e.message);}finally{if(token===reviewRequest.current)setReviewBusy(null);}}
  function reflectionSaved(){const token=reviewRequest.current;setLearningRefresh(x=>x+1);api.clear?.();api(`/api/my/problems?page=${page}`).then(data=>{if(token===reviewRequest.current&&tab==='problems')setItems(data.items);}).catch(e=>{if(token===reviewRequest.current)setError(e.message);});}
- useEffect(()=>{if(!busy&&moving.current){moving.current=false;const results=document.getElementById('my-records-heading');results?.scrollIntoView({block:'start'});results?.focus({preventScroll:true});}},[busy,items]);
- return <section className="my-activity" aria-label="마이페이지">
-  <div className="my-activity-heading"><div><h2>{user.nickname}님의 풀이 기록</h2><p className="muted">정식 제출을 기준으로 모았어요. 직접 실행은 기록에 포함하지 않아요.</p></div><button className="secondary" disabled={busy} onClick={()=>{api.clear?.();setRefresh(x=>x+1);}}>기록 새로고침</button></div>
-  <LearningActivity api={api} userId={user.id} activity={activity} refresh={refresh+learningRefresh} onChoose={onChoose}
-   growth={<GrowthSummary api={api} activity={activity+refresh} onNavigate={screen=>{if(screen==='diagnostic')onDiagnostic();else window.location.hash=screen;}}/>}
+ useEffect(()=>{if(view==='records'&&!busy&&moving.current){moving.current=false;const results=document.getElementById('my-records-heading');results?.scrollIntoView({block:'start'});results?.focus({preventScroll:true});}},[view,busy,items]);
+ return <section ref={root} className="my-activity" aria-label="마이페이지">
+  <div className="my-activity-heading"><div><h2>{user.nickname}님의 마이페이지</h2><p className="muted">{view==='growth'?'쌓아온 성장과 다음 도전을 한눈에 확인하세요.':'풀어본 문제와 제출한 코드를 찾아보고, 풀이를 돌아보세요.'}</p></div><button className="secondary" disabled={view==='records'&&busy} onClick={()=>{api.clear?.();setRefresh(x=>x+1);}}>기록 새로고침</button></div>
+  <nav className="my-view-tabs" aria-label="마이페이지 보기">{[['growth','성장 현황','나의 성장 · 풀이 잔디'],['records','풀이 기록','풀어본 문제 · 전체 제출']].map(([key,label,hint])=><button key={key} aria-pressed={view===key} aria-controls={`my-view-${key}`} onClick={()=>switchView(key)}><strong>{label}</strong><small>{hint}</small></button>)}</nav>
+  <div id="my-view-growth" hidden={view!=='growth'}>
+  <LearningActivity api={api} userId={user.id} activity={activity} refresh={refresh+learningRefresh} onChoose={onChoose} visible={view==='growth'}
+   growth={<GrowthSummary key={user.id} api={api} visible={view==='growth'} activity={activity+refresh} onNavigate={screen=>{if(screen==='mypage')switchView('records');else if(screen==='diagnostic')onDiagnostic();else window.location.hash=screen;}}/>}
    stats={summary&&<dl className="my-stats"><div><dt>정답을 맞힌 문제</dt><dd>{summary.solvedProblems}</dd></div><div><dt>풀어본 문제</dt><dd>{summary.attemptedProblems}</dd></div><div><dt>정식 제출</dt><dd>{summary.submitted}</dd></div></dl>}/>
-  <section className="my-record-section" aria-label="문제와 제출 기록">
+  </div>
+  <section id="my-view-records" hidden={view!=='records'} className="my-record-section" aria-label="문제와 제출 기록">
    <nav className="my-tabs" aria-label="내 기록 종류">{[['problems','풀어본 문제'],['submissions','전체 제출']].map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>{setTab(key);setPage(0);}}>{label}<span aria-hidden="true">{key==='problems'?summary?.attemptedProblems??'—':summary?.submitted??'—'}</span></button>)}</nav>
    <div className="my-record-toolbar"><p id="my-records-heading" tabIndex={-1} className="muted" role="status">{busy?'기록 확인 중…':`${tab==='problems'?'풀어본 문제':'전체 제출'} ${total}개${total>0?` · ${page*pageSize+1}–${Math.min((page+1)*pageSize,total)}번째`:''}`}</p><ListPagination page={page+1} pages={pages} onChange={changePage} label="상단 기록 페이지" disabled={busy}/></div>
    {error&&<p role="alert" className="notice error">{error}</p>}

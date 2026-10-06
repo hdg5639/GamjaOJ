@@ -4,13 +4,13 @@ import {useEffect,useRef,useState} from 'react';
 import {confidenceLabels} from './problem-reflection';
 import ListPagination from './list-pagination';
 
-export default function LearningActivity({api,userId,activity,refresh,onChoose,growth,stats}){
+export default function LearningActivity({api,userId,activity,refresh,onChoose,growth,stats,visible=true}){
  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[selected,setSelected]=useState(null);
- const scroll=useRef(null);
+ const scroll=useRef(null),loaded=useRef(null);
  const [categoryScope,setCategoryScope]=useState('practiced'),[categoryPage,setCategoryPage]=useState(1);
  useEffect(()=>{setCategoryScope('practiced');setCategoryPage(1);},[userId]);
  useEffect(()=>{setData(null);setSelected(null);},[userId]);
- useEffect(()=>{let live=true;setBusy(true);setError('');api('/api/my/learning').then(result=>{if(live&&Array.isArray(result.days)){setData(result);setSelected(result.days.at(-1));}}).catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setBusy(false);});return()=>{live=false;};},[api,userId,activity,refresh]);
+ useEffect(()=>{if(!visible)return;const key=JSON.stringify([userId,activity,refresh]);if(loaded.current===key)return;let live=true;setBusy(true);setError('');api('/api/my/learning').then(result=>{if(live&&Array.isArray(result.days)){loaded.current=key;setData(result);setSelected(previous=>result.days.find(day=>day.date===previous?.date)||result.days.at(-1));}}).catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setBusy(false);});return()=>{live=false;};},[api,userId,activity,refresh,visible]);
  useEffect(()=>{if(scroll.current)scroll.current.scrollLeft=scroll.current.scrollWidth;},[data]);
  if(error||!data)return <div className="learning-activity my-learning-layout" aria-busy={busy}>{growth}<div className="learning-overview-status">{error?<p role="alert" className="notice error">학습 기록을 불러오지 못했어요: {error}</p>:<p className="muted" role="status">{busy?'학습 기록을 불러오는 중…':'학습 기록이 아직 없어요.'}</p>}{stats}</div></div>;
  const pad=(new Date(data.start+'T00:00:00Z').getUTCDay()+6)%7;

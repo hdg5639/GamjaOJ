@@ -38,25 +38,25 @@ for(const width of [390,820,1440])test(`grass, personal reflection and explicit 
  await expect(my.getByRole('button',{name:'2026-10-01 정답 3문제',exact:true})).toBeFocused();
  await expect(my.getByText('배열·문자열에 도전이 많이 모였어요.',{exact:false})).toBeVisible();expect(state.posts()).toBe(0);
  const box=async name=>my.getByRole('region',{name,exact:true}).boundingBox();
- const [growth,grass,balance,next,records]=await Promise.all(['나의 성장 겹','풀이 잔디','유형 균형','다음 학습','문제와 제출 기록'].map(box));
- if(width>=1100){expect(growth.x+growth.width).toBeLessThan(grass.x);expect(Math.abs(growth.y-grass.y)).toBeLessThan(2);expect(balance.x).toBe(growth.x);expect(next.x).toBe(grass.x);expect(Math.abs(balance.y-next.y)).toBeLessThan(2);expect(balance.y).toBeGreaterThanOrEqual(growth.y+growth.height);expect(records.width).toBeGreaterThan(grass.width);}
+ const [growth,grass,balance,next]=await Promise.all(['나의 성장 겹','풀이 잔디','유형 균형','다음 학습'].map(box));
+ if(width>=1100){expect(growth.x+growth.width).toBeLessThan(grass.x);expect(Math.abs(growth.y-grass.y)).toBeLessThan(2);expect(balance.x).toBe(growth.x);expect(next.x).toBe(grass.x);expect(Math.abs(balance.y-next.y)).toBeLessThan(2);expect(balance.y).toBeGreaterThanOrEqual(growth.y+growth.height);}
  else {expect(grass.y).toBeGreaterThanOrEqual(growth.y+growth.height);expect(balance.y).toBeGreaterThanOrEqual(grass.y+grass.height);expect(next.y).toBeGreaterThanOrEqual(balance.y+balance.height);}
- expect(records.y).toBeGreaterThanOrEqual(Math.max(balance.y+balance.height,next.y+next.height));
+ await expect(my.getByRole('region',{name:'문제와 제출 기록'})).toHaveCount(0);
  await page.screenshot({path:`/tmp/gamja-learning-overview-${width}.png`,fullPage:true});
  if(width===1440){await page.getByRole('button',{name:'다크 모드로 전환'}).click();await expect.poll(()=>page.evaluate(()=>getComputedStyle(document.querySelector('.activity-calendar-grid .level-0')).backgroundColor===getComputedStyle(document.querySelector('.activity-legend .level-0')).backgroundColor)).toBe(true);await page.screenshot({path:'/tmp/gamja-learning-overview-dark.png',fullPage:true});await page.getByRole('button',{name:'라이트 모드로 전환'}).click();}
- await my.getByRole('button',{name:'기억할 풀이 풀이 돌아보기'}).click();
+ await my.getByRole('navigation',{name:'마이페이지 보기'}).getByRole('button',{name:/풀이 기록/}).click();await my.getByRole('button',{name:'기억할 풀이 풀이 돌아보기'}).click();
  const reflection=my.getByRole('region',{name:'풀이 자신감'});await reflection.getByRole('button',{name:'다시 풀어야 함',exact:true}).click();
  await expect(reflection.getByRole('button',{name:'다시 풀어야 함',exact:true})).toHaveAttribute('aria-pressed','true');
  await reflection.getByLabel('다음에 볼 짧은 메모').fill('경계 조건을 다시 정리');state.fail(true);await reflection.getByRole('button',{name:'메모 저장'}).click();
  await expect(reflection.getByRole('alert')).toBeVisible();await expect(reflection.getByLabel('다음에 볼 짧은 메모')).toHaveValue('경계 조건을 다시 정리');
- state.fail(false);await reflection.getByRole('button',{name:'메모 저장'}).click();await expect(my.getByRole('region',{name:'다시 풀 문제'})).toBeVisible();
+ state.fail(false);await reflection.getByRole('button',{name:'메모 저장'}).click();await expect(my.locator('#my-view-growth .learning-revisit')).toHaveCount(0);
  await my.getByRole('button',{name:'빠른 코드 분석'}).click();await expect(my.getByText('합산 과정은 명확해요.',{exact:true})).toBeVisible();expect(state.posts()).toBe(1);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await page.screenshot({path:`/tmp/gamja-learning-${width}.png`,fullPage:true});
- await page.reload();await page.getByRole('button',{name:'마이페이지',exact:true}).click();await my.getByRole('button',{name:'기억할 풀이 풀이 돌아보기'}).click();await expect(reflection.getByLabel('다음에 볼 짧은 메모')).toHaveValue('경계 조건을 다시 정리');await expect(my.getByText('합산 과정은 명확해요.',{exact:true})).toBeVisible();expect(state.posts()).toBe(1);
+ await page.reload();await page.getByRole('button',{name:'마이페이지',exact:true}).click();await my.getByRole('navigation',{name:'마이페이지 보기'}).getByRole('button',{name:/풀이 기록/}).click();await my.getByRole('button',{name:'기억할 풀이 풀이 돌아보기'}).click();await expect(reflection.getByLabel('다음에 볼 짧은 메모')).toHaveValue('경계 조건을 다시 정리');await expect(my.getByText('합산 과정은 명확해요.',{exact:true})).toBeVisible();expect(state.posts()).toBe(1);
  await reflection.getByRole('button',{name:'확실히 풀 수 있음',exact:true}).click();await expect(my.getByRole('region',{name:'다시 풀 문제'})).toHaveCount(0);
  await reflection.getByRole('button',{name:'평가 지우기',exact:true}).click();await expect(reflection.getByLabel('다음에 볼 짧은 메모')).toHaveCount(0);
- await page.getByRole('dialog',{name:'제출 상세',exact:true}).getByRole('button',{name:'닫기',exact:true}).click();await my.getByRole('button',{name:'처음 보는 그래프 풀기'}).click();await expect(page.getByLabel('풀이할 문제')).toHaveValue('v2');
+ await page.getByRole('dialog',{name:'제출 상세',exact:true}).getByRole('button',{name:'닫기',exact:true}).click();await my.getByRole('navigation',{name:'마이페이지 보기'}).getByRole('button',{name:/성장 현황/}).click();await my.getByRole('button',{name:'처음 보는 그래프 풀기'}).click();await expect(page.getByLabel('풀이할 문제')).toHaveValue('v2');
 });
 test('learning fetch failure stays distinct from an empty calendar',async({page})=>{
  await fixture(page);await page.route('**/api/my/learning',route=>route.fulfill({status:503,json:{message:'기록 조회 실패'}}));await page.goto(base+'/#mypage');
