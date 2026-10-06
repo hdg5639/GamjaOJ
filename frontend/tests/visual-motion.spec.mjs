@@ -7,14 +7,14 @@ async function open(page){
 }
 async function toggleFrames(page){return page.evaluate(()=>new Promise(resolve=>{
  const workspace=document.querySelector('.workspace'),rail=document.querySelector('.app-navigation'),label=rail.querySelector('.nav-label-text');const frames=[],start=performance.now();rail.querySelector('.sidebar-toggle').click();
- function frame(now){frames.push({time:now-start,width:rail.getBoundingClientRect().width,opacity:Number(getComputedStyle(label).opacity),header:document.querySelector('#global-header').getBoundingClientRect().height});if(now-start<650)requestAnimationFrame(frame);else resolve(frames);}requestAnimationFrame(frame);
+ function frame(now){frames.push({time:now-start,width:rail.getBoundingClientRect().width,opacity:Number(getComputedStyle(label).opacity),toggle:rail.querySelector('.sidebar-toggle svg').getBoundingClientRect().x,menu:rail.querySelector('.workspace-nav svg').getBoundingClientRect().x,header:document.querySelector('#global-header').getBoundingClientRect().height});if(now-start<650)requestAnimationFrame(frame);else resolve(frames);}requestAnimationFrame(frame);
 }));}
 test('sidebar hides labels before shrinking and reveals after expansion; rapid reversal retains the editor',async({page})=>{
  await open(page);const editor=page.getByLabel('Main.java',{exact:true}),original=await editor.elementHandle();
- const close=await toggleFrames(page);expect(close.some(f=>f.time>70&&f.time<160&&f.opacity<.1&&f.width>170)).toBe(true);expect(close.some(f=>f.width>65&&f.width<170)).toBe(true);expect(close.at(-1).width).toBe(64);expect(close.at(-1).opacity).toBe(0);
+ const close=await toggleFrames(page);expect(close.some(f=>f.time>70&&f.time<160&&f.opacity<.1&&f.width>170)).toBe(true);expect(close.some(f=>f.width>65&&f.width<170)).toBe(true);expect(close.at(-1).width).toBe(64);expect(close.at(-1).opacity).toBe(0);expect(close.every(f=>Math.abs(f.toggle-f.menu)<.6)).toBe(true);
  expect(close.some(f=>f.time<130&&f.header===60)).toBe(true);expect(close.some(f=>f.header>44&&f.header<60)).toBe(true);expect(close.at(-1).header).toBe(44);
  const alignment=await page.locator('.app-navigation').evaluate(n=>{const center=node=>{const r=node.getBoundingClientRect();return r.x+r.width/2;};return {rail:center(n),toggle:center(n.querySelector('.sidebar-toggle svg')),menu:center(n.querySelector('.workspace-nav svg'))};});expect(Math.abs(alignment.toggle-alignment.menu)).toBeLessThan(.6);expect(Math.abs(alignment.toggle-alignment.rail)).toBeLessThan(.6);
- const expand=await toggleFrames(page);expect(expand.some(f=>f.time>80&&f.time<250&&f.width>100&&f.opacity===0)).toBe(true);expect(expand.at(-1).width).toBe(176);expect(expand.at(-1).opacity).toBe(1);
+ const expand=await toggleFrames(page);expect(expand.some(f=>f.time>80&&f.time<250&&f.width>100&&f.opacity===0)).toBe(true);expect(expand.at(-1).width).toBe(176);expect(expand.at(-1).opacity).toBe(1);expect(Math.max(...expand.map(f=>Math.abs(f.toggle-f.menu)))).toBeLessThan(.6);
  expect(expand.some(f=>f.header>44&&f.header<60)).toBe(true);expect(expand.at(-1).header).toBe(60);
  await page.locator('.sidebar-toggle').click();await page.locator('.sidebar-toggle').click();await expect.poll(async()=>(await page.locator('.app-navigation').boundingBox()).width).toBe(176);expect(await editor.evaluate((n,old)=>n===old,original)).toBe(true);await expect(editor).toContainText('// draft survives motion');
  await page.screenshot({path:'/tmp/gamja-glass-workspace.png',animations:'disabled'});
