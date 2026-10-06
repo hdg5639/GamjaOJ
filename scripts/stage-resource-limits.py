@@ -50,7 +50,10 @@ def stage(jobs,measurements,certificates,output):
    evidence=proof['languageEvidence'][language]
    if evidence.get('measurementHash')!=digest(report):issues.append(dict(version=version,language=language,reason='maximum-input evidence identity mismatch'));continue
    slow=report.get('slow',{});witness=job.get('slow',{}).get(language)
-   if proof.get('inefficientApproaches') and (evidence.get('inefficientWitnessSeparated') is not True or not witness or slow.get('sourceHash')!=hashlib.sha256(witness.encode()).hexdigest() or not expected_plan.get('samples') or not complete_qualification(slow.get('small',{}),language,slow['sourceHash'],public_example_plan(expected_plan),trusted_profile) or slow.get('large',{}).get('verdict') not in ('TLE','MLE')):
+   if job.get('resourceTimePolicy') is not None and report.get('resourceTimePolicy')!=job['resourceTimePolicy']:
+    issues.append(dict(version=version,language=language,reason='resource time policy requires new qualification'));continue
+   efficiency_required=job.get('intent',{}).get('efficiencyRequired') or (job.get('resourceTimePolicy') is None and proof.get('inefficientApproaches'))
+   if efficiency_required and (evidence.get('inefficientWitnessSeparated') is not True or not witness or slow.get('sourceHash')!=hashlib.sha256(witness.encode()).hexdigest() or not expected_plan.get('samples') or not complete_qualification(slow.get('small',{}),language,slow['sourceHash'],public_example_plan(expected_plan),trusted_profile) or slow.get('large',{}).get('verdict') not in ('TLE','MLE')):
     issues.append(dict(version=version,language=language,reason='intended inefficient approach not separated'));continue
    proposed[language]=report['proposal']['testWallSeconds'];memory[language]=report['proposal']['memoryMb'];reports[language]=digest(report)
   if len(proposed)!=3:continue

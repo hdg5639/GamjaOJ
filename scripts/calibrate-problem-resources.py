@@ -9,6 +9,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from runner.judge import Runner,LANGUAGES,checked_profile,CompileCache,GeneratedCache
 from runner.execution_contract import contract
 from scripts.resource_evidence import complete_qualification,audit_plan,worst_plan,complete_measurement,public_example_plan,profiling_seconds,compatible_execution_evidence
+from scripts.resource_time_policy import POLICY, measured_seconds
 
 def canonical(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def digest(value):return hashlib.sha256(canonical(value).encode()).hexdigest()
@@ -21,6 +22,14 @@ def budget(language,wall_ms,memory_bytes):
  memory=max({'JAVA':192,'CPP':32,'PYTHON':48}[language],math.ceil((memory_bytes/1048576*1.2+8)/16)*16)
  if seconds>180 or memory>LANGUAGES[language]['memoryMb']:raise ValueError('reference exceeds bounded calibration capacity')
  return dict(testWallSeconds=seconds,memoryMb=memory)
+
+def policy_budget(job,language,wall_ms,memory_bytes):
+ result=budget(language,wall_ms,memory_bytes)
+ policy=job.get('resourceTimePolicy')
+ if policy is None:return result  # Preserve original provenance for resumable older audits.
+ if policy.get('version')!=POLICY or policy.get('mode') not in ('GENERAL','ALGORITHM_SENSITIVE'):raise ValueError('invalid resource time policy')
+ result['testWallSeconds']=measured_seconds(language,wall_ms,algorithm_sensitive=policy['mode']=='ALGORITHM_SENSITIVE')
+ return result
 
 
 class AuditCompileCache(CompileCache):
@@ -58,7 +67,8 @@ class Calibration:
    sources=[job['references'][language]]+[a['source'] for a in job.get('allowedReferences',{}).get(language,[])]
    broad_profile=LANGUAGES[language]|dict(testWallSeconds=profiling_seconds(job,language),memoryMb=LANGUAGES[language]['memoryMb'])
    if not complete_measurement(record,language,sources,plan,broad_profile):return False
-   proposal=budget(language,record['maxWallMs'],record['maxMemoryBytes'])
+   proposal=policy_budget(job,language,record['maxWallMs'],record['maxMemoryBytes'])
+   if record.get('resourceTimePolicy')!=job.get('resourceTimePolicy'):return False
    if proposal!=record.get('proposal') or not complete_qualification(record.get('qualified',{}),language,source_hash,plan,LANGUAGES[language]|proposal):return False
    allowed=job.get('allowedReferences',{}).get(language,[]);qualified=record.get('qualifiedAlternates',[])
    if len(allowed)!=len(qualified) or any(item.get('name')!=alternative['name'] or item.get('sourceHash')!=hashlib.sha256(alternative['source'].encode()).hexdigest() or not complete_qualification(item.get('qualified',{}),language,item['sourceHash'],plan,LANGUAGES[language]|proposal) for alternative,item in zip(allowed,qualified)):return False
@@ -83,6 +93,7 @@ class Calibration:
   saved=json.loads(out.read_text()) if out.exists() else {}
   if self.reusable(job,language,plan,saved):return version,language,'REUSED'
   record=dict(version=version,language=language,fingerprint=fingerprint,packageHash=job['packageHash'],sourceHash=hashlib.sha256(source.encode()).hexdigest(),executionContract=self.execution,status='RUNNING',scope='fixed corpus plus declared generated witnesses; not exhaustive worst-case proof',reports=[])
+  if 'resourceTimePolicy' in job:record['resourceTimePolicy']=job['resourceTimePolicy']
   write(out,record)
   try:
    allowed=job.get('allowedReferences',{}).get(language,[])
@@ -96,7 +107,7 @@ class Calibration:
      if report['verdict']!='AC':raise ValueError('allowed reference replay: '+report['verdict'])
    tests=[t for r in record['reports'] for t in r['tests']]
    if any(t.get('memory_measurement')!='cgroup-peak-observed' or not t.get('memory_peak_bytes') for t in tests):raise ValueError('trusted memory observation missing')
-   peak=max(t['memory_peak_bytes'] for t in tests);wall=max(t['wall_ms'] for t in tests);proposal=budget(language,wall,peak);record.update(maxWallMs=wall,maxMemoryBytes=peak,proposal=proposal);write(out,record)
+   peak=max(t['memory_peak_bytes'] for t in tests);wall=max(t['wall_ms'] for t in tests);proposal=policy_budget(job,language,wall,peak);record.update(maxWallMs=wall,maxMemoryBytes=peak,proposal=proposal);write(out,record)
    qualified=self.run(language,source,plan,proposal);record['qualified']=qualified;write(out,record)
    if qualified['verdict']!='AC':raise ValueError('measured resource proposal rejected correct reference: '+qualified['verdict'])
    record['qualifiedAlternates']=[]

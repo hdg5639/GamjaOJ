@@ -48,11 +48,14 @@ class ProblemTimeLimitsTest {
         for(String raw:java.util.List.of(limits(0,1,2),limits(2,181,3),"{\"JAVA\":2}",limits(2,1,3).replace("\"CPP\":1","\"CPP\":0.0001")))
             assertThatThrownBy(()->ProblemTimeLimits.parse(raw)).isInstanceOf(HybridArtifacts.Invalid.class);
         var review=GenerationRequirementsTest.accepted();review.set("timeLimits",JudgeJson.parse(limits(2,1,3)));
-        assertThat(ProblemTimeLimits.reviewed(review,1000)).isEqualTo(limits(2,1,3));
+        var friendly=JudgeJson.parse(ProblemTimeLimits.reviewed(review,1000));
+        assertThat(friendly.path("JAVA").asInt()).isEqualTo(5);
+        assertThat(friendly.path("CPP").asInt()).isEqualTo(3);
+        assertThat(friendly.path("PYTHON").asInt()).isEqualTo(8);
         assertThatThrownBy(()->ProblemTimeLimits.reviewed(review,1001)).hasMessage("TIME_LIMIT_REFERENCE_MARGIN");
         assertThatThrownBy(()->ProblemTimeLimits.reviewed(review,10,1)).hasMessage("TIME_LIMIT_WITNESS_CEILING");
         assertThatThrownBy(()->ProblemTimeLimits.measured(0)).hasMessage("TIME_LIMIT_EVIDENCE_MISSING");
-        assertThat(JudgeJson.parse(ProblemTimeLimits.measured(100)).path("PYTHON").asInt()).isEqualTo(2);
+        assertThat(JudgeJson.parse(ProblemTimeLimits.measured(100)).path("PYTHON").asInt()).isEqualTo(8);
         assertThat(JudgeJson.parse(ProblemTimeLimits.measured(600)).path("PYTHON").asInt()).isEqualTo(8);
     }
     @Test void measuredLongBudgetReachesCatalogWithoutChangingAuthoringDefaults() {
