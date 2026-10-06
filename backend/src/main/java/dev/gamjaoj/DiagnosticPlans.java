@@ -77,7 +77,7 @@ public class DiagnosticPlans {
     }
     @Transactional
     public Plan confirm(String username,UUID id,UUID evaluation,int index,String hash,String goal,String kind) {
-        UUID owner=submissions.owner(username,true);basicFence(owner,kind);
+        UUID owner=submissions.owner(username,true);basicFence(owner,kind);requireOpen(owner,evaluation);
         if(goal==null||goal.isBlank()||goal.length()>120)throw new AccountException(400,"연습 목표를 1~120자로 작성해 주세요.");
         var old=jdbc.sql("SELECT evaluation_id,observation_index,review_sha256,goal,source_kind FROM diagnostic_practice_plan WHERE id=? AND user_id=?")
                 .param(id).param(owner).query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getInt(2),r.getString(3),r.getString(4),r.getString(5)}).optional();
@@ -134,7 +134,7 @@ public class DiagnosticPlans {
     }
     @Transactional
     public Plan start(String username,UUID id,String version) {
-        UUID owner=submissions.owner(username,true);Plan plan=view(username,owner,id);
+        UUID owner=submissions.owner(username,true);Plan plan=view(username,owner,id);requireOpen(owner,plan.evaluationId());
         if(plan.status().equals("HELD"))throw new AccountException(409,"진단 진행 또는 근거 재검토 중에는 이 학습 계획을 사용할 수 없어요.");
         if(plan.sessionId()!=null) {
             if(!java.util.Objects.equals(plan.problemVersion(),version))throw new AccountException(409,"이미 선택한 훈련 문제와 달라요.");
@@ -150,7 +150,7 @@ public class DiagnosticPlans {
     /** ruleVersionId selects an explicitly chosen registered rule; null keeps the free-form draft path. */
     @Transactional
     public Plan generate(String username,UUID id,String ruleVersionId) {
-        UUID owner=submissions.owner(username,true);var plan=view(username,owner,id);
+        UUID owner=submissions.owner(username,true);var plan=view(username,owner,id);requireOpen(owner,plan.evaluationId());
         if(plan.generationId()!=null)return plan; // Replay never schedules another paid request.
         if(!plan.status().equals("READY")||plan.sessionId()!=null)throw new AccountException(409,"최신 의견을 확인한 미시작 계획에서 생성해 주세요.");
         if(ruleVersionId!=null) {
@@ -169,7 +169,7 @@ public class DiagnosticPlans {
     }
     @Transactional
     public Plan reflect(String username,UUID id,boolean helped) {
-        UUID owner=submissions.owner(username,true);var plan=view(username,owner,id);
+        UUID owner=submissions.owner(username,true);var plan=view(username,owner,id);requireOpen(owner,plan.evaluationId());
         if(plan.status().equals("HELD"))throw new AccountException(409,"근거나 문제가 검토 중이면 학습 확인을 보류해요.");
         if(plan.reviewedSubmissionId()!=null) {
             if(!java.util.Objects.equals(plan.usedHelp(),helped))throw new AccountException(409,"이미 저장한 도움 사용 응답과 달라요.");
@@ -187,7 +187,7 @@ public class DiagnosticPlans {
     }
     @Transactional
     public Plan nextRound(String username,UUID id,String reviewHash) {
-        UUID owner=submissions.owner(username,true);var prior=view(username,owner,id);
+        UUID owner=submissions.owner(username,true);var prior=view(username,owner,id);requireOpen(owner,prior.evaluationId());
         if(prior.status().equals("HELD"))throw new AccountException(409,"진단 또는 근거 재검토가 끝난 뒤 이어서 연습해 주세요.");
         // One successor per round makes retries, reloads and concurrent tabs converge.
         var existing=jdbc.sql("SELECT id FROM diagnostic_practice_plan WHERE previous_plan_id=? AND user_id=?")
@@ -204,6 +204,10 @@ public class DiagnosticPlans {
         jdbc.sql("INSERT INTO learning_problem_preparation(plan_id) SELECT ? WHERE EXISTS (SELECT 1 FROM learning_problem_preparation WHERE plan_id=?)")
                 .param(next).param(id).update();
         return view(username,owner,next);
+    }
+    void requireOpen(UUID owner,UUID evaluationId) {
+        if(jdbc.sql("SELECT count(*) FROM learning_curriculum_end WHERE user_id=? AND evaluation_id=?").param(owner).param(evaluationId).query(Integer.class).single()>0)
+            throw new AccountException(409,"종료한 학습 계획이에요. 기록은 보존되며 새 훈련은 다른 계획에서 시작해 주세요.");
     }
     Plan view(String username,UUID owner,UUID id) {
         return jdbc.sql("SELECT p.*,t.status AS training_status,t.problem_version,tp.review_hold AS target_held,COALESCE(g.status,h.status) AS generation_status,h.published_version_id AS rule_version_published FROM diagnostic_practice_plan p LEFT JOIN training_session t ON t.id=p.training_session_id LEFT JOIN problem_version tp ON tp.id=t.problem_version LEFT JOIN generation_spec_draft g ON g.id=p.generation_id LEFT JOIN hybrid_generation h ON h.id=p.hybrid_generation_id WHERE p.id=? AND p.user_id=?")
