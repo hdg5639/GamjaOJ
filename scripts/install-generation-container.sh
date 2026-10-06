@@ -24,7 +24,7 @@ if docker network inspect gamjaoj_generation >/dev/null 2>&1; then
 fi
 # The host CLI may auto-update; the container keeps a reviewed version, taken from a retained standalone
 # release when the host's current one has not been reviewed.
-reviewed=(0.155.1 0.154.0)
+reviewed=(0.160.0)
 cli=""
 for candidate in "$(readlink -f "$HOME/.local/bin/codex")" "${reviewed[@]/#/$HOME/.codex/packages/standalone/releases/}"; do
   [[ "$candidate" = "$HOME/.codex/packages/standalone/releases/"* && "$candidate" != */bin/codex ]] && candidate="$candidate-x86_64-unknown-linux-musl/bin/codex"

@@ -12,7 +12,7 @@ chmod 700 "$temporary"
 ssh -o BatchMode=yes "$target" bash -s <<'REMOTE'
 set -euo pipefail
 command -v codex >/dev/null
-[ "$(codex --version)" = 'codex-cli 0.154.0' ] || { echo 'Install the reviewed Codex CLI 0.154.0.' >&2; exit 1; }
+[ "$(codex --version)" = 'codex-cli 0.160.0' ] || { echo 'Install the reviewed Codex CLI 0.160.0.' >&2; exit 1; }
 case " $(id -nG) " in *' docker '*) echo 'Generation account must not have Docker access.' >&2; exit 1;; esac
 [ "$(id -u)" != 0 ] || { echo 'Use a non-root generation account.' >&2; exit 1; }
 python3 - <<'PY'
