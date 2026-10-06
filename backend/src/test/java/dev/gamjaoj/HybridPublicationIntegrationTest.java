@@ -189,7 +189,10 @@ class HybridPublicationIntegrationTest {
         execution.finish(work.attemptId(),result(payload),null);publication.advance();
         assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");
         String version=jobs.view("owner",id).publishedVersionId();
-        assertThat(jdbc.sql("SELECT time_limits_json FROM problem_version WHERE id=?").param(version).query(String.class).single()).isEqualTo(ProblemTimeLimitsTest.limits(2,1,4));
+        var publishedLimits=JudgeJson.parse(jdbc.sql("SELECT time_limits_json FROM problem_version WHERE id=?").param(version).query(String.class).single());
+        assertThat(publishedLimits.path("CPP").asDouble()).isEqualTo(3);
+        assertThat(publishedLimits.path("JAVA").asDouble()).isEqualTo(5);
+        assertThat(publishedLimits.path("PYTHON").asDouble()).isEqualTo(8);
     }
     int published(){return jdbc.sql("SELECT count(*) FROM problem_version WHERE id LIKE 'hybrid-check-%' AND ready=true").query(Integer.class).single();}
     @Test void allThreeRolesMustFitBudgetAndReviewConfigurationBeforeAdmission() {

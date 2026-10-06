@@ -59,19 +59,28 @@ final class ProblemTimeLimits {
         var limits=validate(review.path("timeLimits"));
         HybridArtifacts.require(limits.path("JAVA").asDouble()<=javaCeilingSeconds,"TIME_LIMIT_WITNESS_CEILING");
         HybridArtifacts.require(maximumMs>0&&maximumMs*2<=limits.path("JAVA").asDouble()*1000,"TIME_LIMIT_REFERENCE_MARGIN");
-        return JudgeJson.canonical(limits);
+        return JudgeJson.canonical(learnerFloors(limits));
     }
     /** Trusted templates have no free model proposal. Cross-language budgets are estimates. */
     static String measured(long maximumMs) {
         HybridArtifacts.require(maximumMs>0,"TIME_LIMIT_EVIDENCE_MISSING");
         var result=JudgeJson.JSON.createObjectNode();
-        result.put("JAVA",seconds(maximumMs,4,1)).put("CPP",seconds(maximumMs,3,1)).put("PYTHON",seconds(maximumMs,12,2));
-        result.put("analysis","Reference Java maximum="+maximumMs+" ms on checked cases. Java margin 4x; C++ 3x and Python 12x of Java are conservative estimates, not measurements of those languages. These cases do not prove every worst-case input.");
+        result.put("JAVA",seconds(maximumMs,4,5)).put("CPP",seconds(maximumMs,3,3)).put("PYTHON",seconds(maximumMs,12,8));
+        result.put("analysis","Reference Java maximum="+maximumMs+" ms on checked cases. Java margin 4x; C++ 3x and Python 12x of Java are conservative estimates, not measurements of those languages. Learner floors C++/Java/Python=3/5/8 seconds. These cases do not prove every worst-case input.");
         return JudgeJson.canonical(validate(result));
     }
     private static int seconds(long ms,int margin,int minimum) {
         long value=Math.max(minimum,(ms*margin+999)/1000);
         HybridArtifacts.require(value<=20,"TIME_LIMIT_CAPACITY_EXCEEDED");
         return (int)value;
+    }
+    /** Widen publication budgets after evidence validation; frozen submissions are never rewritten. */
+    private static JsonNode learnerFloors(JsonNode limits) {
+        var result=(com.fasterxml.jackson.databind.node.ObjectNode)limits.deepCopy();
+        result.put("CPP",Math.max(3,result.path("CPP").asDouble()));
+        result.put("JAVA",Math.max(5,result.path("JAVA").asDouble()));
+        result.put("PYTHON",Math.max(8,result.path("PYTHON").asDouble()));
+        result.put("analysis",result.path("analysis").asText().substring(0,Math.min(5700,result.path("analysis").asText().length()))+" Publication learner floors C++/Java/Python=3/5/8 seconds; memory unchanged.");
+        return validate(result);
     }
 }

@@ -110,6 +110,13 @@ def prepare(root,inventory,output):
     if pack.get('generated'):raise ValueError('audit generator cannot replace an existing problem generator: '+v)
     job['auditGenerated']=evidence['generated']
    if 'additionalGenerated' in evidence:job['auditAdditionalGenerated']=evidence['additionalGenerated']
+  # Ordinary learners may use straightforward correct implementations. Only an
+  # explicit per-problem review makes complexity separation a publication gate.
+  time_policy=authored.get('resourceTimePolicy',dict(version='LEARNER_FRIENDLY_V1',mode='GENERAL'))
+  if time_policy.get('version')!='LEARNER_FRIENDLY_V1' or time_policy.get('mode') not in ('GENERAL','ALGORITHM_SENSITIVE'):raise ValueError('invalid resource time policy: '+v)
+  if time_policy['mode']=='ALGORITHM_SENSITIVE' and not str(time_policy.get('reason','')).strip():raise ValueError('algorithm-sensitive policy needs a problem-specific reason: '+v)
+  job['resourceTimePolicy']=time_policy
+  job['intent']=dict(job['intent'],efficiencyRequired=time_policy['mode']=='ALGORITHM_SENSITIVE')
   # Reject invalid private witnesses before handing a long batch to the Runner.
   validate_problem(audit_plan(job))
   write(output/(v+'.json'),job);jobs.append(dict(version=v,packageHash=row['packageHash'],languages=list(sources),generated=bool(pack.get('generated')),callable='api' in pack,diagnostic=row['diagnostic']))
