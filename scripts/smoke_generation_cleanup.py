@@ -16,3 +16,13 @@ def cleanup_sql(owners):
 def active_checks_sql(owners):
     return ("SELECT count(*) FROM generation_resource_check c JOIN problem_version p ON p.id=c.problem_version "
             "WHERE p.owner_id IN ("+owners+") AND c.status IN ('QUEUED','GENERATING','MEASURING','REPLAYING')")
+
+
+def resource_evidence_sql(job):
+    import uuid
+    key=str(uuid.UUID(job))
+    return ("SELECT coalesce(json_agg(json_build_object('status',c.status,'retries',c.retries,'error',c.error_code,"
+            "'limits',c.limits_json::json,'report',c.report_json::json,'completion',c.completion_json::json,"
+            "'executions',(SELECT json_agg(json_build_object('role',e.role,'verdict',j.verdict,'result',j.result_json::json)) "
+            "FROM generation_resource_execution e JOIN judge_job j ON j.submission_id=e.submission_id WHERE e.check_id=c.id)))::text,'[]') "
+            "FROM generation_resource_check c WHERE c.job_id='"+key+"'")

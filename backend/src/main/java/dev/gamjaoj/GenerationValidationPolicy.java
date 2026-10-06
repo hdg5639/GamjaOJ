@@ -19,13 +19,17 @@ final class GenerationValidationPolicy {
             .put("scope","Required generation/review guidance. Historical certificates do not qualify a new problem.");
         result.set("timePolicy",POLICY.path("timePolicy").deepCopy());
         result.set("commonChecks",POLICY.path("commonChecks").deepCopy());
-        String text=normalized(JudgeJson.canonical(definition));
+        var semantic=definition.deepCopy();if(semantic.isObject())((ObjectNode)semantic).remove(List.of("validationPolicy","theme","themeDomain","recentStories","learnerFeedback","learningFocus","generatorContract","inputLayoutPolicy","permissionNote","runtime"));
+        String raw=JudgeJson.canonical(semantic).toLowerCase(Locale.ROOT), text=normalized(raw);
         var selected=result.putArray("profiles");
         for(var profile:POLICY.path("profiles")) {
             boolean match="input-contract".equals(profile.path("id").asText())||("command".equals(profile.path("id").asText())&&(definition.has("callable")||definition.has("api")));
             for(var alias:profile.path("aliases")) {
                 String key=normalized(alias.asText());
-                if((key.length()>=3&&text.contains(key))||text.contains("\""+key+"\""))match=true;
+                if(alias.asText().matches("[A-Za-z0-9_-]+")) {
+                    String pattern=Arrays.stream(alias.asText().toLowerCase(Locale.ROOT).split("[-_]")).map(java.util.regex.Pattern::quote).collect(java.util.stream.Collectors.joining("[-_\\s]*"));
+                    if(java.util.regex.Pattern.compile("(?<![a-z0-9])"+pattern+"(?![a-z0-9])").matcher(raw).find())match=true;
+                } else if((key.length()>=3&&text.contains(key))||text.contains("\""+key+"\""))match=true;
             }
             if(match)selected.add(profile.deepCopy());
         }

@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -208,7 +209,14 @@ public class GenerationJobs {
             if(List.of("INVALID_CODEX_ARTIFACT","CODEX_OUTPUT_LIMIT").contains(error)){retryInvalidArtifact(job,error);return;}
             jdbc.sql("UPDATE generation_job SET status='NEEDS_AUTH',error_code=? WHERE id=?").param(error.substring(0,Math.min(80,error.length()))).param(id).update();return;
         }
-        try{validateArtifacts(artifacts,oracle);}catch(AccountException invalid){retryInvalidArtifact(job,"INVALID_GENERATION_ARTIFACT");return;}
+        try{validateArtifacts(artifacts,oracle);}catch(AccountException invalid){
+            var fields=invalidArtifactFields(artifacts,oracle);
+            if(job.artifacts()==null&&Set.of("title","context","editorial","hints").containsAll(fields)) {
+                structures.enforce(id,artifacts,oracle);String raw=JudgeJson.canonical(artifacts);
+                jdbc.sql("UPDATE generation_job SET artifacts_json=?,oracle_json=?,artifacts_sha256=? WHERE id=?").param(raw).param(JudgeJson.canonical(oracle)).param(JudgeJson.hash(raw)).param(id).update();
+                fail(find(id),"INVALID_PROSE_ARTIFACT",fields);
+            } else retryInvalidArtifact(job,"INVALID_GENERATION_ARTIFACT");return;
+        }
         JsonNode repair=repairFor(id);
         if(repair==null)structures.enforce(id,artifacts,oracle);
         if(repair!=null) {
@@ -232,19 +240,20 @@ public class GenerationJobs {
         review(username,id,hash,true);
 
     }
-    static void validateArtifacts(JsonNode artifacts,JsonNode oracle) {
-        if(artifacts==null||!artifacts.isObject()||artifacts.size()!=7||oracle==null||!oracle.isObject()||oracle.size()!=1)
-            throw new AccountException(400,"생성 산출물의 필수 항목을 확인해 주세요.");
+    static Set<String> invalidArtifactFields(JsonNode artifacts,JsonNode oracle) {
+        var invalid=new java.util.TreeSet<String>();var all=Set.of("title","context","reference","generator","inputValidator","editorial","hints");
+        if(artifacts==null||!artifacts.isObject()||artifacts.size()!=7||!all.stream().allMatch(artifacts::has)){invalid.addAll(all);invalid.add("oracle");return invalid;}
         for(String field:List.of("title","context","reference","generator","inputValidator","editorial")) {
-            JsonNode value=artifacts.path(field);
-            int max=List.of("reference","generator","inputValidator").contains(field)?65536:field.equals("title")?100:6000;
-            if(!value.isTextual()||value.asText().isBlank()||value.asText().getBytes(StandardCharsets.UTF_8).length>max)
-                throw new AccountException(400,"생성 산출물의 형식과 크기를 확인해 주세요.");
+            var value=artifacts.path(field);int max=List.of("reference","generator","inputValidator").contains(field)?65536:field.equals("title")?100:6000;
+            if(!value.isTextual()||value.asText().isBlank()||value.asText().getBytes(StandardCharsets.UTF_8).length>max)invalid.add(field);
         }
-        if(!oracle.path("source").isTextual()||oracle.path("source").asText().isBlank()||oracle.path("source").asText().getBytes(StandardCharsets.UTF_8).length>65536)
-            throw new AccountException(400,"독립 oracle이 필요해요.");
-        if(!artifacts.path("hints").isArray()||artifacts.path("hints").size()!=3) throw new AccountException(400,"단계형 힌트 3개가 필요해요.");
-        for(var hint:artifacts.path("hints"))if(!hint.isTextual()||hint.asText().isBlank()||hint.asText().length()>2000)throw new AccountException(400,"힌트 형식을 확인해 주세요.");
+        if(oracle==null||!oracle.isObject()||oracle.size()!=1||!oracle.path("source").isTextual()||oracle.path("source").asText().isBlank()||oracle.path("source").asText().getBytes(StandardCharsets.UTF_8).length>65536)invalid.add("oracle");
+        var hints=artifacts.path("hints");if(!hints.isArray()||hints.size()!=3)invalid.add("hints");
+        else for(var hint:hints)if(!hint.isTextual()||hint.asText().isBlank()||hint.asText().length()>2000)invalid.add("hints");
+        return invalid;
+    }
+    static void validateArtifacts(JsonNode artifacts,JsonNode oracle) {
+        if(!invalidArtifactFields(artifacts,oracle).isEmpty())throw new AccountException(400,"생성 산출물의 형식과 크기를 확인해 주세요.");
     }
     @Transactional
     public View review(String username,UUID id,String hash,boolean approve) {

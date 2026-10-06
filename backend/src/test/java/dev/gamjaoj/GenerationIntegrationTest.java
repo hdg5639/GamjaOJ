@@ -162,6 +162,35 @@ class GenerationIntegrationTest {
         assertThat(generation.claim().id()).isEqualTo(normal.id());
         assertThatThrownBy(()->drafts.create("other",UUID.randomUUID(),"DP 문제")).isInstanceOf(AccountException.class);
     }
+    @Test void oversizedDirectTeachingRepairsOnlyTextAndPreservesSourcesBeforeRunnerChecks(){
+        var id=UUID.randomUUID();drafts.create("other",id,"새 문제");var specWork=generation.claim();generation.complete(id,specWork.token(),draftSpec(),null,null,null);
+        drafts.build("other",id,drafts.view("other",id).specHash());var work=generation.claim();var original=artifacts().put("editorial","가".repeat(2100));var oracle=JudgeJson.JSON.createObjectNode().put("source","public class Main { /* distinct */ }");
+        generation.complete(id,work.token(),original,oracle,null,null);
+        assertThat(drafts.view("other",id).error()).isEqualTo("INVALID_IMPLEMENTATION_PROSE");generation.advance();
+        jdbc.sql("UPDATE generation_spec_draft SET retry_after=CURRENT_TIMESTAMP WHERE id=?").param(id).update();var repair=generation.claim();
+        assertThat(repair.repair().path("fields").toString()).isEqualTo("[\"editorial\"]");assertThat(repair.repair().path("oracle")).isEqualTo(oracle);
+        var patched=original.deepCopy().put("editorial","long으로 순회하며 합을 구한다.");generation.complete(id,repair.token(),patched,oracle,null,null);
+        assertThat(drafts.view("other",id).status()).isEqualTo("CHECKING");
+        assertThat(jdbc.sql("SELECT build_artifacts_json FROM generation_spec_draft WHERE id=?").param(id).query(String.class).single()).contains("public class Main {}");
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_recovery_attempt WHERE job_id=? AND scope='TEACHING'").param(id).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_execution WHERE draft_id=?").param(id).query(Integer.class).single()).isPositive();
+    }
+    @Test void directTeachingRepairCannotReplaceAStoredSource(){
+        var id=UUID.randomUUID();drafts.create("other",id,"새 문제");var specWork=generation.claim();generation.complete(id,specWork.token(),draftSpec(),null,null,null);
+        drafts.build("other",id,drafts.view("other",id).specHash());var work=generation.claim();var original=artifacts().put("editorial","가".repeat(2100));var oracle=JudgeJson.JSON.createObjectNode().put("source","public class Main { /* distinct */ }");
+        generation.complete(id,work.token(),original,oracle,null,null);generation.advance();jdbc.sql("UPDATE generation_spec_draft SET retry_after=CURRENT_TIMESTAMP WHERE id=?").param(id).update();var repair=generation.claim();
+        generation.complete(id,repair.token(),original.deepCopy().put("editorial","짧은 해설").put("reference","public class Main { /* changed */ }"),oracle,null,null);
+        assertThat(drafts.view("other",id).error()).isEqualTo("PROSE_SOURCE_FENCE_MISMATCH");generation.advance();
+        assertThat(jdbc.sql("SELECT auto_recovery FROM generation_spec_draft WHERE id=?").param(id).query(Boolean.class).single()).isFalse();
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_execution WHERE draft_id=?").param(id).query(Integer.class).single()).isZero();
+    }
+    @Test void oversizedTagTeachingPreservesCodeAndIndependentOracle(){
+        var id=UUID.randomUUID();generation.create("other",id,GenerationTemplate.ID);readyThemes();var work=generation.claim();var original=artifacts().put("editorial","가".repeat(2100));var oracle=JudgeJson.JSON.createObjectNode().put("source","public class Main { /* independent */ }");
+        generation.complete(id,work.token(),original,oracle,null,null);var repair=generation.claim();
+        assertThat(repair.repair().path("fields").toString()).isEqualTo("[\"editorial\"]");assertThat(repair.repair().path("oracle")).isEqualTo(oracle);
+        var patched=original.deepCopy().put("editorial","long으로 합을 구한다.");generation.complete(id,repair.token(),patched,oracle,null,null);
+        assertThat(generation.view("other",id).artifacts().path("reference")).isEqualTo(original.path("reference"));
+    }
     @Test void proseRecoveryPreservesContractCodeExecutionsUsageAndRejectsStaleCompletions() {
         var id=reviewableDraft();jdbc.sql("UPDATE generation_spec_draft SET auto_recovery=true WHERE id=?").param(id).update();
         var before=drafts.view("other",id);String build=jdbc.sql("SELECT build_sha256 FROM generation_spec_draft WHERE id=?").param(id).query(String.class).single();

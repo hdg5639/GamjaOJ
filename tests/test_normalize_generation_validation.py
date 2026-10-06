@@ -15,6 +15,10 @@ class AuditNormalizationTests(unittest.TestCase):
             value=module.normalize_inventory(root,POLICY)
         self.assertEqual(1,value['pending']);self.assertEqual(['bfs','input-contract'],value['problems'][0]['profileIds'])
         for secret in ('SECRET_INPUT','SECRET_OUTPUT','SECRET_SOURCE'):self.assertNotIn(secret,json.dumps(value))
+    def test_english_word_fragments_do_not_select_unrelated_algorithms(self):
+        selected=module.profiles_for(POLICY,['overflow','street','sorting'])
+        self.assertIn('sorting',selected);self.assertNotIn('flow',selected);self.assertNotIn('tree-range',selected)
+        self.assertIn('binary-search',module.profiles_for(POLICY,['binary search']))
     def test_changed_package_certificate_is_rejected_not_reused(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);(root/'jobs').mkdir();(root/'intent-certificates').mkdir()
