@@ -24,6 +24,11 @@ final class HybridStageRecovery {
             UUID owner=jdbc.sql("SELECT owner_id FROM hybrid_generation WHERE id=?").param(id).query(UUID.class).single();
             if(jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE owner_id=? AND status IN ('QUEUED','GENERATING','BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING')").param(owner).query(Integer.class).single()>0||jdbc.sql("SELECT count(*) FROM hybrid_generation WHERE owner_id=? AND id<>? AND status IN ('QUEUED','DESIGNING','BUILDING','VALIDATING','REVIEWING')").param(owner).param(id).query(Integer.class).single()>0)continue;
             var failure=jdbc.sql("SELECT role,error_code,completion_json FROM hybrid_branch WHERE generation_id=? AND status='FAILED' AND late_result=false ORDER BY finished_at DESC LIMIT 1").param(id).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3)}).optional();
+            String resourceError=jdbc.sql("SELECT error_code FROM hybrid_generation WHERE id=?").param(id).query(String.class).single();
+            if(resourceError!=null&&resourceError.startsWith("RESOURCE_REFERENCE_")) {
+                var root=JudgeJson.JSON.createObjectNode();root.putObject("payload").putArray("issues").add(resourceError+": Original reference/validator failed actual full-domain qualification. Rebuild the implementation/validator against the same contract; do not shrink maximum inputs. Avoid repeating whole-input regex patterns that can overflow Java8's stack.");
+                failure=Optional.of(new String[]{"CORE",resourceError,JudgeJson.canonical(root)});
+            }
             if(failure.isEmpty()||GenerationDraftRecovery.stopped(failure.get()[1]))continue;
             // Provider errors without a structured result require explicit recovery.
             if(failure.get()[2]==null)continue;var receipt=JudgeJson.parse(failure.get()[2]);if(receipt.hasNonNull("error"))continue;

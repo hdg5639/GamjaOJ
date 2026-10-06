@@ -25,6 +25,7 @@ public class JudgeQueue {
     public record Assignment(UUID submissionId, int attempt, UUID token, String source,
                              String sourceSha256, JsonNode problem, String problemSha256,
                              String runtimeImage, String runnerPolicy, int heartbeatSeconds, String executionMode, JsonNode runnerEnvironment, String language, JsonNode executionProfile, boolean judgeAll) {}
+    private static final String RESOURCE_ALLOWED="(b.role='VALIDATION' AND b.status='CHECKED' AND g.status='REVIEWING' AND EXISTS (SELECT 1 FROM generation_resource_execution re JOIN generation_resource_check rc ON rc.id=re.check_id WHERE re.submission_id=s.id AND rc.pipeline='RULE' AND rc.job_id=g.id AND rc.status IN ('MEASURING','REPLAYING')))";
     private static final String JOB_COLUMNS = "submission_id,status,attempt,token,worker_id,lease_until,verdict,result_json,result_sha256,execution_mode";
     private static OffsetDateTime now() { return OffsetDateTime.now(ZoneOffset.UTC); }
     private Job job(UUID id) {
@@ -53,7 +54,7 @@ public class JudgeQueue {
                 JOIN hybrid_branch b ON b.id=s.hybrid_branch_id JOIN hybrid_generation g ON g.id=b.generation_id
                 WHERE (j.status='QUEUED' OR (j.status='RUNNING' AND j.lease_until<=?))
                   AND (g.deadline_at<=? OR g.status IN ('FAILED','CANCELLED','DEADLINE_EXCEEDED','PUBLISHED')
-                       OR b.status IN ('FAILED','CANCELLED','SUPERSEDED','CHECKED','SUCCEEDED') OR b.revision<>g.revision)""").param(now).param(now).query(UUID.class).list();
+                       OR (b.status IN ('FAILED','CANCELLED','SUPERSEDED','CHECKED','SUCCEEDED') AND NOT %s) OR b.revision<>g.revision)""".formatted(RESOURCE_ALLOWED)).param(now).param(now).query(UUID.class).list();
         for (UUID id : abandoned) {
             String report = "{\"verdict\":\"IE\",\"error\":\"generation ended before this check ran\"}";
             jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='IE',result_json=?,result_sha256=?,finished_at=? WHERE submission_id=?")
@@ -62,10 +63,10 @@ public class JudgeQueue {
                     .param(now).param(id).update();
         }
         // A job whose hybrid generation was stopped is not resumed: a worker failing on it would otherwise renew and retry forever.
-        var resumed = jdbc.sql("SELECT submission_id FROM judge_job WHERE status='RUNNING' AND worker_id=? AND lease_until>? AND EXISTS (SELECT 1 FROM submission s WHERE s.id=judge_job.submission_id AND (s.hybrid_branch_id IS NULL OR EXISTS (SELECT 1 FROM hybrid_branch b JOIN hybrid_generation g ON g.id=b.generation_id WHERE b.id=s.hybrid_branch_id AND b.revision=g.revision AND g.deadline_at>CURRENT_TIMESTAMP AND ((b.status='RUNNING' AND g.status='VALIDATING') OR (b.status='EARLY' AND g.status='BUILDING') OR (b.status='BLOCKED' AND g.status='HELD' AND g.error_code='VALIDATION_ADAPTER_NOT_CONNECTED') OR (b.status='RUNNING' AND g.status='QUALIFYING'))))) ORDER BY created_at LIMIT 1")
+        var resumed = jdbc.sql("SELECT submission_id FROM judge_job WHERE status='RUNNING' AND worker_id=? AND lease_until>? AND EXISTS (SELECT 1 FROM submission s WHERE s.id=judge_job.submission_id AND (s.hybrid_branch_id IS NULL OR EXISTS (SELECT 1 FROM hybrid_branch b JOIN hybrid_generation g ON g.id=b.generation_id WHERE b.id=s.hybrid_branch_id AND b.revision=g.revision AND g.deadline_at>CURRENT_TIMESTAMP AND ((b.status='RUNNING' AND g.status='VALIDATING') OR (b.status='EARLY' AND g.status='BUILDING') OR (b.status='BLOCKED' AND g.status='HELD' AND g.error_code='VALIDATION_ADAPTER_NOT_CONNECTED') OR (b.status='RUNNING' AND g.status='QUALIFYING') OR "+RESOURCE_ALLOWED+")))) ORDER BY created_at LIMIT 1")
                 .param(worker).param(now).query(UUID.class).optional();
         if (resumed.isPresent()) return Optional.of(assignment(job(resumed.get())));
-        var next = jdbc.sql("SELECT submission_id FROM judge_job WHERE (status='QUEUED' OR (status='RUNNING' AND lease_until<=? AND attempt<3)) AND EXISTS (SELECT 1 FROM submission s WHERE s.id=judge_job.submission_id AND (s.hybrid_branch_id IS NULL OR EXISTS (SELECT 1 FROM hybrid_branch b JOIN hybrid_generation g ON g.id=b.generation_id WHERE b.id=s.hybrid_branch_id AND b.revision=g.revision AND g.deadline_at>CURRENT_TIMESTAMP AND ((b.status='RUNNING' AND g.status='VALIDATING') OR (b.status='EARLY' AND g.status='BUILDING') OR (b.status='BLOCKED' AND g.status='HELD' AND g.error_code='VALIDATION_ADAPTER_NOT_CONNECTED') OR (b.status='RUNNING' AND g.status='QUALIFYING'))))) ORDER BY priority,created_at,submission_id LIMIT 1 FOR UPDATE SKIP LOCKED")
+        var next = jdbc.sql("SELECT submission_id FROM judge_job WHERE (status='QUEUED' OR (status='RUNNING' AND lease_until<=? AND attempt<3)) AND EXISTS (SELECT 1 FROM submission s WHERE s.id=judge_job.submission_id AND (s.hybrid_branch_id IS NULL OR EXISTS (SELECT 1 FROM hybrid_branch b JOIN hybrid_generation g ON g.id=b.generation_id WHERE b.id=s.hybrid_branch_id AND b.revision=g.revision AND g.deadline_at>CURRENT_TIMESTAMP AND ((b.status='RUNNING' AND g.status='VALIDATING') OR (b.status='EARLY' AND g.status='BUILDING') OR (b.status='BLOCKED' AND g.status='HELD' AND g.error_code='VALIDATION_ADAPTER_NOT_CONNECTED') OR (b.status='RUNNING' AND g.status='QUALIFYING') OR "+RESOURCE_ALLOWED+")))) ORDER BY priority,created_at,submission_id LIMIT 1 FOR UPDATE SKIP LOCKED")
                 .param(now).query(UUID.class).optional();
         if (next.isEmpty()) return Optional.empty();
         Job old = job(next.get());
