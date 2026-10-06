@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import {callableLanguage} from './callable-language';
 import ProblemStatement from './problem-statement';
 import SelectControl from './select-control';
@@ -159,7 +160,7 @@ export default function DiagnosticPanel({user,api,onPractice,onOpen,onGeneration
         <button className="secondary" disabled={busy} onClick={()=>setFinishing(false)}>계속 풀기</button></div>}
     </div>
     {error&&<p role="alert" className="notice error">{error}</p>}
-    {!loaded&&<p role="status">진단 목록을 불러오는 중…</p>}
+    {!loaded&&<LoadingIndicator>진단 목록을 불러오는 중…</LoadingIndicator>}
     {request&&<p className="notice">응답을 확인하지 못한 요청이 있어요. 같은 요청으로 결과를 확인하세요. <button disabled={busy} onClick={()=>mutate(request.path,request.body,true)}>요청 다시 확인</button></p>}
     {!session&&loaded&&<DiagnosticChooser banks={banks} scope={scope} setScope={setScope} disabled={busy||!!request} onStart={(bank,chosen)=>mutate('/api/diagnostics',{bankId:bank.id,...(chosen?{categories:chosen}:{})},true)}/>}
     {session&&<>

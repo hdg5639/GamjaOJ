@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import {thinkingLabel} from './thinking-difficulty';
 import {useEffect,useRef,useState} from 'react';
 import {confidenceLabels} from './problem-reflection';
@@ -12,7 +13,7 @@ export default function LearningActivity({api,userId,activity,refresh,onChoose,g
  useEffect(()=>{setData(null);setSelected(null);},[userId]);
  useEffect(()=>{if(!visible)return;const key=JSON.stringify([userId,activity,refresh]);if(loaded.current===key)return;let live=true;setBusy(true);setError('');api('/api/my/learning').then(result=>{if(live&&Array.isArray(result.days)){loaded.current=key;setData(result);setSelected(previous=>result.days.find(day=>day.date===previous?.date)||result.days.at(-1));}}).catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setBusy(false);});return()=>{live=false;};},[api,userId,activity,refresh,visible]);
  useEffect(()=>{if(scroll.current)scroll.current.scrollLeft=scroll.current.scrollWidth;},[data]);
- if(error||!data)return <div className="learning-activity my-learning-layout" aria-busy={busy}>{growth}<div className="learning-overview-status">{error?<p role="alert" className="notice error">학습 기록을 불러오지 못했어요: {error}</p>:<p className="muted" role="status">{busy?'학습 기록을 불러오는 중…':'학습 기록이 아직 없어요.'}</p>}{stats}</div></div>;
+ if(error||!data)return <div className="learning-activity my-learning-layout" aria-busy={busy}>{growth}<div className="learning-overview-status">{error?<p role="alert" className="notice error">학습 기록을 불러오지 못했어요: {error}</p>:busy?<LoadingIndicator>학습 기록을 불러오는 중…</LoadingIndicator>:<p className="muted" role="status">학습 기록이 아직 없어요.</p>}{stats}</div></div>;
  const pad=(new Date(data.start+'T00:00:00Z').getUTCDay()+6)%7;
  const cells=[...Array(pad).fill(null),...data.days];
  const months=data.days.flatMap((day,i)=>i===0||day.date.endsWith('-01')?[{label:`${Number(day.date.slice(5,7))}월`,column:Math.floor((i+pad)/7)+1}]:[]);

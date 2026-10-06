@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import SelectControl from './select-control';
 import {useEffect,useRef,useState} from 'react';
 import DiagnosticCorrection from './diagnostic-correction';
@@ -40,7 +41,7 @@ export default function DiagnosticEvaluation({api,session,onOpen,onGeneration,on
     {complete&&<p className="diagnostic-report-caption">진단을 마쳤어요. 평가 요청 시 서비스 AI 예산을 사용하며, 같은 제출 근거의 결과는 재사용합니다.</p>}
     {!ready&&<p className="muted">완료한 문항이 있고 진행 중인 정식 채점이 없을 때 요청할 수 있어요.</p>}
     {error&&<p role="alert" className="notice error">{error}</p>}
-    {!loaded&&<p role="status">평가 기록을 불러오고 있어요…</p>}
+    {!loaded&&<LoadingIndicator>평가 기록을 불러오고 있어요…</LoadingIndicator>}
     {rows.length>1&&<label className="diagnostic-history-choice">평가 기록<SelectControl aria-label="평가 기록" value={row.id} onChange={e=>choose(e.target.value)}>{rows.map((r,i)=><option key={r.id} value={r.id}>{i===0?'최근 · ':''}{r.facts.complete?'종합 결과':'중간 기록'} · {names[r.status]||'상태 확인 중'} · {r.facts.items.filter(item=>item.status!=='OPEN').length}문항{r.createdAt?` · ${new Date(r.createdAt).toLocaleString('ko-KR')}`:` · 기록 ${rows.length-i}`}</option>)}</SelectControl></label>}
     <nav className="diagnostic-report-index" aria-label="보고서 목차">{[['diagnostic-report-overview','결과 요약'],['diagnostic-report-roadmap','추천 커리큘럼'],...(row?[[`diagnostic-profile-${row.id}`,'분야별 결과']]:[]),...(row?.interpretation?[[`diagnostic-evidence-${row.id}`,'코드 근거']]:[])].map(([id,label])=><button key={id} onClick={()=>{const node=document.getElementById(id);if(node){node.tabIndex=-1;node.scrollIntoView({block:'start'});node.focus({preventScroll:true});}}}>{label}</button>)}</nav>
     <dl id="diagnostic-report-overview" className="diagnostic-result-counts" aria-label="문항 결과 요약">{Object.entries(outcomes).map(([status,label])=><div key={status} data-outcome={status}><dt>{label}</dt><dd>{facts.filter(i=>i.status===status).length}<span>문항</span></dd></div>)}</dl>
