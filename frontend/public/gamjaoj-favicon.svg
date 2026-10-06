@@ -1,15 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-labelledby="title">
-  <title id="title">GamjaOJ</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38" role="img" aria-labelledby="gamjaoj-loader-title gamjaoj-loader-desc">
+  <title id="gamjaoj-loader-title">GamjaOJ 파비콘</title>
+  <desc id="gamjaoj-loader-desc">GamjaBox 계열의 세로 육각형 안에 코드 괄호와 정답 체크를 배치한 GamjaOJ 파비콘입니다.</desc>
   <defs>
-    <linearGradient id="flesh" x1="6" y1="6" x2="26" y2="26" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFE08A"/>
-      <stop offset="1" stop-color="#EDB13A"/>
+    <linearGradient id="gamjaoj-loader-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c8ff58"/>
+      <stop offset="1" stop-color="#62ffa8"/>
     </linearGradient>
   </defs>
-  <path d="M8.2 4.6C11.9 2 18.4 1.8 23 4C27.8 6.3 30.5 11.6 29.8 17.1C29.2 22.6 25.8 27.7 20.4 29.3C15 30.9 9.2 29.1 6.1 24.8C2.9 20.5 2.7 14 5 9.2C5.9 7.4 6.9 5.5 8.2 4.6Z" fill="#17211B"/>
-  <rect x="6.3" y="6.3" width="19.4" height="19.4" rx="5.4" fill="white"/>
-  <rect x="8.1" y="8.1" width="15.8" height="15.8" rx="4.2" fill="url(#flesh)"/>
-  <path d="M12.6 12.3L10.2 16L12.6 19.7" fill="none" stroke="#17211B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M19.4 12.3L21.8 16L19.4 19.7" fill="none" stroke="#17211B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M13.9 16.3L15.5 17.9L18.1 14.4" fill="none" stroke="#07874A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <g>
+    <path fill="url(#gamjaoj-loader-gradient)" d="M19 2.5 32.8 10v16L19 33.5 5.2 26V10L19 2.5Z"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="#07100a" stroke-width="1.9" d="M13.5 13.7 9.7 19l3.8 5.3"/>
+      <path stroke="#067543" stroke-width="2.1" pathLength="1" d="m15.9 19.1 2.7 2.7 4-5.3"/>
+      <path stroke="#07100a" stroke-width="1.9" d="m24.5 13.7 3.8 5.3-3.8 5.3"/>
+    </g>
+  </g>
 </svg>

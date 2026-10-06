@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import {useEffect,useState} from 'react';
 import {diagnosticOutcome} from './diagnostic-outcomes';
 import {categoryLabels} from './diagnostic-categories';
@@ -12,7 +13,7 @@ export default function DiagnosticProfile({api,sessionId,row,onObservation,onRul
     return()=>{stopped=true;};
   },[sessionId,row.id,row.status,row.corrections?.length]);
   if(error)return <p role="alert" className="notice error">분야별 요약을 불러오지 못했어요. {error}</p>;
-  if(!profile)return <p role="status">분야별 요약을 불러오고 있어요…</p>;
+  if(!profile)return <LoadingIndicator>분야별 요약을 불러오고 있어요…</LoadingIndicator>;
   if(!Array.isArray(profile.categories))return null; // never let an unexpected response hide the evaluation itself
   const all=profile.categories.flatMap(c=>c.observations);
   const count=tone=>all.filter(o=>o.tone===tone).length;

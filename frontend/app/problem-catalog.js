@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import SelectControl from './select-control';
 
 import { memo, useEffect, useMemo, useState } from 'react';
@@ -81,7 +82,7 @@ function ProblemCatalog({ problems, loaded, error, selectedVersion, locked, onCh
       {saveError&&<p role="alert" className="notice error">{saveError}</p>}
       <div className="catalog-actions"><button className="primary" disabled={saving}>{saving?'저장 중…':'설정 저장'}</button><button type="button" className="secondary" disabled={saving} onClick={()=>setEditing(null)}>닫기</button></div>
     </form>}
-    {!loaded?<div><p role={error?'alert':'status'}>{error||'문제 목록을 불러오고 있어요…'}</p>{error&&<button className="secondary" onClick={()=>window.location.reload()}>다시 불러오기</button>}</div>:<>
+    {!loaded?<div>{error?<p role="alert">{error}</p>:<LoadingIndicator>문제 목록을 불러오고 있어요…</LoadingIndicator>}{error&&<button className="secondary" onClick={()=>window.location.reload()}>다시 불러오기</button>}</div>:<>
       <div className="catalog-result-toolbar"><p id="catalog-results" tabIndex={-1} className="muted catalog-results" role="status">{term||category||difficulty||tag||solve?`검색 결과 ${matches.length}개 · 전체 ${problems.length}개`:`${scope==='mine'?'내가 만든 문제':scope==='others'?'다른 사람의 문제':'전체 공개 문제'} ${matches.length}개`}{matches.length>0&&` · ${(currentPage-1)*pageSize+1}–${Math.min(currentPage*pageSize,matches.length)}번째`}</p><label className="catalog-page-size">페이지당<SelectControl aria-label="페이지당 문제 수" value={pageSize} onChange={e=>changePageSize(Number(e.target.value))}>{[5,10,15].map(size=><option key={size} value={size}>{size}개씩</option>)}</SelectControl></label></div>
       {error&&<p className="notice error" role="alert">{error}</p>}
       {locked&&<p className="notice">제출 접수 확인 또는 파일 처리가 끝나면 문제를 선택할 수 있어요.</p>}

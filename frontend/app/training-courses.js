@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import {useEffect,useRef,useState} from 'react';
 import SelectControl from './select-control';
 import Modal from './modal';
@@ -42,7 +43,7 @@ export default function TrainingCourses({api,userId,visible,sessions=[],onSessio
  return <section className="training-courses" aria-label="훈련 코스">
   <header className="training-section-heading"><div><h2 id="course-workspace-heading" tabIndex={-1}>{browsing?'훈련 코스 고르기':'나의 훈련 코스'}</h2><p className="muted">{browsing?'목표와 선행 지식에 맞는 코스를 골라 단계별로 연습해요.':'정답 제출로 진도를 쌓고, 원하는 문제를 골라 이어서 풀어요.'}</p></div><div className="training-tool-actions">{enrollments.length>0&&<button className="secondary" onClick={()=>setBrowsing(!browsing)}>{browsing?'내 코스 이어가기':'다른 코스 고르기'}</button>}</div></header>
   {error&&<p role="alert" className="notice error">{error}</p>}{pending&&<button className="secondary" disabled={busy||locked} onClick={()=>execute(pending)}>같은 코스 요청 다시 확인</button>}
-  {!loaded?<p role="status">훈련 코스를 불러오는 중…</p>:browsing?<>
+  {!loaded?<LoadingIndicator>훈련 코스를 불러오는 중…</LoadingIndicator>:browsing?<>
    <div className="course-filter"><label>훈련 목적<SelectControl value={kind} onChange={e=>{setKind(e.target.value);coursePaging.setPage(0);}}>{['전체','입문','목표 대비','알고리즘 집중'].map(k=><option key={k}>{k}</option>)}</SelectControl></label><span className="muted">기존 문제로 구성 · AI 생성 없이 바로 준비</span></div>
    {!catalog.length&&<p className="notice">제공 중인 코스가 없어요. <button className="secondary" onClick={()=>{setError('');refresh();}}>다시 불러오기</button></p>}
    <ul className="course-catalog">{coursePaging.visible.map(view=>{const c=view.course,mine=enrollments.find(e=>e.course.id===c.id&&e.course.revision===c.revision);return <li key={c.id}><div className="course-catalog-meta"><span>{c.kind}</span><span>{c.stages.length}단계 · {view.steps.length}문제</span></div><h3>{c.title}</h3><p>{c.summary}</p><p className="muted">선행 지식 · {c.prerequisite}</p><div className="course-catalog-actions"><button className="secondary" onClick={()=>setPreview(view)}>코스 살펴보기</button><button className="primary" disabled={disabled||(!mine&&view.available!==view.steps.length)} onClick={()=>enroll(view)}>{mine?'이 코스 이어가기':view.available!==view.steps.length?'문제 준비 중':'이 코스로 훈련하기'}</button></div>{view.available!==view.steps.length&&<small className="muted">이용 가능 {view.available} / {view.steps.length}문제</small>}{mine&&<small className="muted">내 진도 {mine.solved} / {mine.steps.length}문제</small>}</li>;})}</ul><Pager paging={coursePaging} label="훈련 코스 페이지"/>
