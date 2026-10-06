@@ -223,3 +223,11 @@ GAMJAOJ_BASE_URL=http://127.0.0.1:18788 npx playwright test \
 - [자동완성](completion/README.md) — 언어별 지원 범위와 검증
 - [풀이 저장 연동](deploy/solution-exports.md) — GitHub·Notion 설정과 저장 동작
 - [A/B형 진단 검토](diagnostics/exam-ab-v2-review.md) — 검증 결과와 시범 운영 범위
+
+### AC 성능 이력과 효율 재도전
+
+`GET /api/my/performance?page=0`은 로그인 사용자의 정식 일반 문제 AC 제출을 내부 Judge 결과에서 읽습니다 (20건씩). 직접 실행·예제 확인·진단·보류·접근할 수 없는 문제는 제외합니다. 테스트 전체에 유효한 지표가 있을 때만 `maxWallMs`/`maxMemoryBytes`를 노출하며, 과거 미측정 값은 null로 유지합니다. Notion은 내보내기 대상이며 추천 원본이 아닙니다.
+
+`/api/my/learning`의 `efficiencyRetry`는 기존 진단·회고·숙련·성장 점수와 분리됩니다. 최근 최대 1,000개의 AC 이력에서 동일 문제 버전, 테스트 package hash, 언어, 전체 실행 profile, digest 고정 이미지, Runner policy/계약, Docker 제어 방식, worker, EXCLUSIVE 실행 조건을 모두 맞춘 **본인 이전 풀이**만 기준으로 사용합니다. 타 사용자 순위나 절대 속도 점수는 만들지 않습니다. FUNCTIONAL 공유 실행과 조건 미상 기록은 이력으로만 표시합니다. worker 식별자가 실제 동일한 호스트 조건을 의미하도록 운영하고 환경 변경 시 worker ID/Runner 계약을 갱신해야 합니다.
+
+최신 소스와 이전 소스 각각 지표별 3회 이상, 최대/최소 편차 20% 이내인 표본의 중앙값을 비교합니다. 1.5배 이상 차이에 더해 시간 50ms 또는 메모리 8MiB 이상의 차이가 있을 때만 상대적인 재도전 사유와 표본 수를 표시합니다. 이 수치는 잡음 억제용 정책이며 실력 기준이 아닙니다. 최신 기록이 비교 불가하거나 표본이 부족하면 추천하지 않습니다. 최근 1,000건 밖의 기록은 기준에서 빠지므로 추천이 생략될 수 있습니다. JVM 시작 비용과 cgroup 메모리에는 런타임 비용도 포함되며 알고리즘 복잡도/힙 사용량을 직접 뜻하지 않습니다.
