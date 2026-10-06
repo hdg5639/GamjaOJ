@@ -72,8 +72,14 @@ for(const language of ['CPP','PYTHON'])for(const width of [390,1440])test(`${lan
  await suggest(short,full);await editor.press('Tab');await expectCode(editor,full);
  await suggest(short,full);await editor.press('Escape');await expect(page.getByRole('listbox')).toBeHidden();
  await suggest(short,full);await editor.press('Enter');await expectCode(editor,full);
- await suggest(language==='CPP'?'values.push_b':'values.appe',language==='CPP'?'push_back':'append');
- await editor.press('Enter');await expectCode(editor,language==='CPP'?'values.push_back':'values.append');
+ // Unknown receivers must not get unrelated global suggestions. A declared
+ // receiver retains immediate local member completion without a server.
+ const member=language==='CPP'?'push_back':'append';
+ await editor.fill(language==='CPP'?'values.push_b':'values.appe');await editor.press('Control+End');await editor.press('Control+Space');
+ await expect(page.getByRole('option',{name:member,exact:false})).toHaveCount(0);
+ const receiver=language==='CPP'?'std::vector<int> values;\n':'values = []\n';
+ await suggest(receiver+(language==='CPP'?'values.push_b':'values.appe'),member);
+ await editor.press('Enter');await expectCode(editor,receiver+'values.'+member);
  for(const text of [language==='CPP'?'// priority_q':'# defaul',language==='CPP'?'"priority_q':'"defaul']){
   await editor.fill(text);await editor.press('Control+End');await editor.press('Control+Space');await expect(page.getByRole('listbox')).toBeHidden();
  }

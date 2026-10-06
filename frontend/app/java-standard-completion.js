@@ -1,3 +1,4 @@
+import {completionPriority} from './completion-policy';
 // Common Java 8 standard-library names. This catalog does not resolve receiver types
 // or modify imports; package details explain how each name becomes available.
 const packages = {
@@ -8,7 +9,7 @@ const packages = {
   'java.util.stream': 'Stream IntStream LongStream DoubleStream Collectors',
 };
 export const javaStandardNames = Object.entries(packages).flatMap(([pkg,names])=>names.split(' ').map(label=>({
-  label, type:'class', detail:pkg,
+  label, type:'class', detail:pkg, boost:completionPriority.standard,
   info:pkg==='java.lang' ? `${pkg}.${label} · import 없이 사용할 수 있어요.`
     : `${pkg}.${label}\n사용하려면 import ${pkg}.${label}; 또는 해당 패키지의 wildcard import가 필요해요. import는 자동으로 추가하지 않습니다.`,
 })));
