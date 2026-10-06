@@ -7,6 +7,17 @@ def load(name,file):
  s=importlib.util.spec_from_file_location(name,Path(__file__).resolve().parents[1]/'scripts'/file);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 cal=load('resource_calibration','calibrate-problem-resources.py');stage=load('resource_stage','stage-resource-limits.py')
 class CalibrationTests(unittest.TestCase):
+ def test_new_time_policy_label_cannot_relabel_old_tight_profile_as_new_qualification(self):
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder);jobs,reports,certificates=self.complete_fixture(root)
+   jp=jobs/'test-v1.json';job=json.loads(jp.read_text());job['resourceTimePolicy']={'version':'LEARNER_FRIENDLY_V1','mode':'GENERAL'};jp.write_text(json.dumps(job))
+   cp=certificates/'test-v1.json';proof=json.loads(cp.read_text())
+   for language in ('JAVA','CPP','PYTHON'):
+    p=reports/('test-v1-'+language+'.json');record=json.loads(p.read_text());record['resourceTimePolicy']=job['resourceTimePolicy'];p.write_text(json.dumps(record));proof['languageEvidence'][language]['measurementHash']=cal.digest(record)
+   cp.write_text(json.dumps(proof))
+   self.assertFalse(stage.stage(jobs,reports,certificates,root/'release'))
+   result=json.loads((root/'release'/'release-review.json').read_text())
+   self.assertTrue(any(i['reason']=='resource time headroom policy mismatch' for i in result['issues']))
  def additional_generator_fixture(self):
   source='import java.io.*; public class Main { public static void main(String[] args)throws Exception { int b; while((b=System.in.read())!=-1) System.out.write(b); System.out.flush(); } }'
   extra=source.replace('int b;', 'System.out.print("extra:"); int b;')
