@@ -21,6 +21,21 @@ class SharedCatalogIntegrationTest {
     @Autowired TrainingSessions training; @Autowired GenerationJobs generation; @Autowired GenerationSpecDrafts drafts;
     UUID addUser(String name){var id=UUID.randomUUID();jdbc.sql("INSERT INTO app_user(id,username,password_hash,nickname) VALUES (?,?,?,?)").param(id).param(name).param("unused").param(name).update();return id;}
     String settings(boolean shared){return "{\"shared\":"+shared+",\"category\":\"자료구조\",\"tags\":[\"스택\",\"경계값\"],\"difficulty\":\"MEDIUM\"}";}
+    @Test void warmPublicPackageReuseNeverCachesVisibilityLimitsOrNewPackageContent() {
+        String alice="cache-a"+UUID.randomUUID().toString().substring(0,8),bob="cache-b"+UUID.randomUUID().toString().substring(0,8);
+        UUID owner=addUser(alice);addUser(bob);String version="cache-"+UUID.randomUUID();
+        jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id,shared) SELECT ?,package_json,package_sha256,runtime_image,runner_policy,true,?,true FROM problem_version WHERE id='total-v1'").param(version).param(owner).update();
+        var before=progress(bob,version);assertThat(before.shared()).isTrue();
+        jdbc.sql("UPDATE problem_version SET time_limits_json=?,shared=false WHERE id=?").param("{\"JAVA\":7,\"CPP\":4,\"PYTHON\":9,\"analysis\":\"test publication\"}").param(version).update();
+        assertThat(submissions.problems(bob)).noneMatch(p->p.version().equals(version));
+        assertThat(progress(alice,version).languages()).filteredOn(l->l.id().equals("JAVA")).extracting(LanguageProfiles.Option::timeLimitMs).containsExactly(7000);
+        var pkg=(com.fasterxml.jackson.databind.node.ObjectNode)JudgeJson.parse(jdbc.sql("SELECT package_json FROM problem_version WHERE id=?").param(version).query(String.class).single());
+        pkg.put("title","새 패키지 제목");pkg.put("statement","바뀐 공개 본문");String json=JudgeJson.canonical(pkg);
+        jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id=?").param(json).param(JudgeJson.hash(json)).param(version).update();
+        assertThat(progress(alice,version).title()).isEqualTo("새 패키지 제목");assertThat(progress(alice,version).statement()).isEqualTo("바뀐 공개 본문");
+        jdbc.sql("UPDATE problem_version SET review_hold=true WHERE id=?").param(version).update();
+        assertThat(progress(alice,version).problemHeld()).isTrue();assertThat(progress(alice,version).submissionsEnabled()).isFalse();
+    }
     @Test void thinkingRatingsAreValidatedOwnerMetadataAndNeverChangeJudgeOrConfidence() throws Exception {
         String name="t"+UUID.randomUUID().toString().substring(0,8),other="t"+UUID.randomUUID().toString().substring(0,8);
         UUID owner=addUser(name);addUser(other);String version="thinking-"+UUID.randomUUID();

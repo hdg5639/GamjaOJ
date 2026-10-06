@@ -4,16 +4,16 @@ import {useEffect,useState} from 'react';
 import Pager,{usePage} from './pager';
 import ProblemId from './problem-id';
 const labels={HELD:'문제 검토 중 · 확인 보류',READY_TO_PRACTICE:'다음 문제 선택',ACTIVE:'훈련 진행 중',WAITING_JUDGE:'채점 완료 대기',AWAITING_REFLECTION:'정답 확인 · 도움 사용 여부 확인',NEEDS_PRACTICE:'이번 훈련은 재연습 필요',AC_WITH_HELP:'도움을 받아 정답 해결',SELF_REPORTED_UNASSISTED_AC:'도움 없이 정답 해결 · 본인 확인'};
-export default function FollowupPanel({api,onOpen,onGeneration,locked}) {
+export default function FollowupPanel({api,onOpen,onGeneration,locked,visible=true}) {
   const [items,setItems]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[loaded,setLoaded]=useState(false);
   async function refresh(){setItems(await api('/api/practice-followups'));setLoaded(true);setError('');}
   const waiting=items.some(item=>['ACTIVE','WAITING_JUDGE'].includes(item.status)||['QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING','DESIGNING','BUILDING','REVIEWING','BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING'].includes(item.generationStatus));
-  useEffect(()=>{let stopped=false;
+  useEffect(()=>{if(!visible)return;let stopped=false;
     async function load(){try{const value=await api('/api/practice-followups');if(!stopped){setItems(value);setLoaded(true);setError('');}}catch(e){if(!stopped)setError(e.message);}}
     load();window.addEventListener('focus',load);window.addEventListener('gamjaoj-training-changed',load);window.addEventListener('gamjaoj-followup-created',load);
     const timer=waiting?setInterval(load,5000):null;
     return()=>{stopped=true;clearInterval(timer);window.removeEventListener('focus',load);window.removeEventListener('gamjaoj-training-changed',load);window.removeEventListener('gamjaoj-followup-created',load);};
-  },[waiting]);
+  },[waiting,visible]);
   async function action(item,phase,body){
     if(busy)return;setBusy(true);setError('');try{
       const value=await api(`/api/practice-followups/${item.id}/${phase}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,round:item.round||1})});
