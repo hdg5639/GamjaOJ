@@ -44,6 +44,10 @@ class LearningProblemPreparation {
         }
         if("MAPPED".equals(saved.status())&&saved.problemVersion()!=null&&available.stream().anyMatch(p->saved.problemVersion().equals(p.version())))return saved;
         if(plan.generationId()!=null) {
+            if(drafts.contains(plan.generationId())&&drafts.recoveryEnabled(plan.generationId())&&plan.generationStatus()!=null&&(plan.generationStatus().contains("FAILED")||plan.generationStatus().contains("REJECTED"))) {
+                var draft=drafts.view(username,plan.generationId());
+                if(!GenerationDraftRecovery.stopped(draft.error())){save(id,"GENERATING","실패한 단계를 자동으로 보완하고 있어요. 통과한 코드와 검증 기록은 보존해요.",null);return state(id);}
+            }
             if(plan.generationStatus()!=null&&(plan.generationStatus().contains("FAILED")||plan.generationStatus().contains("REJECTED")||"NEEDS_REVIEW".equals(plan.generationStatus()))) {
                 save(id,"FAILED","문제 생성·검증을 통과하지 못했어요. 상세 결과를 확인해 주세요.",null);return state(id);
             }
@@ -123,7 +127,7 @@ class LearningProblemPreparation {
     }
     static String normalize(String value){return value.toLowerCase(Locale.ROOT).replaceAll("\\s+","").replace("투포인터","두포인터").replace("너비우선탐색","bfs").replace("깊이우선탐색","dfs");}
     List<Object[]> pending() {
-        return jdbc.sql("SELECT u.username,w.plan_id FROM learning_problem_preparation w JOIN diagnostic_practice_plan p ON p.id=w.plan_id JOIN app_user u ON u.id=p.user_id WHERE (w.status IN ('WAITING','GENERATING') OR (w.status='MAPPED' AND (w.problem_version IS NULL OR w.updated_at<CURRENT_TIMESTAMP-INTERVAL '30' SECOND))) AND p.training_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM learning_curriculum_end e WHERE e.evaluation_id=p.evaluation_id AND e.user_id=p.user_id) AND NOT EXISTS (SELECT 1 FROM diagnostic_practice_plan n WHERE n.previous_plan_id=p.id) ORDER BY w.updated_at,w.plan_id LIMIT 50")
+        return jdbc.sql("SELECT u.username,w.plan_id FROM learning_problem_preparation w JOIN diagnostic_practice_plan p ON p.id=w.plan_id JOIN app_user u ON u.id=p.user_id WHERE ((w.status IN ('WAITING','GENERATING') OR (w.status='FAILED' AND EXISTS (SELECT 1 FROM generation_spec_draft d WHERE d.id=p.generation_id AND d.auto_recovery=true))) OR (w.status='MAPPED' AND (w.problem_version IS NULL OR w.updated_at<CURRENT_TIMESTAMP-INTERVAL '30' SECOND))) AND p.training_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM learning_curriculum_end e WHERE e.evaluation_id=p.evaluation_id AND e.user_id=p.user_id) AND NOT EXISTS (SELECT 1 FROM diagnostic_practice_plan n WHERE n.previous_plan_id=p.id) ORDER BY w.updated_at,w.plan_id LIMIT 50")
             .query((r,n)->new Object[]{r.getString(1),r.getObject(2,UUID.class)}).list();
     }
 }

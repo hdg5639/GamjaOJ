@@ -1,4 +1,5 @@
 'use client';
+import GenerationProgress from './generation-progress';
 import SelectControl from './select-control';
 
 import {useEffect,useRef,useState} from 'react';
@@ -11,7 +12,7 @@ const active=job=>activeStates.includes(job.status)||(job.status==='HELD'&&hando
 const states={QUEUED:'출제 대기',DESIGNING:'규칙 준비 중',BUILDING:'문제 작성 중',VALIDATING:'실행 검증 중',REVIEWING:'본문·해설 검토 중',PUBLISHED:'풀이 준비 완료',CANCELLED:'요청 취소됨',DEADLINE_EXCEEDED:'처리 기한 초과',FAILED:'생성 실패',HELD:'검토 보류'};
 const stages=[['CONTRACT','규칙 확정'],['CORE','코드 작성'],['PRESENTATION','본문 작성'],['READER','독립 검토'],['VALIDATION','실행 검증'],['CONTENT_REVIEW','최종 검토']];
 const failureReasons={
-  CONTENT_REVIEW_REJECTED:'실행 검증은 통과했지만, 최종 검토에서 본문이나 해설이 규칙과 어긋난다고 판단해 게시하지 않았어요. 같은 요청으로 다시 만들어 보세요.',
+  CONTENT_REVIEW_REJECTED:'실행 검증은 통과했지만, 최종 검토에서 본문이나 해설이 규칙과 어긋난다고 판단해 게시하지 않았어요. 자동 보완 결과와 중단 사유를 확인해 주세요.',
   READER_INPUT_BOUND:'독립 검증 모델이 만든 입력이 문제 제한을 벗어나 중단했어요. 다시 만들어 보세요.',
   STATEMENT_BOUND_MISSING:'본문에 제한 수치가 빠져 게시하지 않았어요. 다시 만들어 보세요.'};
 const branchStates={NOT_STARTED:'대기',QUEUED:'대기',BLOCKED:'대기',RUNNING:'진행 중',EARLY:'먼저 진행 중',SUCCEEDED:'완료',CHECKED:'완료',FAILED:'실패',CANCELLED:'중단'};
@@ -126,12 +127,13 @@ export default function HybridGeneration({userId,api,onOpen,onActive,visible,oth
       <div aria-live="polite">{jobPaging.visible.map((job,index)=><details key={job.id} className="generation-job" open={(jobPaging.offset+index)===0||active(job)}>
         <summary><strong>{profileLabel(job.profileId)}</strong><span className="generation-status">{job.problemHeld?'게시 후 검토 보류':job.status==='HELD'&&handoffs.includes(job.error)?'다음 단계 준비 중':states[job.status]||'진행 상태 확인 필요'}</span></summary>
         <div className="generation-job-body">
+      <GenerationProgress recovery={job.recovery} resource={job.resources}/>
           <p className="draft-help">{new Date(job.acceptedAt).toLocaleString('ko-KR')} · {job.shared?'다른 회원에게 공개':'나만 보기'}</p>
           <ol className="hybrid-stages" aria-label="출제 단계">{stages.map(([key,label])=><li key={key}><span>{label}</span><strong>{key==='CORE'&&job.referenceReused&&job.branches?.[key]==='SUCCEEDED'?'검증된 코드 재사용':branchStates[job.branches?.[key]]||'대기'}</strong></li>)}</ol>
           {active(job)&&<><p className="draft-help">처리 기한: {new Date(job.deadlineAt).toLocaleTimeString('ko-KR')}. 취소하면 이후 작업과 게시를 중단합니다. 이미 시작한 호출은 비용이 발생할 수 있어요.</p><button className="secondary" disabled={busy} onClick={()=>action(job,true)}>이 요청 취소</button></>}
           {job.status==='PUBLISHED'&&<button className="primary" disabled={busy||job.problemHeld||!job.publishedVersionId} onClick={()=>action(job,false)}>이 문제 풀기</button>}
           {job.status==='DEADLINE_EXCEEDED'&&<p>처리 기한 내에 마치지 못해 게시하지 않았어요. 이전 요청은 자동으로 다시 실행되지 않습니다.</p>}
-          {job.status==='HELD'&&!active(job)&&<p>{job.error==='CODEX_QUOTA_API_BUDGET'?'출제 모델 사용 한도에 도달했고, 대체 실행에 필요한 AI 예산도 부족해 중단했어요.':failureReasons[job.error]||'게시 조건을 충족하지 못해 중단했어요.'}{job.error&&<small className="draft-help"> (사유 코드: {job.error})</small>} 진행 정보는 보존되며 자동으로 다시 생성하지 않습니다.</p>}
+          {job.status==='HELD'&&!active(job)&&<p>{job.error==='CODEX_QUOTA_API_BUDGET'?'출제 모델 사용 한도에 도달했고, 대체 실행에 필요한 AI 예산도 부족해 중단했어요.':failureReasons[job.error]||'게시 조건을 충족하지 못해 중단했어요.'}{job.error&&<small className="draft-help"> (사유 코드: {job.error})</small>} 진행 정보는 보존됩니다. 재시도 한도·예산·인증 문제로 중단되면 상태를 확인해 주세요.</p>}
           {job.status==='FAILED'&&<p>{failureReasons[job.error]||'생성을 완료하지 못해 게시하지 않았어요.'}{job.error&&<small className="draft-help"> (사유 코드: {job.error})</small>}</p>}
           {job.problemHeld&&<p>이 문제는 게시 후 검토 중이에요. 검토가 끝날 때까지 새 풀이를 시작할 수 없습니다.</p>}
         </div>

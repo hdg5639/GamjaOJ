@@ -97,6 +97,7 @@ class HybridPublication {
                     .param(id).param(s.revision).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4),r.getString(5),r.getString(6)}).optional();
             int nextAttempt=review.isEmpty()?0:Integer.parseInt(review.get()[5])+1;
             // Only an explicitly reserved retry may create a fresh review over repaired validation evidence.
+            nextAttempt=Math.max(nextAttempt,jdbc.sql("SELECT COALESCE(MAX(r.retry),-1) FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id WHERE r.generation_id=? AND r.revision=? AND r.role='CONTENT_REVIEW' AND a.status='HYBRID_RESERVED' AND r.branch_id IS NULL").param(id).param(s.revision).query(Integer.class).single());
             boolean fresh=review.isEmpty()||(review.get()[1].equals("FAILED")&&jdbc.sql("SELECT count(*) FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id WHERE r.generation_id=? AND r.revision=? AND r.role='CONTENT_REVIEW' AND r.retry=? AND r.branch_id IS NULL AND a.status='HYBRID_RESERVED'")
                     .param(id).param(s.revision).param(nextAttempt).query(Integer.class).single()==1);
             if(review.isPresent()&&!review.get()[1].equals("SUCCEEDED")&&!fresh)continue;
@@ -124,7 +125,11 @@ class HybridPublication {
                 requireReferenceQualified(id,s.revision);
                 String limits=input.has("requirements")?ProblemTimeLimits.reviewed(JudgeJson.parse(artifact[0]).path("requirementsReview"),input.path("requirements").path("timeEvidence").path("javaMaxWallMs").asLong(),input.path("requirements").path("timeEvidence").path("javaMaxAllowedSeconds").asInt(20)):null;
                 int qualified=input.path("requirements").path("timeEvidence").path("javaQualifiedSeconds").asInt();
-                if(qualified>0)HybridArtifacts.require(JudgeJson.parse(limits).path("JAVA").asInt()==qualified,"TIME_LIMIT_QUALIFICATION_FENCE");
+                if(qualified>0&&!GenerationResources.enabled(jdbc,"RULE",id))HybridArtifacts.require(JudgeJson.parse(limits).path("JAVA").asInt()==qualified,"TIME_LIMIT_QUALIFICATION_FENCE");
+                var core=jdbc.sql("SELECT a.payload_json FROM hybrid_artifact a JOIN hybrid_branch b ON b.id=a.branch_id WHERE b.generation_id=? AND b.revision=? AND b.role='CORE' AND b.status='SUCCEEDED' ORDER BY b.attempt DESC LIMIT 1").param(id).param(s.revision).query(String.class).single();
+                var corePayload=JudgeJson.parse(core);
+                limits=GenerationResources.ensure(jdbc,"RULE",id,version,input.path("contract"),corePayload.path("reference").asText(),corePayload.path("inputValidator").asText(),limits);
+                if(limits==null)continue;
                 jdbc.sql("UPDATE problem_version SET ready=true,shared=?,time_limits_json=? WHERE id=? AND ready=false").param(s.shared).param(limits).param(version).update();
                 ThinkingDifficulty.publish(jdbc,version,JudgeJson.parse(artifact[0]).path("thinking"),"MODEL");
                 var ruleVersion=jdbc.sql("SELECT rule_version_id FROM hybrid_public_request WHERE generation_id=?").param(id).query(String.class).optional();

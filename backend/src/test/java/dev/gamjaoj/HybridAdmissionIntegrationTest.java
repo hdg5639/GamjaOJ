@@ -49,6 +49,7 @@ class HybridAdmissionIntegrationTest {
     final Map<String,Object> overrides=new HashMap<>();
     static final String BODY="{\"profileId\":\"zero-one-items-v1\",\"shared\":false,\"publishOnSuccess\":true}";
     @BeforeEach void setup(){
+        jdbc.sql("DELETE FROM generation_resource_attempt").update();jdbc.sql("DELETE FROM generation_resource_execution").update();jdbc.sql("DELETE FROM generation_resource_check").update();
         env.getPropertySources().addFirst(new MapPropertySource("admission-test",overrides));
         jdbc.sql("DELETE FROM practice_followup").update();jdbc.sql("DELETE FROM ai_task").update();
         jdbc.sql("DELETE FROM judge_job WHERE submission_id IN (SELECT id FROM submission WHERE hybrid_branch_id IS NULL)").update();
@@ -128,6 +129,9 @@ class HybridAdmissionIntegrationTest {
     }
     /** Drives writer, reader, all Runner checks and final review to publication; returns the version. */
     String finish(UUID id,HybridProfiles.Definition profile) {
+        // This compatibility fixture exercises the original registered-rule gates.
+        // The new cross-language resource gate is covered separately.
+        jdbc.sql("UPDATE hybrid_generation SET resource_validation=false WHERE id=?").param(id).update();
         boolean bfs=profile.bfs(),weighted=profile.weighted();
         var writer=execution.claimApi();var prose=weighted?HybridDijkstraProfileTest.prose():bfs?HybridBfsProfileTest.prose():f.presentation();prose.remove("semantics");prose.set("ruleExplanations",writer.request().assignment().input().path("serverRules").path("rules").deepCopy());
         assertThat(writer.request().schema().path("properties").has("ruleExplanations")).isTrue();

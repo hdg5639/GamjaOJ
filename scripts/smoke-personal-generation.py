@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import subprocess
+from smoke_generation_cleanup import cleanup_sql, active_checks_sql
 
 def ssh(command, data=None):
     return subprocess.run(['ssh','-o','BatchMode=yes',os.environ['GAMJAOJ_APP_SSH_TARGET'],command],input=data,text=True,capture_output=True,check=True).stdout.strip()
@@ -134,12 +135,12 @@ def main():
         print(json.dumps(evidence['runnerPerformance']),flush=True)
     finally:
         # Never remove work while a worker may still hold a lease.
-        active=sql("SELECT count(*) FROM generation_job WHERE owner_id IN (SELECT id FROM app_user WHERE username IN ('"+"','".join(names)+"')) AND status IN ('QUEUED','GENERATING','VALIDATING')")
+        active=sql("SELECT count(*) FROM generation_job WHERE owner_id IN (SELECT id FROM app_user WHERE username IN ('"+"','".join(names)+"')) AND status IN ('QUEUED','GENERATING','AWAITING_REVIEW','VALIDATING')")
         pending=sql("SELECT count(*) FROM judge_job j JOIN submission s ON s.id=j.submission_id JOIN app_user u ON u.id=s.user_id WHERE u.username IN ('"+"','".join(names)+"') AND j.status<>'FINISHED'")
-        if active=='0' and pending=='0':
+        if active=='0' and pending=='0' and sql(active_checks_sql("SELECT id FROM app_user WHERE username IN ('"+"','".join(names)+"')"))=='0':
             quoted="','".join(names)
             ownJobs="SELECT id FROM generation_job WHERE owner_id IN (SELECT id FROM app_user WHERE username IN ('"+quoted+"'))"
-            sql("BEGIN; DELETE FROM generation_execution WHERE job_id IN ("+ownJobs+"); "
+            sql("BEGIN; "+cleanup_sql("SELECT id FROM app_user WHERE username IN ('"+quoted+"')")+"DELETE FROM generation_execution WHERE job_id IN ("+ownJobs+"); "
                 "DELETE FROM submission WHERE user_id IN (SELECT id FROM app_user WHERE username IN ('"+quoted+"')); "
                 "DELETE FROM generation_attempt WHERE job_id IN ("+ownJobs+"); "
                 "DELETE FROM generation_job WHERE id IN ("+ownJobs+"); "

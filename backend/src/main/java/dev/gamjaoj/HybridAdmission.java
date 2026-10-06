@@ -41,7 +41,7 @@ class HybridAdmission {
                 &&HybridFiniteProfile.PACKAGE_POLICY.equals(settings.value("HYBRID_VALIDATION_PROFILE",""));
         if(enabled)try {for(var role:List.of(HybridGeneration.Role.PRESENTATION,HybridGeneration.Role.READER,HybridGeneration.Role.CONTENT_REVIEW))HybridModels.slot(settings,role);}
         catch(AccountException unavailable){enabled=false;}
-        return new Options(enabled,enabled?"검증을 통과한 문제만 게시합니다. 실패한 요청은 자동으로 다시 생성하지 않습니다.":"아직 이 계정에서는 실험 출제를 시작할 수 없어요. 기존 출제 방식은 계속 이용할 수 있습니다.",profiles(user));
+        return new Options(enabled,enabled?"검증을 통과한 문제만 게시합니다. 실패한 단계만 한도 내에서 자동 보완하며, 인증·예산·처리 한도 문제는 상태를 보존하고 중단합니다.":"아직 이 계정에서는 실험 출제를 시작할 수 없어요. 기존 출제 방식은 계속 이용할 수 있습니다.",profiles(user));
     }
     /** Whether this user may admit the given registered rule version now (flags, allowlist, registry). */
     boolean available(String user,String versionId) {
@@ -77,6 +77,7 @@ class HybridAdmission {
         String versionId=request.path("profileId").asText();
         var selected=registry.resolve(versionId,viewer(user)).orElseThrow(()->new AccountException(409,"선택한 규칙을 지금은 사용할 수 없어요. 목록을 새로 확인해 주세요."));
         var contract=selected.contract();
+        jdbc.sql("UPDATE hybrid_generation SET resource_validation=true WHERE id=?").param(id).update();
         jdbc.sql("INSERT INTO hybrid_public_request(generation_id,profile_id,profile_hash,contract_sha256,handoff_mode,rule_version_id) VALUES (?,?,?,?,'SERVER_FIXED_CONTRACT_V1',?)")
                 .param(id).param(selected.id()).param(selected.hash()).param(JudgeJson.hash(JudgeJson.canonical(contract))).param(versionId).update();
         // A reusable rule binds mechanics, not its creator's original story. Instance preferences are separate.

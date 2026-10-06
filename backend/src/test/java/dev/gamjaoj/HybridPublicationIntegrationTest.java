@@ -45,6 +45,7 @@ class HybridPublicationIntegrationTest {
         env.getPropertySources().remove("publication-test");overrides.clear();
         env.getPropertySources().addFirst(new MapPropertySource("publication-test",overrides));
         runner.jdbc=jdbc;runner.checks=checks;runner.hybrid=jobs;runner.queue=queue;runner.env=env;
+        jdbc.sql("DELETE FROM generation_recovery_receipt").update();jdbc.sql("DELETE FROM generation_recovery_attempt").update();
         runner.setup();jdbc.sql("DELETE FROM ai_attempt").update();jdbc.sql("DELETE FROM ai_task").update();
     }
     @AfterEach void reset(){env.getPropertySources().remove("publication-test");verifyNoInteractions(provider);}
@@ -144,6 +145,30 @@ class HybridPublicationIntegrationTest {
         assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");assertThat(runner.jobs()).isEqualTo(checksBefore);
         assertThat(jdbc.sql("SELECT receipt_json FROM hybrid_api_reservation WHERE attempt_id=?").param(first.attemptId()).query(String.class).single()).isEqualTo(oldReceipt);
         assertThat(jdbc.sql("SELECT status FROM hybrid_branch WHERE id=?").param(first.request().assignment().branchId()).query(String.class).single()).isEqualTo("FAILED");
+    }
+    @Test void writerFailureBeforeAnyReaderKeepsUnusedReservationsAndCanResumeWithoutSlotCollision() {
+        UUID id=admit(false);jdbc.sql("UPDATE hybrid_generation SET resource_validation=true WHERE id=?").param(id).update();codex(f.contract());codex(f.core());
+        var writer=execution.claimApi();execution.finish(writer.attemptId(),result(JudgeJson.JSON.createObjectNode()),null);
+        execution.recover();var retry=execution.claimApi();assertThat(retry.request().assignment().role()).isEqualTo(PRESENTATION);
+        execution.finish(retry.attemptId(),result(f.presentation()),null);
+        var reader=execution.claimApi();assertThat(reader.request().assignment().role()).isEqualTo(READER);
+        assertThat(jdbc.sql("SELECT retry FROM hybrid_api_reservation WHERE attempt_id=?").param(reader.attemptId()).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_api_reservation r JOIN ai_attempt a ON a.id=r.attempt_id WHERE r.generation_id=? AND r.retry=0 AND r.role IN ('READER','CONTENT_REVIEW') AND a.status='HYBRID_RELEASED'").param(id).query(Integer.class).single()).isEqualTo(2);
+    }
+    @Test void automaticProseRepairPreservesCoreAndReservesOnlyWriterReaderAndReview() {
+        UUID id=checked(false);jdbc.sql("UPDATE hybrid_generation SET resource_validation=true WHERE id=?").param(id).update();
+        String core=jdbc.sql("SELECT payload_sha256 FROM hybrid_artifact a JOIN hybrid_branch b ON b.id=a.branch_id WHERE b.generation_id=? AND b.role='CORE'").param(id).query(String.class).single();
+        var work=review();var payload=accepted(work);payload.put("proseEquivalent",false);payload.withArray("issues").add("본문의 경계 규칙 설명을 보완하세요.");
+        execution.finish(work.attemptId(),result(payload),null);String receipt=jdbc.sql("SELECT receipt_json FROM hybrid_api_reservation WHERE attempt_id=?").param(work.attemptId()).query(String.class).single();
+        execution.recover();assertThat(jobs.view("owner",id).status()).isEqualTo("BUILDING");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_branch WHERE generation_id=? AND role='CORE'").param(id).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT payload_sha256 FROM hybrid_artifact a JOIN hybrid_branch b ON b.id=a.branch_id WHERE b.generation_id=? AND b.role='CORE'").param(id).query(String.class).single()).isEqualTo(core);
+        var writer=execution.claimApi();assertThat(writer.request().assignment().role()).isEqualTo(PRESENTATION);assertThat(writer.request().input()).contains("recoveryFeedback");
+        assertThat(jdbc.sql("SELECT count(*) FROM hybrid_api_reservation WHERE generation_id=? AND retry=1").param(id).query(Integer.class).single()).isEqualTo(3);
+        assertThat(ledger.budget().reservedUsd()).isPositive();
+        execution.finish(work.attemptId(),result(payload),null);assertThat(jdbc.sql("SELECT receipt_json FROM hybrid_api_reservation WHERE attempt_id=?").param(work.attemptId()).query(String.class).single()).isEqualTo(receipt);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_recovery_attempt WHERE job_id=?").param(id).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM problem_version WHERE id LIKE 'hybrid-check-%' AND ready=true").query(Integer.class).single()).isZero();
     }
     @Test void repairedEditorialIsRevalidatedAndReviewedWithFreshBindings() {
         UUID id=checked(false);var first=review();var rejected=accepted(first);

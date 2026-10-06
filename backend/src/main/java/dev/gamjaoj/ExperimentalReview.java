@@ -21,7 +21,9 @@ class ExperimentalReview {
         if(value==null||!value.isObject())throw new IllegalArgumentException();
         if((thinking&&value.path("verdict").asText().equals("ACCEPT"))||value.has("thinking"))ThinkingDifficulty.validate(value.path("thinking"));
         if(requirements||value.has("requirementsReview"))GenerationRequirements.validate(value.path("requirementsReview"),value.path("verdict").asText().equals("ACCEPT"));
-        var shape=(ObjectNode)value.deepCopy();shape.remove("requirementsReview");shape.remove("thinking");
+        var shape=(ObjectNode)value.deepCopy();shape.remove("requirementsReview");shape.remove("thinking");shape.remove("failureScope");
+        if(value.has("failureScope")&&!Set.of("PROSE","IMPLEMENTATION","CONTRACT","REVIEW").contains(value.path("failureScope").asText()))throw new IllegalArgumentException();
+        if(value.path("verdict").asText().equals("ACCEPT")&&value.has("failureScope")&&!value.path("failureScope").asText().equals("REVIEW"))throw new IllegalArgumentException();
         object(shape,Set.of("verdict","issues","validCases","invalidCases","mutants"));
         if(!List.of("ACCEPT","REVISE").contains(value.path("verdict").asText()))throw new IllegalArgumentException();
         array(value.path("issues"),0,8);for(var issue:value.path("issues"))text(issue,2000,false);

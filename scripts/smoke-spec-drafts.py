@@ -11,6 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from smoke_generation_cleanup import cleanup_sql, active_checks_sql
 
 
 def ssh(command,data=None):
@@ -95,7 +96,7 @@ def main():
             for _ in range(300):
                 status,draft=a(path+'/'+key);assert status==200,(status,draft)
                 if draft['status']!=last:last=draft['status'];print(last,flush=True)
-                if last not in ('BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING'):break
+                if last not in ('QUEUED','GENERATING','BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING'):break
                 time.sleep(4)
             assert last=='CHECKED',(last,draft['error'])
             assert draft['checks']['executions']==13 and draft['checks']['publishable'] is False
@@ -118,7 +119,7 @@ def main():
             for _ in range(300):
                 status,draft=a(path+'/'+key);assert status==200,(status,draft)
                 if draft['status']!=last:last=draft['status'];print(last,flush=True)
-                if last not in ('REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING'):break
+                if last not in ('QUEUED','GENERATING','BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING'):break
                 time.sleep(4)
             evidence['reviewedDraft']=draft
             completion=json.loads(sql("SELECT review_completion_json FROM generation_spec_draft WHERE id='"+key+"'"))
@@ -141,7 +142,7 @@ def main():
             for _ in range(360):
                 status,draft=a(path+'/'+key);assert status==200
                 if draft['status']!=last:last=draft['status'];print(last,flush=True)
-                if last not in ('FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING'):break
+                if last not in ('QUEUED','GENERATING','BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING'):break
                 time.sleep(4)
             evidence['publishedDraft']=draft
             completion=json.loads(sql("SELECT final_completion_json FROM generation_spec_draft WHERE id='"+key+"'"))
@@ -172,8 +173,8 @@ def main():
         Path('.state/spec-drafts-smoke.json').write_text(json.dumps(evidence,ensure_ascii=False,indent=2))
         print('PASS: real Codex flow, private access, replay and no paid API task',flush=True)
     finally:
-        if sql("SELECT count(*) FROM generation_spec_draft WHERE owner_id IN ("+owners+") AND status IN ('QUEUED','GENERATING','BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING')")=='0':
-            sql("BEGIN; DELETE FROM generation_spec_execution WHERE draft_id IN (SELECT id FROM generation_spec_draft WHERE owner_id IN ("+owners+")); DELETE FROM submission WHERE user_id IN ("+owners+"); DELETE FROM problem_version WHERE id LIKE 'experimental-check-%' AND owner_id IN ("+owners+"); DELETE FROM generation_spec_draft WHERE owner_id IN ("+owners+"); DELETE FROM spring_session WHERE principal_name IN ('"+quoted+"'); DELETE FROM app_user WHERE username IN ('"+quoted+"'); COMMIT;")
+        if sql(active_checks_sql(owners))=='0' and sql("SELECT count(*) FROM judge_job j JOIN submission s ON s.id=j.submission_id WHERE s.user_id IN ("+owners+") AND j.status<>'FINISHED'")=="0" and sql("SELECT count(*) FROM generation_spec_draft WHERE owner_id IN ("+owners+") AND status IN ('QUEUED','GENERATING','BUILD_QUEUED','BUILD_GENERATING','CHECKING','REVIEW_QUEUED','REVIEW_GENERATING','REVIEW_CHECKING','FINAL_QUEUED','FINAL_GENERATING','FINAL_CHECKING')")=='0':
+            sql("BEGIN; "+cleanup_sql(owners)+"DELETE FROM generation_spec_execution WHERE draft_id IN (SELECT id FROM generation_spec_draft WHERE owner_id IN ("+owners+")); DELETE FROM submission WHERE user_id IN ("+owners+"); DELETE FROM problem_version WHERE id LIKE 'experimental-check-%' AND owner_id IN ("+owners+"); DELETE FROM generation_spec_draft WHERE owner_id IN ("+owners+"); DELETE FROM spring_session WHERE principal_name IN ('"+quoted+"'); DELETE FROM app_user WHERE username IN ('"+quoted+"'); COMMIT;")
             print('Synthetic drafts and accounts removed',flush=True)
         else:print('Active probe retained: '+key,flush=True)
 

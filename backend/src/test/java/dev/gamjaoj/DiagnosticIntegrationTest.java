@@ -53,6 +53,7 @@ class DiagnosticIntegrationTest {
     String user,other,bank;
     static final String SOURCE="public class Main { public static void main(String[] args) { System.out.println(3); } }";
     @BeforeEach void fixture() {
+        jdbc.sql("DELETE FROM generation_resource_attempt").update();jdbc.sql("DELETE FROM generation_resource_execution").update();jdbc.sql("DELETE FROM generation_resource_check").update();jdbc.sql("DELETE FROM generation_recovery_receipt").update();jdbc.sql("DELETE FROM generation_recovery_attempt").update();
         org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=false","OPENAI_API_KEY=","AI_MONTHLY_BUDGET_USD=10").applyTo(environment);
         jdbc.sql("DELETE FROM diagnostic_practice_plan").update();
         jdbc.sql("DELETE FROM generation_spec_execution").update();
@@ -352,24 +353,33 @@ class DiagnosticIntegrationTest {
         var finish=generation.claim();generation.complete(id,finish.token(),fixture.finalPlan(),fixture.planAcceptance(),null,null);
         assertThat(curricula.overview(user).getFirst().steps().getFirst().candidate()).isNull();
         fixture.finishFinal("");fixture.finishFinal("");fixture.finishFinal("");
+        assertThat(drafts.view(user,id).status()).isEqualTo("FINAL_CHECKING");
+        var resource=generation.claim();assertThat(resource.spec().path("phase").asText()).isEqualTo("RESOURCE_QUALIFICATION");
+        generation.complete(resource.id(),resource.token(),fixture.resourceSources(),fixture.planAcceptance(),null,null);
+        fixture.finishResourceChecks(true);fixture.finishResourceChecks(true);generation.advance();
         assertThat(drafts.view(user,id).status()).isEqualTo("PUBLISHED");
         assertThat(preparation.prepare(user,id,false).problemVersion()).isEqualTo("experimental-check-"+id);
         assertThat(curricula.overview(user).getFirst().steps().getFirst().candidate().version()).isEqualTo("experimental-check-"+id);
         assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isEqualTo(1);
         assertThat(generation.claim()).isNull();
     }
-    @Test void automaticPreparationWaitsForOtherJobAndNeverRetriesFailedPaidWork() {
+    @Test void automaticPreparationResumesTheSameDraftWithinTheRetryBudget() {
         var plan=basicPlan("dp");UUID busy=UUID.randomUUID();drafts.create(user,busy,"기존 수동 출제");
         assertThat(preparation.prepare(user,plan.id(),false).status()).isEqualTo("WAITING");
         assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isEqualTo(1);
-        jdbc.sql("UPDATE generation_spec_draft SET status='FAILED' WHERE id=?").param(busy).update();
+        jdbc.sql("UPDATE generation_spec_draft SET status='FAILED',auto_recovery=false WHERE id=?").param(busy).update();
         assertThat(preparation.prepare(user,plan.id(),false).status()).isEqualTo("GENERATING");
         var author=generation.claim();generation.complete(plan.id(),author.token(),JudgeJson.JSON.createObjectNode(),null,null,null);
-        assertThat(preparation.prepare(user,plan.id(),false).status()).isEqualTo("FAILED");
+        assertThat(preparation.prepare(user,plan.id(),false).status()).isEqualTo("GENERATING");
+        generation.advance();
         preparation.prepare(user,plan.id(),true);
         assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isEqualTo(2);
         assertThat(generation.claim()).isNull();
-        assertThat(preparation.state(plan.id()).status()).isEqualTo("FAILED");
+        assertThat(preparation.state(plan.id()).status()).isEqualTo("GENERATING");
+        assertThat(jdbc.sql("SELECT status FROM generation_spec_draft WHERE id=?").param(plan.id()).query(String.class).single()).isEqualTo("QUEUED");
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_recovery_attempt WHERE job_id=?").param(plan.id()).query(Integer.class).single()).isEqualTo(1);
+        jdbc.sql("UPDATE generation_spec_draft SET status='FAILED',auto_recovery=false,error_code='INVALID_SPEC_DRAFT' WHERE id=?").param(plan.id()).update();
+        assertThat(preparation.prepare(user,plan.id(),false).status()).isEqualTo("FAILED");
         String replacement=catalogProblem("recover-",other,true,false,false,"동적 계획법","EASY");
         assertThat(preparation.prepare(user,plan.id(),true).problemVersion()).isEqualTo(replacement);
         // A background pass must not turn this recovered mapping back into the old draft failure.

@@ -306,6 +306,7 @@ class HybridRuleOnboarding {
         UUID id=(UUID)next.get()[0];boolean author=next.get()[1].equals("QUEUED");String role=author?"AUTHOR":"ORACLE";
         var request=JudgeJson.parse((String)next.get()[2]);
         var m=model(role,request.path("difficulty").asText("MEDIUM"));String instructions=(author?AUTHOR_INSTRUCTIONS+AUTHOR_TARGETING:ORACLE_INSTRUCTIONS)+(CallablePrograms.style(request.path("style").asText())?(author?CallablePrograms.INSTRUCTIONS:CallablePrograms.publicInstructions(false)):"");
+        instructions+=" Apply server validation profiles to contract bounds, batch/aggregate, overflow, reset and relevant boundaries; existing audit certificates never qualify new rules. Profile data: "+JudgeJson.canonical(GenerationValidationPolicy.forProblem(request));
         String repairContext=author?jdbc.sql("SELECT repair_json FROM hybrid_rule_onboarding WHERE id=?").param(next.get()[0]).query(String.class).optional().orElse(null):null;
         String input=author?authorInput((String)next.get()[2],repairContext):oracleInput(JudgeJson.parse((String)next.get()[3]),(String)next.get()[2]);JsonNode schema=author?authorSchema(JudgeJson.parse((String)next.get()[2]).path("style").asText()):oracleSchema();
         var amount=reserve(m,instructions,input,schema);var b=ledger.budget();
@@ -360,7 +361,7 @@ class HybridRuleOnboarding {
                 .put("model",model).put("effort",effort).put("deadlineAt",row[4].toString())
                 .put("timeoutSeconds",setting("CODEX_RULE_AUTHOR_SECONDS",1200,60,1200));
         work.set("outputSchema",HybridRuleAuthorStages.schema(stage,JudgeJson.parse((String)row[1]).path("style").asText()));
-        var spec=work.putObject("spec").put("phase","RULE_AUTHOR_V1").put("role","AUTHOR").put("stage",stage).put("instructions",HybridRuleAuthorStages.instructions(stage,JudgeJson.parse((String)row[1]).path("style").asText()));
+        var spec=work.putObject("spec").put("phase","RULE_AUTHOR_V1").put("role","AUTHOR").put("stage",stage).put("instructions",HybridRuleAuthorStages.instructions(stage,JudgeJson.parse((String)row[1]).path("style").asText())+" Apply normalized validation profiles: "+JudgeJson.canonical(GenerationValidationPolicy.forProblem(JudgeJson.parse((String)row[1]))));
         spec.set("input",input);
         spec.putObject("assignment").put("attemptId",attempt.toString()).put("token",token.toString()).put("inputHash",hash);
         return work;

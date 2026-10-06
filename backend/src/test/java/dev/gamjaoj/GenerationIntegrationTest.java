@@ -27,6 +27,8 @@ class GenerationIntegrationTest {
     @Autowired org.springframework.core.env.ConfigurableEnvironment environment;
     UUID owner;
     @BeforeEach void setup() {
+        jdbc.sql("DELETE FROM generation_prose_review").update();
+        jdbc.sql("DELETE FROM generation_resource_attempt").update();jdbc.sql("DELETE FROM generation_resource_execution").update();jdbc.sql("DELETE FROM generation_resource_check").update();jdbc.sql("DELETE FROM generation_recovery_receipt").update();jdbc.sql("DELETE FROM generation_recovery_attempt").update();
         org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=false","OPENAI_API_KEY=test-only","AI_MONTHLY_BUDGET_USD=10").applyTo(environment);
         jdbc.sql("DELETE FROM generation_spec_execution").update();
         jdbc.sql("DELETE FROM ai_attempt").update();jdbc.sql("DELETE FROM ai_budget_notice").update();
@@ -94,6 +96,7 @@ class GenerationIntegrationTest {
         assertThat(submissions.detail("operator",saved.id()).verdict()).isEqualTo("AC");
     }
     void readyThemes() {
+        jdbc.sql("UPDATE generation_job SET resource_validation=false").update();
         jdbc.sql("UPDATE ai_task SET status='COMPLETED',result_json=? WHERE kind='THEME'")
             .param("{\"setting\":\"별빛 관측\",\"scenario\":\"천체 신호의 변화를 살펴본다.\"}").update();
     }
@@ -146,7 +149,7 @@ class GenerationIntegrationTest {
             .andExpect(status().isNotFound());
     }
     @Test void invalidDraftAndExpiredLeaseRemainUnpublishedAndReleaseSlot() {
-        var id=UUID.randomUUID();drafts.create("other",id,"새 문제");var work=generation.claim();
+        var id=UUID.randomUUID();drafts.create("other",id,"새 문제");jdbc.sql("UPDATE generation_spec_draft SET auto_recovery=false,resource_validation=false WHERE id=?").param(id).update();var work=generation.claim();
         generation.complete(id,work.token(),draftSpec().put("ready",true),null,null,null);
         assertThat(drafts.view("other",id).status()).isEqualTo("FAILED");
         assertThat(drafts.view("other",id).spec()).isNull();
@@ -159,8 +162,98 @@ class GenerationIntegrationTest {
         assertThat(generation.claim().id()).isEqualTo(normal.id());
         assertThatThrownBy(()->drafts.create("other",UUID.randomUUID(),"DP 문제")).isInstanceOf(AccountException.class);
     }
+    @Test void proseRecoveryPreservesContractCodeExecutionsUsageAndRejectsStaleCompletions() {
+        var id=reviewableDraft();jdbc.sql("UPDATE generation_spec_draft SET auto_recovery=true WHERE id=?").param(id).update();
+        var before=drafts.view("other",id);String build=jdbc.sql("SELECT build_sha256 FROM generation_spec_draft WHERE id=?").param(id).query(String.class).single();
+        var originalExecutions=jdbc.sql("SELECT submission_id FROM generation_spec_execution WHERE draft_id=? ORDER BY role").param(id).query(UUID.class).list();
+        drafts.review("other",id,before.specHash());var reviewWork=generation.claim();
+        var rejection=(ObjectNode)independentReview();rejection.put("verdict","REVISE").put("failureScope","PROSE");rejection.withArray("issues").add("같은 규칙을 자연스러운 한국어로 설명하세요.");
+        var usage=JudgeJson.JSON.createObjectNode().put("input_tokens",42);
+        generation.complete(id,reviewWork.token(),rejection,null,usage,null);generation.advance();
+        assertThat(drafts.view("other",id).status()).isEqualTo("QUEUED");assertThat(generation.claim()).isNull();
+        jdbc.sql("UPDATE generation_spec_draft SET retry_after=CURRENT_TIMESTAMP WHERE id=?").param(id).update();
+        var repair=generation.claim();assertThat(repair.spec().path("phase").asText()).isEqualTo("EXPERIMENTAL_PROSE_REPAIR");
+        generation.complete(id,reviewWork.token(),rejection,null,usage,null);
+        assertThatThrownBy(()->generation.complete(id,reviewWork.token(),rejection,null,null,null)).isInstanceOf(AccountException.class);
+        generation.complete(id,repair.token(),JudgeJson.JSON.createObjectNode().put("title","수정한 제목").put("statement","같은 계산 규칙을 명확히 설명한 본문"),null,null,null);
+        var after=drafts.view("other",id);assertThat(after.status()).isEqualTo("REVIEW_QUEUED");
+        var frozen=(ObjectNode)before.spec().deepCopy();frozen.put("title","수정한 제목").put("statement","같은 계산 규칙을 명확히 설명한 본문");assertThat(after.spec()).isEqualTo(frozen);
+        assertThat(jdbc.sql("SELECT build_sha256 FROM generation_spec_draft WHERE id=?").param(id).query(String.class).single()).isEqualTo(build);
+        assertThat(jdbc.sql("SELECT submission_id FROM generation_spec_execution WHERE draft_id=? ORDER BY role").param(id).query(UUID.class).list()).isEqualTo(originalExecutions);
+        assertThat(after.checks().path("previousSpecHash").asText()).isEqualTo(before.specHash());
+        assertThat(jdbc.sql("SELECT snapshot_json FROM generation_recovery_attempt WHERE job_id=?").param(id).query(String.class).single()).contains("input_tokens", "42", "executionLinks");
+        assertThat(jdbc.sql("SELECT ready FROM problem_version WHERE id=?").param("experimental-check-"+id).query(Boolean.class).single()).isFalse();
+    }
+    @Test void codeRecoveryKeepsSpecButRebuildsAllDependentGatesAndHasAFiniteBudget() {
+        var id=implementedDraft();jdbc.sql("UPDATE generation_spec_draft SET auto_recovery=true WHERE id=?").param(id).update();String hash=drafts.view("other",id).specHash();
+        finishExperimental(true,false);assertThat(drafts.view("other",id).status()).isEqualTo("BUILD_QUEUED");
+        assertThat(drafts.view("other",id).specHash()).isEqualTo(hash);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_execution WHERE draft_id=?").param(id).query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM submission WHERE spec_draft_id=?").param(id).query(Integer.class).single()).isEqualTo(4);
+        for(int i=0;i<3;i++){jdbc.sql("UPDATE generation_spec_draft SET status='BUILD_FAILED',error_code='INVALID_IMPLEMENTATION' WHERE id=?").param(id).update();generation.advance();}
+        assertThat(drafts.recoveryEnabled(id)).isFalse();assertThat(drafts.view("other",id).status()).isEqualTo("BUILD_FAILED");
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_recovery_attempt WHERE job_id=?").param(id).query(Integer.class).single()).isEqualTo(3);
+    }
+    @Test void unknownUsageTimeoutNeverSchedulesAnAutomaticRetry() {
+        UUID id=UUID.randomUUID();drafts.create("other",id,"새 문제");var work=generation.claim();generation.complete(id,work.token(),null,null,null,"CODEX_TIMEOUT");generation.advance();
+        assertThat(drafts.view("other",id).error()).isEqualTo("CODEX_TIMEOUT");assertThat(generation.claim()).isNull();
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_recovery_attempt WHERE job_id=?").param(id).query(Integer.class).single()).isZero();
+    }
+    @Test void tagProseRejectionRepairsOnlyTitleAndContextAndCannotBypassIndependentReview() {
+        UUID id=UUID.randomUUID();generation.create("other",id,GenerationTemplate.ID);readyThemes();jdbc.sql("UPDATE generation_job SET resource_validation=true WHERE id=?").param(id).update();
+        var author=generation.claim();var original=artifacts();var oracle=JudgeJson.JSON.createObjectNode().put("source","public class Main { /* independent */ }");
+        generation.complete(id,author.token(),original,oracle,null,null);var saved=generation.view("other",id);
+        assertThat(saved.status()).isEqualTo("AWAITING_REVIEW");assertThatThrownBy(()->generation.review("other",id,saved.artifactHash(),true)).isInstanceOf(AccountException.class);
+        var reviewer=generation.claim();assertThat(reviewer.spec().path("phase").asText()).isEqualTo("TAG_PROSE_REVIEW");assertThat(reviewer.spec().toString()).doesNotContain("public class Main");
+        var rejection=JudgeJson.JSON.createObjectNode().put("accepted",false);rejection.putArray("issues").add("덧셈 규칙을 다른 행동으로 설명했어요.");
+        generation.complete(reviewer.id(),reviewer.token(),rejection,null,null,null);generation.complete(reviewer.id(),reviewer.token(),rejection,null,null,null);
+        var repair=generation.claim();assertThat(repair.repair().path("fields").toString()).isEqualTo("[\"context\",\"title\"]");assertThat(repair.repair().path("failedChecks").toString()).contains("덧셈 규칙");
+        var changed=original.deepCopy().put("title","새로운 별빛 기록").put("context","입력에 적힌 값의 합계를 기록한다.");generation.complete(id,repair.token(),changed,oracle,null,null);
+        var again=generation.claim();var accepted=JudgeJson.JSON.createObjectNode().put("accepted",true);accepted.putArray("issues");generation.complete(again.id(),again.token(),accepted,null,null,null);
+        assertThat(generation.view("other",id).status()).isEqualTo("VALIDATING");assertThat(generation.view("other",id).artifacts().path("reference")).isEqualTo(original.path("reference"));
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_prose_review WHERE job_id=?").param(id).query(Integer.class).single()).isEqualTo(2);
+    }
+    @Autowired AiSettings aiSettings;
+    UUID resourceFixture(){
+        var id=reviewableDraft();jdbc.sql("UPDATE generation_spec_draft SET resource_validation=true WHERE id=?").param(id).update();
+        assertThat(GenerationResources.ensure(jdbc,"DIRECT",id,"experimental-check-"+id,draftSpec(),artifacts().path("reference").asText(),artifacts().path("inputValidator").asText(),null)).isNull();
+        return id;
+    }
+    ObjectNode resourceSources(){var value=JudgeJson.JSON.createObjectNode().put("cpp","int main(){}").put("python","print(1)").put("ordinaryJava","public class Main { /* ordinary */ }").put("maximumGenerator","public class Main { /* maximum */ }");var coverage=value.putArray("coverage");var policy=GenerationValidationPolicy.forProblem(draftSpec());for(int i=0;i<4;i++){var item=coverage.addObject().put("seed",i).put("reason","full bounds, reset, depth and overflow");var checks=item.putArray("checks");for(var check:policy.path("commonChecks"))checks.add(check);for(var profile:policy.path("profiles"))for(var check:profile.path("checks"))checks.add(check);}return value;}
+    void finishResourceChecks(boolean memory){
+        while(true){var next=queue.claim(UUID.randomUUID());if(next.isEmpty())break;var work=next.get();var value=report(work,"AC");
+            for(var test:value.path("tests"))if(memory)((ObjectNode)test).put("memory_peak_bytes",32*1048576L).put("memory_measurement","cgroup-peak-observed");
+            queue.complete(work.submissionId(),work.token(),value);
+        }
+        GenerationResources.advance(jdbc);
+    }
+    @Test void resourceGateRequiresThreeActualLanguageReportsAndOrdinaryReplayBeforeItReturnsLimits(){
+        var id=resourceFixture();var work=GenerationResources.claim(jdbc,aiSettings);assertThat(work.spec().path("phase").asText()).isEqualTo("RESOURCE_QUALIFICATION");
+        var sources=resourceSources();var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");
+        GenerationResources.complete(jdbc,work.id(),work.token(),sources,review,null,null);
+        GenerationResources.complete(jdbc,work.id(),work.token(),sources,review,null,null);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_resource_execution").query(Integer.class).single()).isEqualTo(9);
+        assertThat(submissions.runs("other")).isEmpty();
+        finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("REPLAYING");
+        finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("PASSED");
+        var limits=JudgeJson.parse(GenerationResources.ensure(jdbc,"DIRECT",id,"experimental-check-"+id,draftSpec(),artifacts().path("reference").asText(),artifacts().path("inputValidator").asText(),null));
+        assertThat(limits.path("CPP").asInt()).isEqualTo(3);assertThat(limits.path("JAVA").asInt()).isEqualTo(5);assertThat(limits.path("PYTHON").asInt()).isEqualTo(8);
+        assertThat(limits.path("memory").path("JAVA").asInt()).isEqualTo(96);
+        assertThat(jdbc.sql("SELECT count(DISTINCT s.language) FROM generation_resource_execution e JOIN submission s ON s.id=e.submission_id").query(Integer.class).single()).isEqualTo(3);
+        assertThat(jdbc.sql("SELECT ready FROM problem_version WHERE id=?").param("experimental-check-"+id).query(Boolean.class).single()).isFalse();
+    }
+    @Test void missingCgroupObservationRemeasuresIdenticalArtifactsWithoutAnotherModelCall(){
+        var id=resourceFixture();String hash=drafts.view("other",id).specHash();var work=GenerationResources.claim(jdbc,aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");
+        GenerationResources.complete(jdbc,work.id(),work.token(),resourceSources(),review,null,null);finishResourceChecks(false);
+        assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("MEASURING");
+        assertThat(jdbc.sql("SELECT report_json FROM generation_resource_attempt").query(String.class).single()).contains("RESOURCE_MEMORY_OBSERVATION_MISSING","submissionId");
+        assertThat(drafts.view("other",id).specHash()).isEqualTo(hash);
+        GenerationResources.complete(jdbc,work.id(),work.token(),resourceSources(),review,null,null);
+        assertThat(GenerationResources.claim(jdbc,aiSettings)).isNull();
+        finishResourceChecks(true);finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("PASSED");
+    }
     UUID implementedDraft() {
-        UUID id=UUID.randomUUID();drafts.create("other",id,"자유 문제");var author=generation.claim();
+        UUID id=UUID.randomUUID();drafts.create("other",id,"자유 문제");jdbc.sql("UPDATE generation_spec_draft SET auto_recovery=false,resource_validation=false WHERE id=?").param(id).update();var author=generation.claim();
         generation.complete(id,author.token(),draftSpec(),null,null,null);
         var draft=drafts.view("other",id);
         assertThatThrownBy(()->drafts.build("operator",id,draft.specHash())).isInstanceOf(AccountException.class);
