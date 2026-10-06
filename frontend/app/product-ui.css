@@ -1378,13 +1378,19 @@ dialog.modal.my-record-dialog { max-width:1180px; width:calc(100vw - 48px); }
  .problem-catalog .catalog-problem .version { font-size:9px; }
 }
 
-/* Separate the growth overview from the paginated archive. */
-.my-view-tabs { display:flex; gap:8px; margin:18px 0 24px; padding:6px; width:fit-content; max-width:100%; border-radius:16px; background:var(--subtle); }
-.my-view-tabs button { display:grid; gap:5px; min-width:180px; padding:12px 20px; text-align:left; border:0; border-radius:12px; color:var(--muted); background:transparent; box-shadow:none; }
-.my-view-tabs strong { font-size:15px; }
-.my-view-tabs small { font-size:11px; font-weight:400; }
+/* Compact view switch beside refresh; preserve the paginated archive state. */
+.my-activity-heading { margin-bottom:16px; }
+.my-activity-heading p { margin:6px 0 0; }
+.my-heading-actions { display:flex; align-items:center; gap:10px; min-width:0; }
+.my-heading-actions > button { white-space:nowrap; }
+.my-view-tabs { display:flex; gap:4px; margin:0; padding:4px; width:fit-content; max-width:100%; border-radius:12px; background:var(--subtle); }
+.my-view-tabs button { padding:8px 14px; white-space:nowrap; font-size:13px; font-weight:650; line-height:1.4; border:0; border-radius:8px; color:var(--muted); background:transparent; box-shadow:none; }
 .my-view-tabs button[aria-pressed="true"] { color:var(--green); background:var(--surface); box-shadow:var(--surface-raised); }
 .my-view-tabs button:focus-visible { outline:2px solid var(--green); outline-offset:3px; }
 .my-activity > [hidden] { display:none!important; }
 .my-activity > .my-record-section { margin-top:0; }
-@media(max-width:600px) { .my-view-tabs { width:100%; } .my-view-tabs button { flex:1; min-width:0; padding:12px; } .my-view-tabs small { font-size:10px; } }
+@media(max-width:600px) {
+ .my-heading-actions { width:100%; justify-content:space-between; gap:8px; }
+ .my-heading-actions > button { font-size:12px; padding:9px 10px; }
+ .my-view-tabs button { padding:8px 11px; font-size:12px; }
+}
