@@ -219,6 +219,39 @@ class DiagnosticIntegrationTest {
         jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id,shared,review_hold,diagnostic_only,catalog_category,catalog_difficulty) SELECT ?,?,?,runtime_image,runner_policy,true,?,?,?,?,?,? FROM problem_version WHERE id='sum-v1'")
             .param(version).param(json).param(JudgeJson.hash(json)).param(owner).param(shared).param(held).param(diagnostic).param(category).param(difficulty).update();return version;
     }
+    @Test void endingAnUnstartedFailedPlanPreservesIndependentTrainingAndBlocksPreparation() throws Exception {
+        var plan=basicPlan("dp");
+        jdbc.sql("UPDATE learning_problem_preparation SET status='FAILED',message='검증 실패' WHERE plan_id=?").param(plan.id()).update();
+        var independent=training.start(user,UUID.randomUUID(),new TrainingSessionController.Start("sum-v1","독립 코스 훈련"));
+        String path="/api/learning-curricula/"+plan.evaluationId()+"/end";
+        mvc.perform(post(path).with(user(user)).contentType("application/json").content("{\"note\":\"다른 계획으로 연습\"}")).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(user(other)).with(csrf()).contentType("application/json").content("{\"note\":\"다른 계획으로 연습\"}")).andExpect(status().isNotFound());
+        mvc.perform(post(path).with(user(user)).with(csrf()).contentType("application/json").content("{\"note\":\"다른 계획으로 연습\"}")).andExpect(status().isOk());
+        var ended=curricula.end(user,plan.evaluationId(),"다른 계획으로 연습");
+        assertThat(curricula.end(user,plan.evaluationId(),"다른 계획으로 연습")).isEqualTo(ended);
+        assertThat(training.detail(user,independent.id()).session().status()).isEqualTo("ACTIVE");
+        var track=curricula.overview(user).getFirst();assertThat(track.endedAt()).isEqualTo(ended.endedAt());assertThat(track.endNote()).isEqualTo("다른 계획으로 연습");
+        assertThat(track.steps().getFirst().plan().status()).isEqualTo("READY");
+        assertThat(preparation.state(plan.id()).status()).isEqualTo("FAILED");
+        assertThat(preparation.pending()).isEmpty();
+        assertThatThrownBy(()->preparation.prepare(user,plan.id(),true)).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->plans.start(user,plan.id(),"sum-v1")).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->plans.generate(user,plan.id())).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->curricula.create(user,UUID.randomUUID(),plan.evaluationId())).isInstanceOf(AccountException.class);
+        assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isZero();
+    }
+    @Test void endingAPlanEndsOnlyItsActiveSessionWithoutMarkingGoalsSolvedAndPreservesSubmittedCode() {
+        var plan=basicPlan("dp");var current=plans.start(user,plan.id(),"sum-v1");
+        var submission=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,current.sessionId()));
+        var ended=curricula.end(user,plan.evaluationId(),"중간에 마무리");
+        assertThat(training.detail(user,current.sessionId()).session().status()).isEqualTo("ENDED");
+        assertThat(training.detail(user,current.sessionId()).session().note()).isEqualTo("중간에 마무리");
+        assertThat(submissions.detail(user,submission.id()).source()).isEqualTo(SOURCE);
+        assertThat(plans.list(user,plan.evaluationId()).getFirst().reviewedSubmissionId()).isNull();
+        assertThat(curricula.end(user,plan.evaluationId(),"중간에 마무리")).isEqualTo(ended);
+        assertThatThrownBy(()->curricula.end(user,plan.evaluationId(),"다른 메모")).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->plans.nextRound(user,plan.id(),"stale")).isInstanceOf(AccountException.class);
+    }
     @Test void automaticMappingIncludesOwnAndSharedButExcludesPrivateHeldDiagnosticWrongLevelAndUsed() throws Exception {
         var plan=basicPlan("dp");
         catalogProblem("00-private-",other,false,false,false,"동적 계획법","EASY");

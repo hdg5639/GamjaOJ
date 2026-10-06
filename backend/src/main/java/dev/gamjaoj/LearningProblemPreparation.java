@@ -25,7 +25,7 @@ class LearningProblemPreparation {
     }
     @Transactional
     public State prepare(String username,UUID id,boolean retry) {
-        UUID owner=submissions.owner(username,true);var plan=plans.view(username,owner,id);
+        UUID owner=submissions.owner(username,true);var plan=plans.view(username,owner,id);plans.requireOpen(owner,plan.evaluationId());
         if(!"READY".equals(plan.status())||plan.sessionId()!=null) {
             jdbc.sql("UPDATE learning_problem_preparation SET updated_at=CURRENT_TIMESTAMP WHERE plan_id=?").param(id).update();return state(id);
         }
@@ -123,7 +123,7 @@ class LearningProblemPreparation {
     }
     static String normalize(String value){return value.toLowerCase(Locale.ROOT).replaceAll("\\s+","").replace("투포인터","두포인터").replace("너비우선탐색","bfs").replace("깊이우선탐색","dfs");}
     List<Object[]> pending() {
-        return jdbc.sql("SELECT u.username,w.plan_id FROM learning_problem_preparation w JOIN diagnostic_practice_plan p ON p.id=w.plan_id JOIN app_user u ON u.id=p.user_id WHERE (w.status IN ('WAITING','GENERATING') OR (w.status='MAPPED' AND (w.problem_version IS NULL OR w.updated_at<CURRENT_TIMESTAMP-INTERVAL '30' SECOND))) AND p.training_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM diagnostic_practice_plan n WHERE n.previous_plan_id=p.id) ORDER BY w.updated_at,w.plan_id LIMIT 50")
+        return jdbc.sql("SELECT u.username,w.plan_id FROM learning_problem_preparation w JOIN diagnostic_practice_plan p ON p.id=w.plan_id JOIN app_user u ON u.id=p.user_id WHERE (w.status IN ('WAITING','GENERATING') OR (w.status='MAPPED' AND (w.problem_version IS NULL OR w.updated_at<CURRENT_TIMESTAMP-INTERVAL '30' SECOND))) AND p.training_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM learning_curriculum_end e WHERE e.evaluation_id=p.evaluation_id AND e.user_id=p.user_id) AND NOT EXISTS (SELECT 1 FROM diagnostic_practice_plan n WHERE n.previous_plan_id=p.id) ORDER BY w.updated_at,w.plan_id LIMIT 50")
             .query((r,n)->new Object[]{r.getString(1),r.getObject(2,UUID.class)}).list();
     }
 }

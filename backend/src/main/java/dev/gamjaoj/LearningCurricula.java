@@ -14,8 +14,9 @@ public class LearningCurricula {
     private final DiagnosticEvaluations evaluations;
     private final DiagnosticPlans plans;
     private final LearningProblemPreparation preparation;
-    LearningCurricula(JdbcClient jdbc,Submissions submissions,DiagnosticEvaluations evaluations,DiagnosticPlans plans,LearningProblemPreparation preparation) {
-        this.jdbc=jdbc;this.submissions=submissions;this.evaluations=evaluations;this.plans=plans;this.preparation=preparation;
+    private final TrainingSessions training;
+    LearningCurricula(JdbcClient jdbc,Submissions submissions,DiagnosticEvaluations evaluations,DiagnosticPlans plans,LearningProblemPreparation preparation,TrainingSessions training) {
+        this.jdbc=jdbc;this.submissions=submissions;this.evaluations=evaluations;this.plans=plans;this.preparation=preparation;this.training=training;
     }
     private static final Map<String,String> CATEGORIES=Map.ofEntries(
         Map.entry("implementation","구현"),Map.entry("arrays-strings","배열·문자열"),Map.entry("basic-data-structures","기초 자료구조"),Map.entry("basic-search","기초 탐색"),
@@ -34,11 +35,36 @@ public class LearningCurricula {
     public record Candidate(String version,String title,String category,String difficulty,ThinkingDifficulty.Profile thinking) {}
     public record Progress(int submissions,int accepted,int pending,String latestVerdict) {}
     public record Step(DiagnosticPlans.Plan plan,String category,String basis,String problemTitle,Candidate candidate,Progress progress,LearningProblemPreparation.State preparation) {}
-    public record Track(UUID evaluationId,UUID diagnosticSessionId,String bankId,OffsetDateTime createdAt,List<Step> steps,int manualReviewCount) {}
+    public record Track(UUID evaluationId,UUID diagnosticSessionId,String bankId,OffsetDateTime createdAt,List<Step> steps,int manualReviewCount,OffsetDateTime endedAt,String endNote) {}
 
+    public record Ended(UUID evaluationId,OffsetDateTime endedAt,String note) {}
+    @Transactional
+    public Ended end(String username,UUID evaluationId,String note) {
+        UUID owner=submissions.owner(username,true);
+        evaluations.detail(username,evaluationId);
+        if(note==null||note.length()>2000)throw new AccountException(400,"마무리 메모는 2000자 이내로 작성해 주세요.");
+        if(jdbc.sql("SELECT count(*) FROM diagnostic_practice_plan WHERE user_id=? AND evaluation_id=?").param(owner).param(evaluationId).query(Integer.class).single()==0)
+            throw new AccountException(404,"종료할 학습 계획을 찾지 못했어요.");
+        var previous=ended(owner,evaluationId);
+        if(previous!=null) {
+            if(!previous.note().equals(note))throw new AccountException(409,"이미 종료한 계획의 메모와 달라요. 최신 기록을 확인해 주세요.");
+            return previous;
+        }
+        // End only this plan's sessions. An independently active course or free practice is preserved.
+        var active=jdbc.sql("SELECT t.id FROM training_session t JOIN diagnostic_practice_plan p ON p.training_session_id=t.id WHERE p.user_id=? AND p.evaluation_id=? AND t.status='ACTIVE'")
+            .param(owner).param(evaluationId).query(UUID.class).list();
+        for(var id:active)training.end(username,id,note);
+        jdbc.sql("INSERT INTO learning_curriculum_end(evaluation_id,user_id,note) VALUES (?,?,?)").param(evaluationId).param(owner).param(note).update();
+        return ended(owner,evaluationId);
+    }
+    private Ended ended(UUID owner,UUID evaluationId) {
+        return jdbc.sql("SELECT ended_at,note FROM learning_curriculum_end WHERE evaluation_id=? AND user_id=?").param(evaluationId).param(owner)
+            .query((r,n)->new Ended(evaluationId,r.getObject(1,OffsetDateTime.class),r.getString(2))).optional().orElse(null);
+    }
     @Transactional
     public Created create(String username,UUID key,UUID evaluationId) {
         UUID owner=submissions.owner(username,true); // Serialize duplicate clicks/tabs and manual confirmations for this owner.
+        plans.requireOpen(owner,evaluationId);
         var previous=jdbc.sql("SELECT user_id,evaluation_id,result_json FROM learning_curriculum_request WHERE id=?").param(key)
             .query((r,n)->new Object[]{r.getObject(1,UUID.class),r.getObject(2,UUID.class),r.getString(3)}).optional();
         if(previous.isPresent()) {
@@ -134,7 +160,8 @@ public class LearningCurricula {
                 var observation=evaluation.interpretation().path("observations").path(correction.observationIndex());
                 if(List.of("RISK","WATCH").contains(observation.path("tone").asText())&&"SUPPORTED".equals(observation.path("confidence").asText())&&"PRACTICE".equals(observation.path("nextAction").asText()))correctedGoals.add(correction.observationIndex());
             }
-            tracks.add(new Track(evaluationId,evaluation.sessionId(),(String)metadata[0],(OffsetDateTime)metadata[1],List.copyOf(steps),correctedGoals.size()));
+            var end=ended(owner,evaluationId);
+            tracks.add(new Track(evaluationId,evaluation.sessionId(),(String)metadata[0],(OffsetDateTime)metadata[1],List.copyOf(steps),correctedGoals.size(),end==null?null:end.endedAt(),end==null?null:end.note()));
         }
         return List.copyOf(tracks);
     }
