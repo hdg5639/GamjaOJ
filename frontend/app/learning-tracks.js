@@ -33,7 +33,7 @@ export default function LearningTracks({api,userId,visible,initialEvaluation,onO
  const phase=chosen?.plan.status==='ACTIVE'?2:chosen&&['TRAINING_ENDED','AC_WITH_HELP','SELF_REPORTED_UNASSISTED_AC'].includes(chosen.plan.status)?3:1;
  const activeStep=tracks.flatMap(t=>t.steps).find(s=>s.plan.sessionId===active?.id&&s.plan.status==='ACTIVE');
  const problemName=step=>step?.problemTitle||step?.candidate?.title||`${categoryLabels[step?.category]||'목표별'} 맞춤 문제`;
- const stage=step=>step.plan.status==='READY'?(step.candidate?'시작 가능':step.preparation?.status==='FAILED'?'준비 확인 필요':'문제 준비 중'):labels[step.plan.status];
+ const stage=step=>step.plan.status==='READY'?(step.candidate?'시작 가능':step.preparation?.status==='FAILED'?'자동 준비 실패 · 문제 연결 필요':'문제 준비 중'):labels[step.plan.status];
  function selectStep(step){setFocused(step.plan.id);requestAnimationFrame(()=>{
   const pane=document.querySelector(window.matchMedia('(max-width:900px)').matches?'.learning-current-problem':'.learning-workspace-top');pane?.scrollIntoView({block:'nearest'});
   document.getElementById('learning-selected-heading')?.focus({preventScroll:true});
@@ -65,9 +65,9 @@ export default function LearningTracks({api,userId,visible,initialEvaluation,onO
   if(plan.status==='ACTIVE')return <button className="primary" disabled={busy||locked||!!pending} onClick={async()=>{try{await onOpen(plan.problemVersion);}catch(e){setError(e.message);}}}>이어서 학습하기</button>;
   if(plan.status==='READY'&&!step.candidate&&(step.preparation||plan.generationId)){
    const failed=step.preparation?.status==='FAILED'||/FAILED|REJECTED|NEEDS_REVIEW/.test(plan.generationStatus||'');
-   return <div className="learning-generation-state"><p role="status">{failed?'문제 준비에 확인이 필요해요.':step.preparation?.status==='WAITING'?'기존 문제를 찾고, 없으면 자동으로 생성해요. 다른 출제가 진행 중이면 차례를 기다려요.':'맞춤 문제를 자동 생성·검증하고 있어요. 준비되면 바로 훈련할 수 있어요.'}</p>{step.preparation?.message&&<p className="muted">{step.preparation.message}</p>}
-    {failed&&!plan.generationId&&<button className="secondary" disabled={busy||locked} onClick={()=>prepare(step)}>문제 준비 다시 시도</button>}
-    {plan.generationId&&<button className="secondary" onClick={onGeneration}>생성·검증 상세 보기</button>}</div>;
+   return <div className="learning-generation-state"><p role="status">{failed?'자동 문제 준비가 검증을 통과하지 못했어요. 직접 문제를 생성할 필요는 없어요.':step.preparation?.status==='WAITING'?'기존 문제를 찾고, 없으면 자동으로 생성해요. 다른 출제가 진행 중이면 차례를 기다려요.':'맞춤 문제를 자동 생성·검증하고 있어요. 준비되면 바로 훈련할 수 있어요.'}</p>{step.preparation?.message&&<p className="muted">{step.preparation.message}</p>}
+    {failed&&<button className="secondary" disabled={busy||locked} onClick={()=>prepare(step)}>기존 문제 다시 찾기</button>}
+    {failed&&<p className="draft-help">기존 문제를 다시 찾거나, 아래 ‘수동 설정·근거 확인’에서 연습할 문제를 직접 연결할 수 있어요. 기존 실패 기록은 보존돼요.</p>}{plan.generationId&&<button className="secondary" onClick={onGeneration}>자동 생성·검증 내역 보기</button>}</div>;
   }
   if(plan.status==='READY'&&step.candidate)return <button className="primary" disabled={busy||locked||!!pending} onClick={()=>act(step,'start',{problemVersion:step.candidate.version})}>바로 훈련 시작</button>;
   if(plan.status==='TRAINING_ENDED'){
@@ -78,7 +78,7 @@ export default function LearningTracks({api,userId,visible,initialEvaluation,onO
   if(done(plan))return <button className="secondary" disabled={busy||locked||!!pending} onClick={()=>act(step,'next-round')}>다음 회차 준비</button>;
   return <button className="secondary" disabled={plan.status==='HELD'} onClick={()=>showManual(plan.id)}>목표·문제 직접 설정</button>;
  }
- return <section className="learning-tracks" aria-label="나의 학습 계획"><header className="training-section-heading"><div><h2>나의 학습 계획</h2><p className="muted">문제를 선택하고, 풀고, 마무리하며 한 단계씩 이어가세요.</p></div><button className="secondary" onClick={()=>onDiagnostic(track?.diagnosticSessionId)}>진단·수동 계획 만들기</button></header>
+ return <section className="learning-tracks" aria-label="나의 학습 계획"><header className="training-section-heading"><div><h2>나의 학습 계획</h2><p className="muted">진단 결과에서 만든 맞춤 훈련이에요. 훈련 코스와는 별도로, 문제 자동 준비 → 풀이·제출 → 마무리·학습 확인 순서로 진행해요.</p></div><button className="secondary" onClick={()=>onDiagnostic(track?.diagnosticSessionId)}>진단·수동 계획 만들기</button></header>
   {error&&<p className="notice error" role="alert">{error} <button className="secondary" onClick={()=>{setError('');refresh();}}>다시 불러오기</button></p>}
   {pending&&<p className="notice">접수 결과를 확인하지 못한 요청이 있어요. <button className="secondary" disabled={busy||locked} onClick={()=>act()}>같은 학습 요청 다시 확인</button></p>}
   {!loaded&&<p role="status">학습 계획을 불러오는 중…</p>}
@@ -86,8 +86,8 @@ export default function LearningTracks({api,userId,visible,initialEvaluation,onO
    <section className="learning-plan-overview" aria-label="계획 선택과 진행도">
     {track?<><label>학습 계획 선택<SelectControl aria-label="학습 계획 선택" value={track.evaluationId} onChange={e=>{setSelected(e.target.value);setFocused('');paging.setPage(0);setManual(null);}}>{tracks.map(t=><option key={t.evaluationId} value={t.evaluationId}>{bankTitle(t.bankId)} · {new Date(t.createdAt).toLocaleDateString('ko-KR')} · 목표 {t.steps.length}개</option>)}</SelectControl></label>
      <div className="learning-progress"><strong>{completed} / {steps.length} 목표 훈련 확인 완료</strong><progress aria-label="계획 목표 진행도" value={completed} max={steps.length||1}/><small>정답 제출 후 학습 확인까지 마친 목표예요.</small></div>
-     <ol className="learning-flow" aria-label="훈련 진행 순서"><li aria-current={phase===1?'step':undefined}>1. 문제 선택</li><li aria-current={phase===2?'step':undefined}>2. 풀이·제출</li><li aria-current={phase===3?'step':undefined}>3. 마무리·학습 확인</li></ol>
-     <p className="muted">아래 목록에서 문제를 골라 시작하세요. 준비 중인 문제는 자동 생성·검증이 끝나면 열려요.</p>
+     <ol className="learning-flow" aria-label="훈련 진행 순서"><li aria-current={phase===1?'step':undefined}>1. 문제 자동 준비</li><li aria-current={phase===2?'step':undefined}>2. 풀이·제출</li><li aria-current={phase===3?'step':undefined}>3. 마무리·학습 확인</li></ol>
+     <p className="muted">기존 문제를 자동 연결하고, 없으면 생성·검증해요. 준비된 문제를 풀고 정식 제출한 뒤 훈련을 마무리하세요.</p>
     </>:loaded&&<div className="learning-plan-empty"><h3>아직 학습 계획이 없어요</h3><p>진단 결과에서 보완 목표를 모으거나 수동 계획을 만들어 보세요.</p><button className="primary" onClick={()=>onDiagnostic()}>진단 결과에서 계획 만들기</button></div>}
    </section>
    <section className="learning-current-problem" aria-label="다음 학습">

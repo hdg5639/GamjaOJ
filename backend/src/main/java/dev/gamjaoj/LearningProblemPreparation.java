@@ -33,6 +33,16 @@ class LearningProblemPreparation {
         if("FAILED".equals(saved.status())&&!retry)return saved;
         var options=plans.options(username,plan.evaluationId(),plan.observationIndex(),plan.sourceKind());
         var available=options.problems().stream().filter(p->!p.problemHeld()&&p.submissionsEnabled()).toList();
+        // Explicit recovery only searches the existing accessible pool; never pays for a second draft.
+        if(retry&&"FAILED".equals(saved.status())) {
+            var used=new HashSet<>(jdbc.sql("SELECT t.problem_version FROM diagnostic_practice_plan p JOIN training_session t ON t.id=p.training_session_id WHERE p.user_id=? AND p.evaluation_id=? UNION SELECT w.problem_version FROM learning_problem_preparation w JOIN diagnostic_practice_plan p ON p.id=w.plan_id WHERE p.user_id=? AND p.evaluation_id=? AND w.plan_id<>? AND w.problem_version IS NOT NULL")
+                .param(owner).param(plan.evaluationId()).param(owner).param(plan.evaluationId()).param(id).query(String.class).list());
+            var candidate=match(plan,options,available,used);
+            if(candidate!=null){save(id,"MAPPED",null,candidate.version());return state(id);}
+            save(id,"FAILED","현재 목표에 맞는 기존 문제를 찾지 못했어요. 수동 설정에서 연습할 문제를 연결할 수 있어요. 자동 생성 실패 기록은 보존했어요.",null);
+            return state(id);
+        }
+        if("MAPPED".equals(saved.status())&&saved.problemVersion()!=null&&available.stream().anyMatch(p->saved.problemVersion().equals(p.version())))return saved;
         if(plan.generationId()!=null) {
             if(plan.generationStatus()!=null&&(plan.generationStatus().contains("FAILED")||plan.generationStatus().contains("REJECTED")||"NEEDS_REVIEW".equals(plan.generationStatus()))) {
                 save(id,"FAILED","문제 생성·검증을 통과하지 못했어요. 상세 결과를 확인해 주세요.",null);return state(id);
