@@ -47,6 +47,16 @@ export default function LearningActivity({api,userId,activity,refresh,onChoose,g
    {stats}
    <div className="learning-next"><h3>다른 유형도 풀어보기</h3>{data.explore.length?<ul>{data.explore.map(p=><li key={p.version}><div><strong>{p.title}</strong><small>{p.category} · {thinkingLabel(p)}</small><p>{p.reason}</p></div><button className="secondary" onClick={()=>onChoose(p.version)} aria-label={`${p.title} 풀기`}>풀어보기</button></li>)}</ul>:<p className="muted">지금 선택할 수 있는 새로운 문제가 없어요.</p>}</div>
   {!!data.revisit.length&&<section className="learning-revisit" aria-label="다시 풀 문제"><h3>다시 풀어볼까요?</h3><ul>{data.revisit.map(p=><li key={p.version}><div><strong>{p.title}</strong><small>{p.category} · {confidenceLabels[p.confidence]}</small></div><button className="secondary" onClick={()=>onChoose(p.version)} aria-label={`${p.title} 다시 풀기`}>다시 풀기</button></li>)}</ul></section>}
+  {!!data.efficiencyRetry?.length&&<section className="learning-revisit" aria-label="효율 재도전"><h3>효율 재도전</h3><p className="muted">동일 조건의 본인 AC 기록을 비교한 별도 신호예요.</p><ul>{data.efficiencyRetry.map(p=><li key={`${p.version}-${p.metric}`}><div><strong>{p.title}</strong><p>{p.reason}</p></div><button className="secondary" onClick={()=>onChoose(p.version)}>효율 다시 보기</button></li>)}</ul></section>}
+  <PerformanceRecords api={api} userId={userId} activity={activity} refresh={refresh}/>
   </section>
  </div>;
+}
+
+function PerformanceRecords({api,userId,activity,refresh}){
+ const [page,setPage]=useState(0),[data,setData]=useState(null),[error,setError]=useState('');
+ useEffect(()=>{setPage(0);},[userId]);
+ useEffect(()=>{let live=true;setData(null);setError('');api(`/api/my/performance?page=${page}`).then(r=>{if(live)setData(r);}).catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[api,userId,activity,refresh,page]);
+ const states={COMPARABLE:'동일 조건 비교 가능',MISSING_METRICS:'지표 미측정',UNKNOWN_PROFILE:'실행 조건 확인 불가',SHARED_EXECUTION:'공유 실행 · 비교 제외'};
+ return <section className="learning-revisit" aria-label="AC 성능 이력"><h3>AC 성능 이력</h3><p className="muted">내부 Judge 기록 · 테스트별 최댓값. 시간에는 런타임 시작 비용이 포함되고, cgroup 메모리는 언어 런타임 등도 포함해요. 실력 점수가 아니에요. 반복 표본이 부족하거나 측정 편차가 크면 추천을 만들지 않아요.</p>{error?<p role="alert">{error}</p>:!data?<p role="status">불러오는 중…</p>:<><ul>{data.items?.map(e=><li key={e.submissionId}><div><strong>{e.title} · {e.language}</strong><small>{e.submittedAt} · {e.maxWallMs==null?'시간 미측정':`${e.maxWallMs} ms`} · {e.maxMemoryBytes==null?'메모리 미측정':`${(e.maxMemoryBytes/1048576).toFixed(2)} MiB`}</small><p>{states[e.eligibility]}</p><details><summary>실행 profile</summary><pre>{JSON.stringify(e.comparisonProfile??e.executionProfile,null,2)??'기록 없음'}</pre><small>비교 조건 ID: {e.comparisonKey??'없음'}</small></details></div></li>)}</ul>{!data.items?.length&&<p>정식 AC 기록이 없어요.</p>}<button className="secondary" disabled={!page} onClick={()=>setPage(p=>p-1)}>이전</button> <button className="secondary" disabled={!data.hasMore} onClick={()=>setPage(p=>p+1)}>다음</button></>}</section>;
 }

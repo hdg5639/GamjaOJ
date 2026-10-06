@@ -16,12 +16,13 @@ class LearningProgress {
     static final String FORMAL="s.user_id=? AND s.run_input IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL";
     private final JdbcClient jdbc;
     private final Submissions submissions;
-    LearningProgress(JdbcClient jdbc,Submissions submissions){this.jdbc=jdbc;this.submissions=submissions;}
+    private final PerformanceHistory performance;
+    LearningProgress(JdbcClient jdbc,Submissions submissions,PerformanceHistory performance){this.jdbc=jdbc;this.submissions=submissions;this.performance=performance;}
     record Day(LocalDate date,int solved) {}
     record Category(String category,int attempted,int solved,int available) {}
     record Suggestion(String version,String title,String category,String difficulty,String reason,String confidence,ThinkingDifficulty.Profile thinking) {}
     record Dashboard(LocalDate start,LocalDate end,String timezone,List<Day> days,int activeDays,int currentStreak,int longestStreak,
-                     int practicedProblems,String dominantCategory,List<Category> categories,List<Suggestion> explore,List<Suggestion> revisit) {}
+                     int practicedProblems,String dominantCategory,List<Category> categories,List<Suggestion> explore,List<Suggestion> revisit,List<PerformanceHistory.Retry> efficiencyRetry) {}
     record Reflection(String problemVersion,UUID submissionId,UUID latestAcceptedSubmissionId,String confidence,String note,OffsetDateTime updatedAt) {}
     record ReflectionRequest(@NotNull UUID submissionId,@Pattern(regexp="SOLID|SHAKY|REVISIT") String confidence,@NotNull @Size(max=500) String note) {}
     private record Candidate(String version,String title,String category,String difficulty,ThinkingDifficulty.Profile thinking) {}
@@ -67,7 +68,7 @@ class LearningProgress {
         }
         var revisit=jdbc.sql("SELECT p.id,p.package_json,p.catalog_category,p.catalog_difficulty,r.confidence,"+ThinkingDifficulty.COLUMNS+" FROM problem_reflection r JOIN problem_version p ON p.id=r.problem_version "+ThinkingDifficulty.JOIN+" WHERE r.user_id=? AND r.confidence IN ('SHAKY','REVISIT') AND p.ready=true AND p.review_hold=false AND p.diagnostic_only=false AND (p.owner_id IS NULL OR p.owner_id=? OR p.shared=true) ORDER BY CASE WHEN r.confidence='REVISIT' THEN 0 ELSE 1 END,r.updated_at,p.id LIMIT 3")
                 .param(owner).param(owner).query((r,n)->new Suggestion(r.getString(1),ProblemTitles.display(JudgeJson.parse(r.getString(2))),ProblemCategories.display(r.getString(3)),r.getString(4),"REVISIT".equals(r.getString(5))?"다시 풀어야 한다고 남긴 문제예요.":"조금 애매하다고 남긴 문제예요.",r.getString(5),ThinkingDifficulty.read(r))).list();
-        return new Dashboard(start,today,ZONE.getId(),days,active,streak,longest,total,dominant,categories,explore,revisit);
+        return new Dashboard(start,today,ZONE.getId(),days,active,streak,longest,total,dominant,categories,explore,revisit,PerformanceHistory.retries(performance.load(owner,1000,0,until)));
     }
     @GetMapping("/api/my/reflections") Reflection reflection(Principal user,@RequestParam String problemVersion){return find(submissions.owner(user.getName(),false),problemVersion);}
     private Reflection find(UUID owner,String version){
