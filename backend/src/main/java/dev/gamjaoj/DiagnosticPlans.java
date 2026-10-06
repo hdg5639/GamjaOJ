@@ -61,6 +61,9 @@ public class DiagnosticPlans {
     }
     @Transactional
     public Options options(String username,UUID evaluation,int index,String kind) {
+        return options(username,evaluation,index,kind,null);
+    }
+    Options options(String username,UUID evaluation,int index,String kind,List<Submissions.Problem> catalog) {
         basicFence(submissions.owner(username,true),kind);
         var saved=evaluations.detail(username,evaluation);var snapshot=review(saved,index,kind);
         boolean practice=snapshot.path("observation").path("nextAction").asText().equals("PRACTICE");
@@ -68,7 +71,7 @@ public class DiagnosticPlans {
         String category="SELF_REPORT".equals(kind)?snapshot.path("observation").path("category").asText():profiles.category(saved.sessionId(),snapshot.path("observation").path("submissionId").asText()).orElse(null);
         return new Options(JudgeJson.hash(JudgeJson.canonical(snapshot)),snapshot.path("observation"),
                 saved.corrections().stream().filter(c->c.observationIndex()==index).toList(),
-                practice?submissions.problems(username).stream().filter(p->!p.problemHeld()).toList():List.of(),
+                practice?(catalog==null?submissions.problems(username):catalog).stream().filter(p->!p.problemHeld()).toList():List.of(),
                 selectable,category,category==null?List.of():DiagnosticProfiles.matchingRules(category,selectable));
     }
     @Transactional

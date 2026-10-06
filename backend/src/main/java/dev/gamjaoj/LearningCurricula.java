@@ -120,6 +120,7 @@ public class LearningCurricula {
         UUID owner=submissions.owner(username,true);
         var evaluationsWithPlans=jdbc.sql("SELECT evaluation_id FROM diagnostic_practice_plan WHERE user_id=? GROUP BY evaluation_id ORDER BY MAX(created_at) DESC,evaluation_id")
             .param(owner).query(UUID.class).list();
+        if(evaluationsWithPlans.isEmpty())return List.of();
         var problems=submissions.problems(username);
         var tracks=new ArrayList<Track>();
         for(var evaluationId:evaluationsWithPlans) {
@@ -133,7 +134,7 @@ public class LearningCurricula {
                 while(true){final UUID id=plan.id();var next=all.stream().filter(p->id.equals(p.previousPlanId())).findFirst();if(next.isEmpty())break;plan=next.get();}
                 String category=null;Candidate candidate=null;Progress progress=null;String title=null;
                 if(!"HELD".equals(plan.status())) {
-                    var options=plans.options(username,evaluationId,plan.observationIndex(),plan.sourceKind());category=options.category();
+                    var options=plans.options(username,evaluationId,plan.observationIndex(),plan.sourceKind(),problems);category=options.category();
                     if(plan.problemVersion()!=null){final String version=plan.problemVersion();title=problems.stream().filter(p->version.equals(p.version())).map(Submissions.Problem::title).findFirst().orElse("목록에 없는 문제");}
                     if(plan.generatedVersion()!=null){final String generated=plan.generatedVersion();candidate=problems.stream().filter(p->generated.equals(p.version())&&!p.problemHeld()&&p.submissionsEnabled()).map(p->new Candidate(p.version(),p.title(),p.category(),p.difficulty(),p.thinking())).findFirst().orElse(null);}
                     var mapping=preparation.state(plan.id());

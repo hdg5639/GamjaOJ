@@ -36,9 +36,12 @@ public class TrainingCourses {
         return definitions.stream().map(c->view(null,c,problems,Map.of())).toList();
     }
     public List<View> enrolled(String username) {
-        UUID owner=submissions.owner(username,false);var problems=problems(username);
-        return jdbc.sql("SELECT id,course_json FROM training_course_enrollment WHERE user_id=? ORDER BY created_at DESC,id")
-            .param(owner).query((r,n)->view(r.getObject("id",UUID.class),read(r.getString("course_json")),problems,links(r.getObject("id",UUID.class),owner))).list();
+        UUID owner=submissions.owner(username,false);
+        var saved=jdbc.sql("SELECT id,course_json FROM training_course_enrollment WHERE user_id=? ORDER BY created_at DESC,id")
+            .param(owner).query((r,n)->new Object[]{r.getObject("id",UUID.class),read(r.getString("course_json"))}).list();
+        if(saved.isEmpty())return List.of();
+        var problems=problems(username);
+        return saved.stream().map(row->view((UUID)row[0],(Course)row[1],problems,links((UUID)row[0],owner))).toList();
     }
     private Map<String,Submissions.Problem> problems(String username) {
         var result=new HashMap<String,Submissions.Problem>();

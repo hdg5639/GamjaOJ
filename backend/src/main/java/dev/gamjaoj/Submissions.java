@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class Submissions {
     private final JdbcClient jdbc;
+    private final PublicProblemPackages publicPackages=new PublicProblemPackages();
     private final boolean enabled;
     private final Diagnostics diagnostics;
     private final String executionMode;
@@ -67,14 +68,20 @@ public class Submissions {
         UUID owner = owner(username, false);
         boolean canSubmit = enabled || jdbc.sql("SELECT count(*) FROM execution_grant WHERE user_id = ?")
                 .param(owner).query(Integer.class).single() > 0;
-        return jdbc.sql("SELECT p.*,"+ThinkingDifficulty.COLUMNS+",g.template_id,g.focus,d.spec_json,COALESCE(progress.submissions,0) AS my_submissions,COALESCE(progress.accepted,0) AS my_accepted,COALESCE(progress.pending,0) AS my_pending FROM problem_version p "+ThinkingDifficulty.JOIN+" LEFT JOIN (SELECT s.problem_version,COUNT(*) AS submissions,SUM(CASE WHEN j.status='FINISHED' AND j.verdict='AC' THEN 1 ELSE 0 END) AS accepted,SUM(CASE WHEN j.status<>'FINISHED' THEN 1 ELSE 0 END) AS pending FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.user_id=? AND s.run_input IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL AND s.diagnostic_item_id IS NULL GROUP BY s.problem_version) progress ON progress.problem_version=p.id LEFT JOIN generation_job g ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) LEFT JOIN generation_spec_draft d ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE p.ready=true AND p.diagnostic_only=false AND (p.owner_id IS NULL OR p.owner_id=? OR (p.shared=true AND p.review_hold=false)) ORDER BY p.id").param(owner).param(owner)
-                .query((row, index) -> {
-                    JsonNode data = JudgeJson.parse(row.getString("package_json"));
+        var cached=publicPackages.snapshot();
+        String packageColumn=cached.isEmpty()?"p.package_json":"CASE WHEN p.package_sha256 IN ("+String.join(",",java.util.Collections.nCopies(cached.size(),"?"))+") THEN NULL ELSE p.package_json END";
+        var query=jdbc.sql("SELECT p.id,p.package_sha256,p.owner_id,p.shared,p.review_hold,p.review_reason,p.catalog_category,p.catalog_tags,p.catalog_difficulty,p.time_limits_json,p.examples_json,"+packageColumn+" AS package_json,"+ThinkingDifficulty.COLUMNS+",g.template_id,g.focus,d.spec_json,COALESCE(progress.submissions,0) AS my_submissions,COALESCE(progress.accepted,0) AS my_accepted,COALESCE(progress.pending,0) AS my_pending FROM problem_version p "+ThinkingDifficulty.JOIN+" LEFT JOIN (SELECT s.problem_version,COUNT(*) AS submissions,SUM(CASE WHEN j.status='FINISHED' AND j.verdict='AC' THEN 1 ELSE 0 END) AS accepted,SUM(CASE WHEN j.status<>'FINISHED' THEN 1 ELSE 0 END) AS pending FROM submission s JOIN judge_job j ON j.submission_id=s.id WHERE s.user_id=? AND s.run_input IS NULL AND s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL AND s.diagnostic_item_id IS NULL GROUP BY s.problem_version) progress ON progress.problem_version=p.id LEFT JOIN generation_job g ON p.id=CONCAT(CONCAT(CONCAT('generated-',CAST(g.id AS VARCHAR(36))),'-r'),CAST(g.revision AS VARCHAR(10))) LEFT JOIN generation_spec_draft d ON p.id=CONCAT('experimental-check-',CAST(d.id AS VARCHAR(36))) WHERE p.ready=true AND p.diagnostic_only=false AND (p.owner_id IS NULL OR p.owner_id=? OR (p.shared=true AND p.review_hold=false)) ORDER BY p.id");
+        for(String hash:cached.keySet())query.param(hash);
+        return query.param(owner).param(owner).query((row, index) -> {
+                    String hash=row.getString("package_sha256"),raw=row.getString("package_json");
+                    var data=raw==null?cached.get(hash):publicPackages.put(hash,raw);
+                    var shownExamples=new java.util.ArrayList<>(data.examples());
+                    if(row.getString("examples_json")!=null)for(var e:JudgeJson.parse(row.getString("examples_json")))shownExamples.add(new Example(e.path("input").asText(),e.path("output").asText(),e.path("explanation").asText(null)));
                     var metadata=ProblemCatalogMetadata.read(row);
                     // Explicit public fields only: never serialize a private problem package.
-                    return new Problem(row.getString("id"), ProblemTitles.display(data), data.path("statement").asText(),
-                            data.path("tests").get(0).path("input").asText(), data.path("tests").get(0).path("output").asText(),
-                            examples(data, row.getString("examples_json")), 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),ThinkingDifficulty.read(row),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options(row.getString("time_limits_json")),data.has("api")?CallablePrograms.publicBundle(data.path("api")):null);
+                    return new Problem(row.getString("id"), data.title(), data.statement(),
+                            data.sampleInput(),data.sampleOutput(),
+                            shownExamples, 65536, canSubmit && !row.getBoolean("review_hold"),row.getBoolean("review_hold"),row.getString("review_reason"),owner.equals(row.getObject("owner_id",UUID.class)),row.getObject("owner_id")==null||row.getBoolean("shared"),row.getObject("owner_id")!=null,metadata.category(),metadata.tags(),metadata.difficulty(),metadata.difficultySource(),ThinkingDifficulty.read(row),row.getLong("my_accepted")>0?"SOLVED":row.getLong("my_submissions")>0?"ATTEMPTED":"UNATTEMPTED",row.getLong("my_pending"),LanguageProfiles.options(row.getString("time_limits_json")),data.api());
                 }).list();
     }
 
@@ -159,10 +166,10 @@ public class Submissions {
         if(size<1||size>50)throw new AccountException(400,"페이지 크기는 1~50개로 설정해 주세요.");
         if(page<0||page>100000)throw new AccountException(400,"잘못된 페이지예요.");
         UUID user=owner(username,false);
-        String filter=problemVersion==null?"":" AND problem_version=?";
-        var query=jdbc.sql("SELECT id FROM submission WHERE generation_job_id IS NULL AND spec_draft_id IS NULL AND hybrid_branch_id IS NULL AND user_id=? AND run_input IS NULL"+filter+" ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?").param(user);
+        String filter=problemVersion==null?"":" AND s.problem_version=?";
+        var query=jdbc.sql(viewQuery(false)+" WHERE s.generation_job_id IS NULL AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL AND s.user_id=? AND s.run_input IS NULL"+filter+" ORDER BY s.created_at DESC,s.id DESC LIMIT ? OFFSET ?").param(user);
         if(problemVersion!=null)query=query.param(problemVersion);
-        return query.param(size).param(page*size).query(UUID.class).list().stream().map(id->find(user,id,false)).toList();
+        return query.param(size).param(page*size).query((row,index)->viewRow(row,false)).list();
     }
     public List<View> runs(String username) { owner(username,false);return List.of(); }
     public View detail(String username, UUID id) { return detail(username, id, false); }
@@ -172,16 +179,21 @@ public class Submissions {
         if ((view.input() != null) != run) throw new AccountException(404, "기록을 찾을 수 없어요.");
         return view;
     }
+    private static String viewQuery(boolean includeSource) {
+        return "SELECT s.id,s.problem_version,s.source_sha256,"+(includeSource?"s.source_code":"NULL AS source_code")+",s.created_at,s.run_input,s.training_session_id,s.runner_policy,s.diagnostic_item_id,s.language,s.execution_profile_json,p.review_hold,j.status,j.verdict,j.result_json,j.finished_at,"+(includeSource?"CASE WHEN s.run_input IS NULL AND j.status='FINISHED' THEN COALESCE(s.callable_package,d.package_json,p.package_json) END":"NULL")+" AS plan_json FROM submission s JOIN problem_version p ON p.id=s.problem_version JOIN judge_job j ON s.id=j.submission_id LEFT JOIN diagnostic_item d ON d.id=s.diagnostic_item_id";
+    }
     private View find(UUID user, UUID id, boolean includeSource) {
-        return jdbc.sql("SELECT s.*,p.review_hold,j.status,j.verdict,j.result_json,j.finished_at,"+(includeSource?"CASE WHEN s.run_input IS NULL AND j.status='FINISHED' THEN COALESCE(s.callable_package,d.package_json,p.package_json) END":"NULL")+" AS plan_json FROM submission s JOIN problem_version p ON p.id=s.problem_version JOIN judge_job j ON s.id=j.submission_id LEFT JOIN diagnostic_item d ON d.id=s.diagnostic_item_id WHERE s.id=? AND s.user_id=? AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL")
-                .param(id).param(user).query((row, index) -> {
+        return jdbc.sql(viewQuery(includeSource)+" WHERE s.id=? AND s.user_id=? AND s.spec_draft_id IS NULL AND s.hybrid_branch_id IS NULL")
+            .param(id).param(user).query((row,index)->viewRow(row,includeSource)).optional().orElseThrow(()->new AccountException(404,"제출 기록을 찾을 수 없어요."));
+    }
+    private View viewRow(java.sql.ResultSet row,boolean includeSource) throws java.sql.SQLException {
                     String verdict = row.getString("verdict"), result = row.getString("result_json");
                     String compile = "CE".equals(verdict) && result != null
                             ? JudgeJson.parse(result).path("compile").path("stderr").asText("") : "";
                     String input = row.getString("run_input");
                     JsonNode output = includeSource && input != null && result != null
                             ? JudgeJson.parse(result).path("tests").path(0) : JudgeJson.JSON.createObjectNode();
-                    return new View(id, row.getString("problem_version"), row.getString("source_sha256"),
+                    return new View(row.getObject("id",UUID.class), row.getString("problem_version"), row.getString("source_sha256"),
                             includeSource ? row.getString("source_code") : null, row.getString("status"), verdict, compile,
                             row.getObject("created_at", OffsetDateTime.class), row.getObject("finished_at", OffsetDateTime.class), input,
                             output.path("stdout").asText(""), output.path("stderr").asText(""), output.path("stdout_truncated").asBoolean(), row.getObject("training_session_id", UUID.class), row.getString("runner_policy"),row.getBoolean("review_hold"),row.getObject("diagnostic_item_id",UUID.class),row.getString("language"),
@@ -190,6 +202,6 @@ public class Submissions {
                             includeSource && input == null && "FINISHED".equals(row.getString("status")) ? testCount(row.getString("plan_json")) : 0,
                             result==null?null:ExecutionMetrics.maximum(JudgeJson.parse(result),"wall_ms"),
                             result==null?null:ExecutionMetrics.maximum(JudgeJson.parse(result),"memory_peak_bytes"));
-                }).optional().orElseThrow(() -> new AccountException(404, "제출 기록을 찾을 수 없어요."));
+
     }
 }
