@@ -1,3 +1,4 @@
+import {completionPriority} from './completion-policy';
 import {ensureSyntaxTree, syntaxTree} from '@codemirror/language';
 import {memberCompletions} from './member-completion.mjs';
 
@@ -11,11 +12,13 @@ export function memberCompletionSource(language) {
     for(let node=tree.resolveInner(pos,-1);node;node=node.parent)if(nonCode.test(node.name))return null;
     const result=memberCompletions(language,state.doc.toString(),pos);
     if(!result)return null;
-    return {from:result.from,options:result.options,validFor:/^[\p{ID_Continue}$]*$/u,commitCharacters:[]};
+    return {from:result.from,options:result.options.map(option=>({...option,boost:completionPriority.member})),validFor:/^[\p{ID_Continue}$]*$/u,commitCharacters:[]};
   };
 }
-/** True when the word is a member name after "." whose receiver type is known (memberCompletionSource answers it).
- *  Unknown receivers (auto, undeclared, custom types) keep the plain name catalog as before. */
+/** Member access must not fall back to unrelated global classes/keywords when
+ * a receiver type is unknown. Keep C++ namespace access (std::) available to
+ * the curated name catalog; dot/pointer access uses local or semantic members. */
 export function afterDot(state,from,language,pos){
-  return state.sliceDoc(Math.max(0,from-1),from)==='.'&&memberCompletions(language,state.doc.toString(),pos)!==null;
+  return /\.\s*$/.test(state.sliceDoc(Math.max(0,from-8),from))
+    || language==='CPP'&&/->\s*$/.test(state.sliceDoc(Math.max(0,from-8),from));
 }

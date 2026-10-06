@@ -42,6 +42,27 @@ Backend `CompletionIntegrationTest` checks session/CSRF protection, server-owned
 account identity, request limits, UTF-16 cursor offsets, and proxy forwarding.
 The browser only applies inert text edits to the exact document version analyzed.
 
+## Candidate ordering and asynchronous updates
+
+Java, C++ and Python use the same browser-side priority policy. Names found in
+the current document and the curated standard catalog precede generic semantic
+candidates; a late language-server response does not receive a blanket priority
+boost. Internal/private-looking names remain selectable at lower priority.
+Member access uses receiver members rather than falling back to global types and
+keywords, even while an unknown receiver is waiting for semantic analysis. C++
+namespace access retains the standard catalog.
+
+When only asynchronous results arrive, the current candidate selection is retained
+if that candidate still exists. Typing, cursor movement and explicit selection
+continue to update completion normally. Analysis results are rejected when the
+document changes or a newer request supersedes them. Semantic-only methods and
+inert import/text edits remain supported.
+
+`frontend/app/completion-policy.js` defines this policy. Delayed-provider browser
+fixtures in `tests/completion-stability.spec.mjs` cover all three languages, local
+names, keyboard selection, semantic-only methods and replacement drafts. These
+fixtures validate browser behavior; they are separate from real-engine checks.
+
 ## Code abbreviations
 
 The shared editor also offers local snippets at the beginning of a line (after
