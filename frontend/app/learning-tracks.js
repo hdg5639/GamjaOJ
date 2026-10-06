@@ -1,4 +1,5 @@
 'use client';
+import LoadingIndicator from './loading-indicator';
 import SelectControl from './select-control';
 import {useEffect,useRef,useState} from 'react';
 import Pager,{usePage} from './pager';
@@ -83,7 +84,7 @@ export default function LearningTracks({api,userId,visible,initialEvaluation,onO
   {error&&<p className="notice error" role="alert">{error} <button className="secondary" onClick={()=>{setError('');refresh();}}>다시 불러오기</button></p>}
   {pending&&<p className="notice">접수 결과를 확인하지 못한 요청이 있어요. <button className="secondary" disabled={busy||locked} onClick={()=>act()}>같은 학습 요청 다시 확인</button></p>}
   {track?.endedAt&&<p className="notice" role="status">종료한 학습 계획 · {new Date(track.endedAt).toLocaleString('ko-KR')}. 목표와 제출 기록은 보존돼요. 종료가 목표 달성이나 정답 처리를 뜻하지는 않아요.{track.endNote&&<span> 마무리 메모 · {track.endNote}</span>}</p>}
-  {!loaded&&<p role="status">학습 계획을 불러오는 중…</p>}
+  {!loaded&&<LoadingIndicator>학습 계획을 불러오는 중…</LoadingIndicator>}
   <div className="learning-workspace-top">
    <section className="learning-plan-overview" aria-label="계획 선택과 진행도">
     {track?<><label>학습 계획 선택<SelectControl aria-label="학습 계획 선택" value={track.evaluationId} onChange={e=>{setSelected(e.target.value);setFocused('');paging.setPage(0);setManual(null);}}>{tracks.map(t=><option key={t.evaluationId} value={t.evaluationId}>{t.endedAt?'[종료] ':''}{bankTitle(t.bankId)} · {new Date(t.createdAt).toLocaleDateString('ko-KR')} · 목표 {t.steps.length}개</option>)}</SelectControl></label>
