@@ -105,8 +105,8 @@ final class GenerationResources {
         plan.set("generated",HybridRulePackage.generated(artifacts.path("maximumGenerator").asText(),List.of("0","1","2","3"),helperReference,validator?"VALID":"REFERENCE"));
         String raw=JudgeJson.canonical(plan);UUID submission=UUID.randomUUID();
         var profile=(ObjectNode)LanguageProfiles.profile(language,limits);if(limits==null)profile.put("testWallSeconds",180);
-        jdbc.sql("INSERT INTO submission(id,user_id,problem_version,source_code,source_sha256,idempotency_key,runtime_image,runner_policy,language,execution_profile_json,run_input,run_package,run_package_sha256) SELECT ?,p.owner_id,?,?,?,?,p.runtime_image,'java8-judge-v1',?,?,?,?,? FROM problem_version p WHERE p.id=?")
-            .param(submission).param(row[2]).param(source).param(JudgeJson.hash(source)).param(submission).param(language).param(JudgeJson.canonical(profile)).param("resource-qualification").param(raw).param(JudgeJson.hash(raw)).param(row[2]).update();
+        jdbc.sql("INSERT INTO submission(id,user_id,problem_version,source_code,source_sha256,idempotency_key,runtime_image,runner_policy,language,execution_profile_json,run_input,run_package,run_package_sha256) SELECT ?,p.owner_id,?,?,?,?,?,?,?,?,?,?,? FROM problem_version p WHERE p.id=?")
+            .param(submission).param(row[2]).param(source).param(JudgeJson.hash(source)).param(submission).param(profile.path("image").asText()).param(profile.path("policy").asText()).param(language).param(JudgeJson.canonical(profile)).param("resource-qualification").param(raw).param(JudgeJson.hash(raw)).param(row[2]).update();
         var origin=jdbc.sql("SELECT pipeline,job_id FROM generation_resource_check WHERE id=?").param(id).query((r,n)->new String[]{r.getString(1),r.getString(2)}).single();
         String marker=origin[0].equals("TAG")?"generation_job_id":origin[0].equals("DIRECT")?"spec_draft_id":"hybrid_branch_id";
         UUID originId=origin[0].equals("RULE")?UUID.fromString(row[2].substring("hybrid-check-".length())):UUID.fromString(origin[1]);
@@ -117,6 +117,19 @@ final class GenerationResources {
     static void advance(JdbcClient jdbc) {
         jdbc.sql("UPDATE generation_resource_check SET status='NEEDS_REVIEW',error_code='GENERATION_INTERRUPTED' WHERE status='GENERATING' AND lease_until<CURRENT_TIMESTAMP").update();
         for(var id:jdbc.sql("SELECT id FROM generation_resource_check WHERE status IN ('MEASURING','REPLAYING')").query(UUID.class).list()) {
+            var invalidProfiles=jdbc.sql("SELECT s.id,s.runtime_image,s.runner_policy,s.execution_profile_json FROM generation_resource_execution e JOIN submission s ON s.id=e.submission_id WHERE e.check_id=?").param(id).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4)}).list().stream().filter(r->{var p=JudgeJson.parse(r[3]);return !p.path("image").asText().equals(r[1])||!p.path("policy").asText().equals(r[2]);}).toList();
+            if(!invalidProfiles.isEmpty()) {
+                // These snapshots are rejected before a compatible worker starts a sandbox. Keep them as superseded evidence.
+                String report="{\"verdict\":\"IE\",\"error\":\"resource execution profile superseded\"}";
+                for(var invalid:invalidProfiles) {
+                    UUID submission=UUID.fromString(invalid[0]);
+                    jdbc.sql("UPDATE judge_attempt SET status='SUPERSEDED',result_json=?,finished_at=CURRENT_TIMESTAMP WHERE submission_id=? AND status='RUNNING'").param(report).param(submission).update();
+                    jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='IE',result_json=?,result_sha256=?,finished_at=CURRENT_TIMESTAMP WHERE submission_id=? AND status<>'FINISHED'").param(report).param(JudgeJson.hash(report)).param(submission).update();
+                }
+                // Let valid in-flight jobs settle before beginning another exclusive measurement batch.
+                if(jdbc.sql("SELECT count(*) FROM generation_resource_execution e JOIN judge_job j ON j.submission_id=e.submission_id WHERE e.check_id=? AND j.status<>'FINISHED'").param(id).query(Integer.class).single()==0)fail(jdbc,id,"RESOURCE_EXECUTION_PROFILE_MISMATCH");
+                continue;
+            }
             var rows=jdbc.sql("SELECT e.role,j.status,j.verdict,j.result_json FROM generation_resource_execution e JOIN judge_job j ON j.submission_id=e.submission_id WHERE e.check_id=? ORDER BY e.role").param(id).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4)}).list();
             if(rows.isEmpty()||rows.stream().anyMatch(r->!"FINISHED".equals(r[1])))continue;
             try {
@@ -163,7 +176,7 @@ final class GenerationResources {
     private static void fail(JdbcClient jdbc,UUID id,String error) {
         var row=jdbc.sql("SELECT retries,completion_json,artifacts_json,token FROM generation_resource_check WHERE id=? FOR UPDATE").param(id).query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3),r.getString(4)}).single();
         int attempts=Integer.parseInt(row[0]);
-        boolean telemetry=error.equals("RESOURCE_MEMORY_OBSERVATION_MISSING")||error.equals("RESOURCE_TIME_OBSERVATION_MISSING");
+        boolean telemetry=error.equals("RESOURCE_EXECUTION_PROFILE_MISMATCH")||error.equals("RESOURCE_MEMORY_OBSERVATION_MISSING")||error.equals("RESOURCE_TIME_OBSERVATION_MISSING");
         if(!GenerationDraftRecovery.stopped(error)&&attempts<2) {
             var history=JudgeJson.JSON.createObjectNode().put("failure",error);var links=history.putArray("executions");
             jdbc.sql("SELECT role,submission_id FROM generation_resource_execution WHERE check_id=?").param(id).query((r,n)->JudgeJson.JSON.createObjectNode().put("role",r.getString(1)).put("submissionId",r.getString(2))).list().forEach(links::add);
