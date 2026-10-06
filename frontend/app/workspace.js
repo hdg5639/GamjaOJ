@@ -7,7 +7,7 @@ import ExecutionMetrics from './execution-metrics';
 import ProblemId,{shortProblemId} from './problem-id';
 import EditorShortcutHelp,{EditorTools} from './editor-shortcut-help';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {languageInfo,starters,recordLanguage,recordLanguageLabel,limitText} from './languages';
 import RunConsole, { SubmitTests, Examples } from './run-console';
 import LimitChips from './limit-chips';
@@ -15,20 +15,21 @@ import SplitStack,{useSplit,useSolvingLayout,usePaneOrder,columnLayoutStyle,colu
 import {useVimMode} from './editor-settings';
 import {scheduleServerDraft,loadServerDraft,readLocalDraft,writeLocalDraft,newer} from './server-drafts';
 import {useEditorSizing,ResizeHandle,splitScale} from './editor-sizing';
-import DiagnosticPanel from './diagnostic-panel';
 import RecordHistory from './record-history';
-import MyPage from './my-page';
 import ResetCode from './reset-code';
-import TrainingHub from './training-hub';
 import ProblemCatalog from './problem-catalog';
 import ThinkingDifficulty from './thinking-difficulty';
 import NavIcon from './nav-icon';
 import AiFeedback from './ai-feedback';
 import ProblemTeaching from './problem-teaching';
-import AiOperations from './ai-operations';
 import dynamic from 'next/dynamic';
 import {verdictText,verdictHelp} from './verdicts';
 import {ExportSubmission} from './integrations-panel';
+
+const DiagnosticPanel = dynamic(() => import('./diagnostic-panel'));
+const MyPage = dynamic(() => import('./my-page'));
+const TrainingHub = dynamic(() => import('./training-hub'));
+const AiOperations = dynamic(() => import('./ai-operations'));
 
 const CodeEditor = dynamic(() => import('./code-editor'), { ssr: false,
   loading: () => <div id="source" role="status">편집기를 불러오고 있어요…</div>,
@@ -60,7 +61,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
   const [visited,setVisited]=useState(()=>new Set());
   useEffect(()=>{setVisited(previous=>previous.has(screen)?previous:new Set([...previous,screen]));},[screen]);
   const opened=name=>screen===name||visited.has(name);
-  function setScreen(next) { updateScreen(next); window.history.pushState(null,'','#'+next); if(next==='home')requestAnimationFrame(()=>document.querySelector('.catalog-view')?.scrollTo(0,0)); }
+  const setScreen = useCallback(function setScreen(next) { updateScreen(next); window.history.pushState(null,'','#'+next); if(next==='home')requestAnimationFrame(()=>document.querySelector('.catalog-view')?.scrollTo(0,0)); }, []);
   useEffect(()=>{
     const sync=()=>{const value=window.location.hash.slice(1)||'home';if(['home','practice','catalog','diagnostic','training','generation','mypage'].includes(value))updateScreen(value);};
     sync();window.addEventListener('popstate',sync);return()=>window.removeEventListener('popstate',sync);
@@ -69,6 +70,8 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
   const [tool, setTool] = useState('history'),[runRequest,setRunRequest]=useState(0);
   const [resultsOpen, setResultsOpen] = useState(false);
   const [resultSize, setResultSize] = useState(360);
+  const resultFrame=useRef(null),pendingWidth=useRef(null);
+  useEffect(()=>()=>{if(resultFrame.current!==null)cancelAnimationFrame(resultFrame.current);},[]);
   const [casesRequest,setCasesRequest]=useState(0),[caseCount,setCaseCount]=useState(0);
   const [historyOpen,setHistoryOpen]=useState(false);
   const [inspected,setInspected]=useState(null);
@@ -162,7 +165,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     // Refresh session metadata without replacing the problem/draft the user is browsing.
   }
 
-  function chooseProblem(nextVersion) {
+  const chooseProblem = useCallback(function chooseProblem(nextVersion) {
     if (busy || pending) return;
     try{localStorage.setItem(selectionKey,nextVersion);}catch{/* Draft restoration still works without selection persistence. */}
     if (nextVersion !== version) {
@@ -175,7 +178,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     panelRevision.current++;setResultsOpen(false);
     setMobilePane('problem');
     requestAnimationFrame(() => document.getElementById('problem-title')?.focus());
-  }
+  }, [busy,pending,version,problems,language,user.id,api,setScreen]);
 
   function draftKey(problemVersion, chosen=language) {
     return `gamjaoj-draft-v1-${user.id}-${encodeURIComponent(problemVersion)}${chosen==='JAVA'?'':'-'+chosen}`;
@@ -282,10 +285,13 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     const start=event.clientX,initial=resultSize;
     event.currentTarget.dataset.dragStart=start;event.currentTarget.dataset.dragWidth=initial;event.currentTarget.dataset.direction=window.innerWidth>=1440?-1:1;
   }
+  function flushResultWidth(){if(resultFrame.current!==null)cancelAnimationFrame(resultFrame.current);resultFrame.current=null;if(pendingWidth.current!==null){setResultSize(pendingWidth.current);pendingWidth.current=null;}}
+  function endPanelDrag(event){flushResultWidth();if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}
   function dragPanel(event){
     if(!event.currentTarget.hasPointerCapture(event.pointerId))return;
     const delta=(event.clientX-Number(event.currentTarget.dataset.dragStart))*Number(event.currentTarget.dataset.direction);
-    setResultSize(Math.max(300,Math.min(520,Number(event.currentTarget.dataset.dragWidth)+delta)));
+    pendingWidth.current=Math.max(300,Math.min(520,Number(event.currentTarget.dataset.dragWidth)+delta));
+    if(resultFrame.current===null)resultFrame.current=requestAnimationFrame(flushResultWidth);
   }
   async function submit(event) {
     event.preventDefault();
@@ -329,6 +335,21 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     catch (e) { if (live.current) setError(e.message); }
   }
 
+  const problemOptions = useMemo(()=>problems.map(item => <option key={item.version} value={item.version}>{item.problemHeld?'[검토 중] ':''}{item.title} · {shortProblemId(item.version)}</option>),[problems]);
+  const changeCatalog = useCallback(value=>{setProblems(items=>items.map(p=>p.version===value.version?value:p));window.dispatchEvent(new Event('gamjaoj-problems-changed'));}, []);
+
+  // Source edits and pane drags must not rerender previously visited auxiliary screens.
+  const myPageView = useMemo(()=>(opened('mypage')&&<div className="training-view" hidden={screen!=='mypage'}><MyPage activity={activity} api={api} user={user} problems={problems} onChoose={chooseProblem} onDiagnostic={()=>setScreen('diagnostic')}/></div>),[activity,api,user,problems,chooseProblem,setScreen,screen,visited]);
+  const diagnosticView = useMemo(()=>(<div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{opened('diagnostic') && <DiagnosticPanel requestedReport={diagnosticReport} onLearning={openLearning} visible={screen==='diagnostic'} user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onRuleDraft={draft=>{setRuleDraft({...(typeof draft==='string'?{text:draft}:draft),key:crypto.randomUUID()});setGenerationMode('hybrid');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>),[diagnosticReport,screen,visited,user,api,busy,pending,chooseProblem,setScreen]);
+  const trainingView = useMemo(()=>(<div className="training-view training-hub-view" hidden={screen !== 'training'}>
+      {!loaded&&<p role="status">훈련 정보를 불러오는 중…</p>}
+      {loaded&&opened('training')&&<TrainingHub user={user} api={api} problem={problem} problems={problems} sessions={sessions} onChange={updateSessions} activity={activity} onOpen={openTraining} onDiagnostic={sessionId=>{setDiagnosticReport(sessionId?{id:sessionId,key:crypto.randomUUID()}:null);setScreen('diagnostic');}} onGeneration={()=>setScreen('generation')} locked={busy||!!pending} visible={screen==='training'} initialEvaluation={learningEvaluation}/>}
+    </div>),[loaded,screen,visited,user,api,problem,problems,sessions,activity,busy,pending,learningEvaluation,chooseProblem,setScreen]);
+  const generationView = useMemo(()=>(<div className="training-view" hidden={screen !== 'generation'}>{opened('generation') && <AiOperations visible={screen==='generation'} api={api} userId={user.id} initialMode={generationMode} ruleDraft={ruleDraft} onOpen={async generatedVersion => {
+      if (busy || pending) throw new Error('진행 중인 제출을 먼저 마쳐 주세요.');
+      const items=await api('/api/problems');setProblems(items);chooseProblem(generatedVersion);
+    }} />}</div>),[screen,visited,api,user.id,generationMode,ruleDraft,busy,pending,chooseProblem]);
+
   return <section className="workspace" data-screen={screen} data-sidebar-collapsed={sidebarCollapsed} aria-label="문제 풀이">
     <aside id="learning-navigation" className="app-navigation" aria-label="학습 내비게이션">
       <div className="sidebar-heading"><span className="nav-section-label">LEARN & PRACTICE</span><button className="sidebar-toggle" type="button" aria-label={sidebarCollapsed?'사이드바 펼치기':'사이드바 접기'} title={sidebarCollapsed?'사이드바 펼치기':'사이드바 접기'} aria-expanded={!sidebarCollapsed} aria-controls="learning-navigation" onClick={onToggleSidebar}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d={sidebarCollapsed?'m13 9 3 3-3 3':'m16 9-3 3 3 3'}/></svg></button></div>
@@ -341,23 +362,17 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
       {screen==='practice'&&<span className="muted">{currentSession ? `훈련 중 · ${currentSession.goal || '자유 연습'}` : activeSession ? `자유 풀이 · ${shortProblemId(activeSession.problemVersion)} 훈련은 유지 중` : `${lang.label} · ${lang.file}`}</span>}
       {['home','catalog'].includes(screen)&&<button className="primary" onClick={()=>setScreen('generation')}>+ 문제 만들기</button>}
     </div>
-    {opened('mypage')&&<div className="training-view" hidden={screen!=='mypage'}><MyPage activity={activity} api={api} user={user} problems={problems} onChoose={chooseProblem} onDiagnostic={()=>setScreen('diagnostic')}/></div>}
-    <div className="diagnostic-view" hidden={screen !== 'diagnostic'}>{opened('diagnostic') && <DiagnosticPanel requestedReport={diagnosticReport} onLearning={openLearning} visible={screen==='diagnostic'} user={user} api={api} onOpen={openTraining} onGeneration={()=>{setGenerationMode('request');setScreen('generation');}} onRuleDraft={draft=>{setRuleDraft({...(typeof draft==='string'?{text:draft}:draft),key:crypto.randomUUID()});setGenerationMode('hybrid');setScreen('generation');}} onPractice={()=>setScreen('practice')} />}</div>
-    <div className="catalog-view" hidden={!['home','catalog'].includes(screen)}><ProblemCatalog activity={activity} home={['home','catalog'].includes(screen)} onNavigate={setScreen} api={api} onChanged={value=>{setProblems(items=>items.map(p=>p.version===value.version?value:p));window.dispatchEvent(new Event('gamjaoj-problems-changed'));}} problems={problems} loaded={loaded} error={error}
+    {myPageView}
+    {diagnosticView}
+    <div className="catalog-view" hidden={!['home','catalog'].includes(screen)}><ProblemCatalog activity={activity} home={['home','catalog'].includes(screen)} onNavigate={setScreen} api={api} onChanged={changeCatalog} problems={problems} loaded={loaded} error={error}
       selectedVersion={version} locked={busy || !!pending} onChoose={chooseProblem} /></div>
-    <div className="training-view training-hub-view" hidden={screen !== 'training'}>
-      {!loaded&&<p role="status">훈련 정보를 불러오는 중…</p>}
-      {loaded&&<TrainingHub user={user} api={api} problem={problem} problems={problems} sessions={sessions} onChange={updateSessions} activity={activity} onOpen={openTraining} onDiagnostic={sessionId=>{setDiagnosticReport(sessionId?{id:sessionId,key:crypto.randomUUID()}:null);setScreen('diagnostic');}} onGeneration={()=>setScreen('generation')} locked={busy||!!pending} visible={screen==='training'} initialEvaluation={learningEvaluation}/>}
-    </div>
-    <div className="training-view" hidden={screen !== 'generation'}>{opened('generation') && <AiOperations visible={screen==='generation'} api={api} userId={user.id} initialMode={generationMode} ruleDraft={ruleDraft} onOpen={async generatedVersion => {
-      if (busy || pending) throw new Error('진행 중인 제출을 먼저 마쳐 주세요.');
-      const items=await api('/api/problems');setProblems(items);chooseProblem(generatedVersion);
-    }} />}</div>
-    <div className="practice-view" hidden={screen !== 'practice'}>
+    {trainingView}
+    {generationView}
+    <div className="practice-view" hidden={screen !== 'practice'}>{opened('practice')&&<>
     <nav className="workspace-tools" aria-label="풀이 영역">
         {problems.length > 1 && <label className="solve-problem-choice"><span className="sr-only">풀이할 문제</span><SelectControl value={version} disabled={busy || !!pending} aria-describedby={busy || pending || activeSession ? "problem-selection-status" : undefined}
           onChange={event => chooseProblem(event.target.value)}>
-          {problems.map(item => <option key={item.version} value={item.version}>{item.problemHeld?'[검토 중] ':''}{item.title} · {shortProblemId(item.version)}</option>)}
+          {problemOptions}
         </SelectControl></label>}
 
       <div className="layout-toolbar"><button aria-pressed={!resultsOpen&&mobilePane==='problem'} onClick={()=>{panelRevision.current++;setResultsOpen(false);setMobilePane('problem');}}>문제 보기</button>
@@ -423,7 +438,7 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     </div>
     </div>
     <div className="panel-resizer" role="separator" tabIndex={resultsOpen?0:-1} hidden={!resultsOpen} aria-label="결과 패널 너비" aria-orientation="vertical" aria-valuemin={300} aria-valuemax={520} aria-valuenow={resultSize}
-      onPointerDown={resizePanel} onPointerMove={dragPanel} onPointerUp={event=>event.currentTarget.releasePointerCapture(event.pointerId)}
+      onPointerDown={resizePanel} onPointerMove={dragPanel} onPointerUp={endPanelDrag} onPointerCancel={endPanelDrag} onLostPointerCapture={flushResultWidth}
       onKeyDown={event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();setResultSize(value=>event.key==='Home'?300:event.key==='End'?520:Math.max(300,Math.min(520,value+(event.key==='ArrowLeft'?20:-20)*(window.innerWidth>=1440?1:-1))));}}} />
     <aside id="workspace-results" className="result-dock" hidden={!resultsOpen} aria-label="실행과 제출 결과">
       <div className="result-heading"><h3>{tool==='history'?'제출 기록':'피드백'}</h3><button type="button" className="secondary" onClick={closeResults}>결과 접기</button></div>
@@ -453,6 +468,6 @@ export default function Workspace({ user, api, sidebarCollapsed, onToggleSidebar
     {!loaded && !error && <p role="status">문제와 내 제출 기록을 불러오고 있어요…</p>}
     {!problem && error && <p role="alert" className="notice error">{error}</p>}
     {loaded && !problem && <p className="muted">현재 풀이할 수 있는 문제가 없어요.</p>}
-    </div>
+    </>}</div>
   </section>;
 }

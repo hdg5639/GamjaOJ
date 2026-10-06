@@ -14,9 +14,7 @@ dialog.modal[open] { animation:modal-enter 180ms var(--motion-ease); }
 :root .signed-in[data-sidebar-collapsed="true"] .header-note { max-width:0; opacity:0; padding-left:0; border-color:transparent; transition:opacity 70ms ease-out,max-width 260ms var(--motion-ease) 160ms,padding 260ms var(--motion-ease) 160ms,border-color 70ms; }
 .sidebar-toggle svg { transition:transform 180ms var(--motion-ease); }
 @media(hover:hover) {
- .primary { transition:background-color 140ms,border-color 140ms,transform 140ms var(--motion-ease); }
- .primary:hover:not(:disabled) { transform:translateY(-1px); }
- .primary:active:not(:disabled) { transform:none; }
+ .primary { transition:background-color 100ms,border-color 100ms; }
 }
 @keyframes modal-enter { from { opacity:0; transform:translateY(8px) scale(.99); } to { opacity:1; transform:none; } }
 @keyframes workspace-enter { from { opacity:.65; } to { opacity:1; } }

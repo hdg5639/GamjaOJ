@@ -5,6 +5,8 @@ import remarkGfm from 'remark-gfm';
 export function statementImageUrl(src){return typeof src==='string'&&(/^\/api\/problem-images\/[a-f0-9-]{36}$/.test(src)||/^\/problem-illustrations\/[a-f0-9]{64}\.svg$/.test(src))?src:'';}
 const parser=unified().use(remarkParse).use(remarkGfm);
 export function statementIllustrationLayout(statement,images=[]){
+ // Inline images are already rendered by Markdown; only extra images need a placement pass.
+ if(images.length===0)return {placements:new Map(),remainder:[]};
  const source=typeof statement==='string'?statement:'',tree=parser.parse(source),referenced=new Set(),placements=new Map();
  const definitions=new Map(tree.children.filter(n=>n.type==='definition').map(n=>[n.identifier,n.url]));
  function collect(node){if(node.type==='imageReference'&&statementImageUrl(definitions.get(node.identifier)))referenced.add(definitions.get(node.identifier));if(node.type==='image'&&statementImageUrl(node.url))referenced.add(node.url);for(const child of node.children||[])collect(child);}

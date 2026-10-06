@@ -22,7 +22,9 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
   const [filter,setFilter]=useState('ALL'),[query,setQuery]=useState('');
   const [target,setTarget]=useState(problem?.version||'');
   const [opening,setOpening]=useState(false),[controlsOpen,setControlsOpen]=useState(false),[detailOpen,setDetailOpen]=useState(false);
-  const openRevision=useRef(0),executionLock=useRef(false);
+  const openRevision=useRef(0),executionLock=useRef(false),focusDetail=useRef(false);
+  // Focus only after the requested detail has committed, even with deferred screen loading.
+  useEffect(()=>{if(!focusDetail.current||!detailOpen)return;focusDetail.current=false;const heading=document.getElementById('training-detail-heading');heading?.scrollIntoView({block:'start'});heading?.focus({preventScroll:true});},[detail,detailOpen]);
   const title=version=>problems.find(item=>item.version===version)?.title||'목록에 없는 문제';
   const targetProblem=problems.find(item=>item.version===target);
   useEffect(()=>{setTarget(problem?.version||'');},[problem?.version]);
@@ -84,8 +86,7 @@ export default function SessionPanel({ user, problem, sessions, onChange, activi
   async function open(id) {
     const revision=++openRevision.current;setOpening(true);setError('');
     try { const value=await api(`/api/training-sessions/${id}`);if(revision!==openRevision.current)return;
-      setDetail(value);setEntry(null);setDetailOpen(true);
-      requestAnimationFrame(()=>{const heading=document.getElementById('training-detail-heading');heading?.scrollIntoView({block:'start'});heading?.focus({preventScroll:true});});
+      focusDetail.current=true;setDetail(value);setEntry(null);setDetailOpen(true);
     } catch (e) { if(revision===openRevision.current)setError(e.message); }
     finally { if(revision===openRevision.current)setOpening(false); }
   }
