@@ -25,6 +25,12 @@ class GenerationValidationPolicyTest {
         assertThat(maximum.path("maximumInputContract").asText()).contains("ONE complete legal");
         assertThat(maximum.path("statement").asText()).contains("N ≤ 1000");assertThat(definition.has("generatorContract")).isTrue();
     }
+    @Test void declarativeGraphRecipesSelectChecksFromTheirFixedWeightContract(){
+        var unit=GenerationValidationPolicy.forProblem(new GraphRecipe(true,false,GraphRecipe.Query.COUNT).spec());
+        assertThat(unit.path("profiles").toString()).contains("bfs");
+        var weighted=GenerationValidationPolicy.forProblem(new GraphRecipe(false,true,GraphRecipe.Query.DISTANCE).spec());
+        assertThat(weighted.path("profiles").toString()).contains("shortest-path");
+    }
     @Test void unknownTopicsStillRequireCommonDomainOverflowAndResetChecks(){
         var policy=GenerationValidationPolicy.forProblem(JudgeJson.parse("{\"category\":\"새로운 분야\"}"));
         assertThat(policy.path("profiles").size()).isEqualTo(1);
