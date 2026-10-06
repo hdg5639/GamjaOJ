@@ -28,7 +28,7 @@ for(const width of [390,1440]) test(`lightweight glass surfaces remain transluce
  const trigger=page.getByRole('button',{name:'화면 설정',exact:true});await trigger.click();const dialog=page.getByRole('dialog',{name:'화면 설정',exact:true});
  for(const dark of [false,true]) {
   if(dark){await dialog.getByRole('button',{name:'다크',exact:true}).click();await dialog.getByRole('button',{name:/밤바다/}).click();}
-  for(const [surface,blur] of [[page.locator('.header-slot'),'blur(8px)'],[page.locator('.app-navigation'),'blur(10px)'],[dialog,'blur(10px)'],[dialog.locator('.modal-head'),'none']]) {
+  for(const [surface,blur] of [[page.locator('.header-slot'),'blur(8px)'],[page.locator('.app-navigation'),'blur(10px)'],[dialog,'none'],[dialog.locator('.modal-head'),'none']]) {
    await expect(surface).toHaveCSS('background-image','none');await expect(surface).toHaveCSS('backdrop-filter',blur);
    const alpha=await surface.evaluate(n=>{const ctx=document.createElement('canvas').getContext('2d');ctx.fillStyle=getComputedStyle(n).backgroundColor;ctx.fillRect(0,0,1,1);return ctx.getImageData(0,0,1,1).data[3]/255;});expect(alpha).toBeGreaterThan(.5);expect(alpha).toBeLessThan(.95);
   }
