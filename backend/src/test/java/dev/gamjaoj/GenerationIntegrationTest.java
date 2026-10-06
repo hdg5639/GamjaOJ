@@ -263,6 +263,9 @@ class GenerationIntegrationTest {
         GenerationResources.complete(jdbc,work.id(),work.token(),sources,review,null,null);
         assertThat(jdbc.sql("SELECT count(*) FROM generation_resource_execution").query(Integer.class).single()).isEqualTo(9);
         assertThat(submissions.runs("other")).isEmpty();
+        for(var row:jdbc.sql("SELECT runtime_image,runner_policy,execution_profile_json FROM submission WHERE id IN (SELECT submission_id FROM generation_resource_execution)").query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3)}).list()) {
+            var profile=JudgeJson.parse(row[2]);assertThat(row[0]).isEqualTo(profile.path("image").asText());assertThat(row[1]).isEqualTo(profile.path("policy").asText());
+        }
         finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("REPLAYING");
         finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("PASSED");
         var limits=JudgeJson.parse(GenerationResources.ensure(jdbc,"DIRECT",id,"experimental-check-"+id,draftSpec(),artifacts().path("reference").asText(),artifacts().path("inputValidator").asText(),null));
@@ -270,6 +273,19 @@ class GenerationIntegrationTest {
         assertThat(limits.path("memory").path("JAVA").asInt()).isEqualTo(96);
         assertThat(jdbc.sql("SELECT count(DISTINCT s.language) FROM generation_resource_execution e JOIN submission s ON s.id=e.submission_id").query(Integer.class).single()).isEqualTo(3);
         assertThat(jdbc.sql("SELECT ready FROM problem_version WHERE id=?").param("experimental-check-"+id).query(Boolean.class).single()).isFalse();
+    }
+    @Test void invalidLanguageImageBindingReexecutesStoredArtifactsAndKeepsSupersededEvidence(){
+        resourceFixture();var work=GenerationResources.claim(jdbc,aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");var sources=resourceSources();
+        GenerationResources.complete(jdbc,work.id(),work.token(),sources,review,null,null);
+        UUID old=jdbc.sql("SELECT submission_id FROM generation_resource_execution WHERE role='measure-CPP-0'").query(UUID.class).single();
+        jdbc.sql("UPDATE submission SET runtime_image=?,runner_policy='java8-judge-v1' WHERE id=?").param(LanguageProfiles.profile("JAVA").path("image").asText()).param(old).update();
+        GenerationResources.advance(jdbc);assertThat(jdbc.sql("SELECT verdict FROM judge_job WHERE submission_id=?").param(old).query(String.class).single()).isEqualTo("IE");
+        finishResourceChecks(true);assertThat(GenerationResources.claim(jdbc,aiSettings)).isNull();
+        var fresh=jdbc.sql("SELECT submission_id FROM generation_resource_execution WHERE role='measure-CPP-0'").query(UUID.class).single();assertThat(fresh).isNotEqualTo(old);
+        assertThat(jdbc.sql("SELECT source_sha256 FROM submission WHERE id=?").param(fresh).query(String.class).single()).isEqualTo(jdbc.sql("SELECT source_sha256 FROM submission WHERE id=?").param(old).query(String.class).single());
+        assertThat(jdbc.sql("SELECT report_json FROM generation_resource_attempt").query(String.class).single()).contains("RESOURCE_EXECUTION_PROFILE_MISMATCH",old.toString());
+        assertThat(jdbc.sql("SELECT retries FROM generation_resource_check").query(Integer.class).single()).isEqualTo(1);
+        finishResourceChecks(true);finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("PASSED");
     }
     @Test void missingCgroupObservationRemeasuresIdenticalArtifactsWithoutAnotherModelCall(){
         var id=resourceFixture();String hash=drafts.view("other",id).specHash();var work=GenerationResources.claim(jdbc,aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");
