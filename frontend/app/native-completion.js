@@ -1,3 +1,4 @@
+import {completionPriority} from './completion-policy';
 import {ensureSyntaxTree, syntaxTree} from '@codemirror/language';
 import {afterDot} from './member-completion-source';
 
@@ -17,7 +18,7 @@ const catalogs = {
   }
 };
 const options = Object.fromEntries(Object.entries(catalogs).map(([language, groups])=>[language,
-  Object.entries(groups).flatMap(([type, words])=>words.split(' ').map(label=>({label,type,detail:language==='CPP'?'C++17 표준 후보':'Python 3 표준 후보'})))
+  Object.entries(groups).flatMap(([type, words])=>words.split(' ').map(label=>({label,type,boost:completionPriority.standard,detail:language==='CPP'?'C++17 표준 후보':'Python 3 표준 후보'})))
 ]));
 const caches = {CPP:new WeakMap(),PYTHON:new WeakMap()};
 const nonCode = /Comment|String|CharLiteral|CharacterLiteral/;
@@ -48,7 +49,7 @@ export function nativeNameCompletion(language) {
     const choices=new Map(options[language].map(option=>[option.label,option]));
     for(const name of names){
       if(pos>=name.from&&pos<=name.to)continue;
-      choices.set(name.label,{label:name.label,type:name.type,detail:'문서 내 이름'});
+      choices.set(name.label,{label:name.label,type:name.type,boost:completionPriority.document,detail:'문서 내 이름'});
     }
     return {from:word?.from??pos,options:[...choices.values()],validFor:/^[\p{ID_Continue}]*$/u,commitCharacters:[]};
   };
