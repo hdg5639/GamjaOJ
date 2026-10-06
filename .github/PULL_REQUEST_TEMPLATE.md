@@ -1,4 +1,6 @@
 <!-- 제목: type(scope): 변경 요약
+커밋과 PR 제목은 type(scope)만 영어로, 변경 요약은 한글로 작성합니다.
+본문도 한글로 작성하며 코드 식별자·명령어는 원문을 유지합니다.
 예: fix(editor): 비동기 자동완성 선택 유지
 타입: feat / fix / refactor / perf / docs / test / chore
 scope는 editor, ui, judge, generation, learning 등 변경 영역으로 작성합니다.
