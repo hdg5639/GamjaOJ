@@ -13,8 +13,16 @@ final class GenerationResources {
         String table=switch(pipeline){case "TAG"->"generation_job";case "DIRECT"->"generation_spec_draft";case "RULE"->"hybrid_generation";default->throw new IllegalArgumentException();};
         return jdbc.sql("SELECT resource_validation FROM "+table+" WHERE id=?").param(id).query(Boolean.class).single();
     }
+    static JsonNode resourceDefinition(String pipeline,JsonNode original) {
+        var definition=(ObjectNode)original.deepCopy();
+        definition.remove(List.of("validationPolicy","theme","themeDomain","recentStories","learnerFeedback","learningFocus"));
+        if("TAG".equals(pipeline))definition.remove(List.of("generatorContract","inputLayoutPolicy"));
+        definition.put("maximumInputContract","Main reads one integer seed 0..3 and emits ONE complete legal problem input at the public bounds. This is separate from the preliminary small-case/transport generator contract; do not emit four transport records.");
+        return definition;
+    }
     static String ensure(JdbcClient jdbc,String pipeline,UUID job,String version,JsonNode definition,String reference,String validator,String existingLimits) {
         if(!enabled(jdbc,pipeline,job))return existingLimits;
+        definition=resourceDefinition(pipeline,definition);
         var pack=jdbc.sql("SELECT package_json,package_sha256 FROM problem_version WHERE id=? AND ready=false").param(version).query((r,n)->new String[]{r.getString(1),r.getString(2)}).single();
         HybridArtifacts.require(JudgeJson.hash(pack[0]).equals(pack[1]),"RESOURCE_PACKAGE_FENCE");
         var input=JudgeJson.JSON.createObjectNode().put("phase","RESOURCE_QUALIFICATION").put("problemVersion",version).put("packageHash",pack[1]).put("reference",reference).put("validator",validator);

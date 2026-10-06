@@ -448,6 +448,7 @@ class CodexCli(GenerationAdapter):
             contract.write_text(json.dumps(assignment['outputSchema']))
             prompt = spec['instructions'] + '\nTask data:\n' + json.dumps(spec['input'], ensure_ascii=False)
         timeout = invocation_timeout(assignment)
+        prompt += '\nOutput size contract: title <=100 UTF-8 bytes; context/editorial <=6000 UTF-8 bytes (about1900 Korean characters); hints exactly3, each <=2000 characters. Preserve meaning with concise prose.'
         command = [self.binary, 'exec', '--ignore-user-config', '--ignore-rules', '--ephemeral',
                    '--skip-git-repo-check', '--sandbox', 'read-only', '-c', 'features.shell_tool=false',
                    '-c', 'model_reasoning_effort=' + json.dumps(assignment['effort']),

@@ -13,12 +13,16 @@ def normalize(value):
 
 
 def profiles_for(policy, values):
-    tokens = [normalize(v) for v in values if isinstance(v, str)]
-    found = []
-    for profile in policy['profiles']:
-        aliases = [normalize(v) for v in profile['aliases']]
-        if any(alias == token or (len(alias) >= 3 and alias in token) for alias in aliases for token in tokens):
-            found.append(profile['id'])
+    raw = [v.casefold() for v in values if isinstance(v, str)]
+    tokens = [normalize(v) for v in raw]
+    def matches(alias):
+        if re.fullmatch(r'[a-zA-Z0-9_-]+', alias):
+            parts = re.split(r'[-_]', alias.casefold())
+            pattern = r'(?<![a-z0-9])' + r'[-_\s]*'.join(map(re.escape, parts)) + r'(?![a-z0-9])'
+            return any(re.search(pattern, value) for value in raw)
+        key = normalize(alias)
+        return any(key == token or (len(key) >= 3 and key in token) for token in tokens)
+    found = [profile['id'] for profile in policy['profiles'] if any(matches(alias) for alias in profile['aliases'])]
     return sorted(set(['input-contract'] + found))
 
 

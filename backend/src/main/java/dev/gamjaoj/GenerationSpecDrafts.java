@@ -83,7 +83,13 @@ class GenerationSpecDrafts {
         if("PROSE".equals(recoveryScope)&&!build&&!review&&!finish){spec.put("phase","EXPERIMENTAL_PROSE_REPAIR");spec.set("definition",JudgeJson.parse(data[5]));}
         if(feedback!=null)spec.put("recoveryFeedback",feedback);
         GenerationValidationPolicy.attach(spec,data[5]==null?spec:JudgeJson.parse(data[5]));
-        return new GenerationJobs.Assignment(id,token,0,data[2],data[3],spec,null,null,null);
+        JsonNode repair=null;
+        if(build&&"TEACHING".equals(recoveryScope)) {
+            var stored=jdbc.sql("SELECT build_artifacts_json,build_oracle_json FROM generation_spec_draft WHERE id=?").param(id).query((r,n)->new String[]{r.getString(1),r.getString(2)}).single();
+            var artifacts=JudgeJson.parse(stored[0]);var oracle=JudgeJson.parse(stored[1]);var bundle=JudgeJson.JSON.createObjectNode();bundle.set("artifacts",artifacts);bundle.set("oracle",oracle);
+            var fields=bundle.putArray("fields");GenerationJobs.invalidArtifactFields(artifacts,oracle).forEach(fields::add);bundle.putArray("failedChecks").add("Repair only invalid prose fields; title<=100 UTF-8 bytes, context/editorial<=6000 UTF-8 bytes, exactly3 hints <=2000 characters. Preserve every source and oracle byte.");repair=bundle;
+        }
+        return new GenerationJobs.Assignment(id,token,0,data[2],data[3],spec,null,repair,null);
     }
     boolean recoveryEnabled(UUID id){return jdbc.sql("SELECT auto_recovery FROM generation_spec_draft WHERE id=?").param(id).query(Boolean.class).single();}
     void complete(UUID id,UUID token,JsonNode artifacts,JsonNode oracle,JsonNode usage,String error) {
@@ -133,10 +139,20 @@ class GenerationSpecDrafts {
         if(jdbc.sql("SELECT count(*) FROM generation_spec_draft WHERE id=? AND status='BUILD_GENERATING' AND lease_until>CURRENT_TIMESTAMP").param(id).query(Integer.class).single()!=1)
             throw new AccountException(409,"코드 작성 작업의 유효 시간이 지났어요.");
         String failure=error==null?null:Set.of("NEEDS_CHATGPT_AUTH","CODEX_TIMEOUT","CODEX_OUTPUT_LIMIT","CODEX_FAILED_CHECK_MODEL_OR_AUTH","INVALID_CODEX_ARTIFACT","CODEX_VERSION_MISMATCH","CODEX_QUOTA_EXHAUSTED").contains(error)?error:"CODEX_IMPLEMENTATION_FAILED";
-        if(failure==null)try{GenerationJobs.validateArtifacts(artifacts,oracle);}catch(AccountException invalid){failure="INVALID_IMPLEMENTATION";}
+        if(failure==null&&"TEACHING".equals(jdbc.sql("SELECT recovery_scope FROM generation_spec_draft WHERE id=?").param(id).query(String.class).optional().orElse(null))) {
+            var previousArtifacts=JudgeJson.parse(jdbc.sql("SELECT build_artifacts_json FROM generation_spec_draft WHERE id=?").param(id).query(String.class).single());
+            var previousOracle=JudgeJson.parse(jdbc.sql("SELECT build_oracle_json FROM generation_spec_draft WHERE id=?").param(id).query(String.class).single());
+            var invalid=GenerationJobs.invalidArtifactFields(previousArtifacts,previousOracle);
+            if(artifacts==null||!artifacts.isObject()||!previousOracle.equals(oracle))failure="PROSE_SOURCE_FENCE_MISMATCH";
+            else for(var field:List.of("title","context","reference","generator","inputValidator","editorial","hints"))if(!invalid.contains(field)&&!previousArtifacts.path(field).equals(artifacts.path(field)))failure="PROSE_SOURCE_FENCE_MISMATCH";
+        }
+        if(failure==null)try{GenerationJobs.validateArtifacts(artifacts,oracle);}catch(AccountException invalid){
+            var fields=GenerationJobs.invalidArtifactFields(artifacts,oracle);
+            failure=Set.of("title","context","editorial","hints").containsAll(fields)?"INVALID_IMPLEMENTATION_PROSE":"INVALID_IMPLEMENTATION";
+        }
         jdbc.sql("UPDATE generation_spec_draft SET build_completion_json=?,status=?,error_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
                 .param(audit).param(failure==null?"CHECKING":"BUILD_FAILED").param(failure).param(id).update();
-        if(failure!=null)return;
+        if(failure!=null){if("INVALID_IMPLEMENTATION_PROSE".equals(failure)){String code=JudgeJson.canonical(artifacts),independent=JudgeJson.canonical(oracle);jdbc.sql("UPDATE generation_spec_draft SET build_artifacts_json=?,build_oracle_json=?,build_sha256=? WHERE id=?").param(code).param(independent).param(JudgeJson.hash(code+"\n"+independent)).param(id).update();}return;}
         String code=JudgeJson.canonical(artifacts),independent=JudgeJson.canonical(oracle);
         jdbc.sql("UPDATE generation_spec_draft SET build_artifacts_json=?,build_oracle_json=?,build_sha256=? WHERE id=?")
                 .param(code).param(independent).param(JudgeJson.hash(code+"\n"+independent)).param(id).update();

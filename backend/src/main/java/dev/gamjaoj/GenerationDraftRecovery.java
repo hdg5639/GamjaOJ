@@ -9,7 +9,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 /** Retries explicit failed stages. Unknown provider receipts and infrastructure never trigger another call. */
 final class GenerationDraftRecovery {
-    enum Scope { PROSE, IMPLEMENTATION, CONTRACT, REVIEW, FINAL }
+    enum Scope { TEACHING, PROSE, IMPLEMENTATION, CONTRACT, REVIEW, FINAL }
     private static final List<String> SPEC=List.of("token","completion_json","spec_json","spec_sha256");
     private static final List<String> BUILD=List.of("build_token","build_completion_json","build_artifacts_json","build_oracle_json","build_sha256","build_report_json","build_inputs_json");
     private static final List<String> REVIEW=List.of("review_token","review_completion_json","review_payload_json","review_payload_sha256","review_report_json");
@@ -21,7 +21,7 @@ final class GenerationDraftRecovery {
     static Scope scope(String status,String error,JsonNode review) {
         if(stopped(error))return null;
         if("FAILED".equals(status))return Scope.CONTRACT;
-        if("BUILD_FAILED".equals(status))return Scope.IMPLEMENTATION;
+        if("BUILD_FAILED".equals(status))return "INVALID_IMPLEMENTATION_PROSE".equals(error)?Scope.TEACHING:Scope.IMPLEMENTATION;
         if("REVIEW_REJECTED".equals(status)) {
             try{return Scope.valueOf(review.path("failureScope").asText("CONTRACT"));}catch(IllegalArgumentException e){return Scope.CONTRACT;}
         }
@@ -69,6 +69,7 @@ final class GenerationDraftRecovery {
         var clear=new ArrayList<String>();clear.addAll(FINAL);
         String state;
         switch(scope) {
+            case TEACHING -> {state="BUILD_QUEUED";clear.addAll(REVIEW);clear.addAll(List.of("build_token","build_completion_json","build_report_json","build_inputs_json"));}
             case FINAL -> state="FINAL_QUEUED";
             case REVIEW -> {state="REVIEW_QUEUED";clear.addAll(REVIEW);}
             case PROSE -> {state="QUEUED";clear.addAll(REVIEW);clear.add("token");clear.add("completion_json");}

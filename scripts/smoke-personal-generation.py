@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import subprocess
-from smoke_generation_cleanup import cleanup_sql, active_checks_sql
+from smoke_generation_cleanup import cleanup_sql, active_checks_sql, resource_evidence_sql
 
 def ssh(command, data=None):
     return subprocess.run(['ssh','-o','BatchMode=yes',os.environ['GAMJAOJ_APP_SSH_TARGET'],command],input=data,text=True,capture_output=True,check=True).stdout.strip()
@@ -21,6 +21,7 @@ def sql(query):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--allow-operator',action='store_true',help='Permit synthetic accounts when the deployment explicitly grants operator access to all users')
     parser.add_argument('--execute',action='store_true',help='Authorize real ChatGPT-managed Codex generation')
     parser.add_argument('--template',choices=['sequence-sum-v1','parentheses-v1'],default='sequence-sum-v1')
     parser.add_argument('--category',choices=['sequences','strings','graphs'],help='Use category selection with --tags')
@@ -62,7 +63,7 @@ def main():
             password=secrets.token_urlsafe(24)
             assert call('/api/auth/signup','POST',dict(username=name,password=password,nickname='생성 검증',inviteCode=invitation))[0]==201
             assert call('/api/auth/login','POST',dict(username=name,password=password),form=True)[0]==204
-            assert call('/api/ai/status')[1]['operator'] is False
+            assert args.allow_operator or call('/api/ai/status')[1]['operator'] is False
         recommendation=None
         if args.recommend:
             category=args.category or ('sequences' if args.template=='sequence-sum-v1' else 'strings')
@@ -122,6 +123,7 @@ def main():
         assert submission['verdict']=='AC',submission['verdict']
         evidence={'contract':{k:job['preview'].get(k) for k in ('templateId','contractFamily','recipe','sample')},'structures':structures,'authoring':authoring,'stories':stories,'themes':themeHistory,'job':key,'status':job['status'],'validation':job['validation'],'submissionVerdict':submission['verdict'],'privateAccess':'PASS'}
         if recommendation:evidence['recommendation']=recommendation
+        evidence['resources']=json.loads(sql(resource_evidence_sql(key)))
         evidence['themeUsage']=json.loads(sql("SELECT json_build_object('calls',count(*),'actualUsd',sum(a.actual_usd),'unsettled',count(*) FILTER (WHERE a.actual_usd IS NULL)) FROM ai_attempt a JOIN ai_task t ON t.id=a.task_id JOIN app_user u ON u.id=t.user_id WHERE t.kind='THEME' AND u.username IN ('"+"','".join(names)+"')"))
         evidence['generationUsage']=json.loads(sql("SELECT result_json::jsonb->'usage' FROM generation_attempt WHERE job_id='"+key+"' AND revision="+str(job['revision'])))
         # Record actual production queue timing and compiler reuse before deleting fixtures.
@@ -131,7 +133,7 @@ def main():
             "FROM generation_execution e JOIN judge_job j ON j.submission_id=e.submission_id WHERE e.job_id='"+key+"' AND e.revision="+str(job['revision'])))
         Path('.state').mkdir(exist_ok=True)
         Path('.state/personal-generation-smoke.json').write_text(json.dumps(evidence,ensure_ascii=False,indent=2))
-        print('PASS: non-operator generation, real Runner gates, private access and AC submission',flush=True)
+        print('PASS: generation, real Runner gates, private access and AC submission',flush=True)
         print(json.dumps(evidence['runnerPerformance']),flush=True)
     finally:
         # Never remove work while a worker may still hold a lease.
