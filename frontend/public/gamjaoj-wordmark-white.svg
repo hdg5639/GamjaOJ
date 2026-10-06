@@ -11,12 +11,16 @@
       @keyframes wmFadeIn{0%{opacity:0;transform:translateY(3px)}100%{opacity:1;transform:translateY(0)}}
       @media (prefers-reduced-motion:reduce){.wm-symbol,.wm-name,.wm-desc{animation:none!important;opacity:1!important}}
   </style>
-  <g class="wm-symbol">
-    <path d="M25.7 16.1C36.4 8.7 55.2 8.1 68.6 14.5C82.3 21.1 90.1 36.6 88.2 52.4C86.3 68.3 76.5 83.1 60.9 87.7C45.4 92.3 28.6 87.2 19.6 74.8C10.5 62.4 9.7 43.7 16.4 29.7C18.9 24.4 22 18.7 25.7 16.1Z" fill="#FFFFFF"/>
-    <rect x="27" y="27" width="42" height="42" rx="12" fill="#17211B"/>
-    <rect x="32" y="32" width="32" height="32" rx="9" fill="#FFFFFF"/>
-    <path d="M41 41.5L35.8 48L41 54.5M55 41.5L60.2 48L55 54.5" fill="none" stroke="#17211B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M43.6 48.6L46.9 51.8L52.6 44.4" fill="none" stroke="#17211B" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="wm-symbol"><g transform="scale(2.5263157895)">
+  <g>
+    <path fill="#FFFFFF" d="M19 2.5 32.8 10v16L19 33.5 5.2 26V10L19 2.5Z"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="#17211B" stroke-width="1.9" d="M13.5 13.7 9.7 19l3.8 5.3"/>
+      <path stroke="#17211B" stroke-width="2.1" pathLength="1" d="m15.9 19.1 2.7 2.7 4-5.3"/>
+      <path stroke="#17211B" stroke-width="1.9" d="m24.5 13.7 3.8 5.3-3.8 5.3"/>
+    </g>
   </g>
+  </g></g>
+
   <text x="100" y="67" class="brand-name wm-name" fill="#FFFFFF">GamjaOJ</text>
 </svg>
