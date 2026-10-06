@@ -1,3 +1,4 @@
+import {semanticPriority} from './completion-policy';
 import {syntaxTree} from '@codemirror/language';
 import {insertCompletionText} from '@codemirror/autocomplete';
 
@@ -10,7 +11,7 @@ function positionOffset(doc, position) {
 }
 
 /** Apply only inert text edits to this exact document version. No LSP commands are executed. */
-export function semanticOption(item, state, from, to) {
+export function semanticOption(item, state, from, to, member=false) {
   const edit=item.textEdit, range=edit?.replace||edit?.range;
   const start=range?positionOffset(state.doc,range.start):from;
   const end=range?positionOffset(state.doc,range.end):to;
@@ -25,7 +26,7 @@ export function semanticOption(item, state, from, to) {
   if(!label)return null;
   const additions=(item.additionalTextEdits||[]).map(edit=>({from:positionOffset(state.doc,edit.range?.start),to:positionOffset(state.doc,edit.range?.end),insert:edit.newText}));
   if(additions.some(e=>e.from==null||e.to==null||e.from>e.to||typeof e.insert!=='string'||e.insert.length>8192||e.from<=end&&e.to>=start))return null;
-  return {label,displayLabel:item.label,type:types[item.kind]||'variable',detail:item.detail||'',boost:20,
+  return {label,displayLabel:item.label,type:types[item.kind]||'variable',detail:item.detail||'',boost:semanticPriority(item,member),
     apply(view, completion, currentFrom, currentTo) {
       if(view.state.doc!==state.doc)return; // Results never modify a newer draft.
       const changes=[...additions,{from:start,to:end,insert:text}].sort((a,b)=>a.from-b.from);
@@ -42,6 +43,7 @@ export function semanticCompletionSource(language) {
   let csrf=null, request=null, revision=0;
   return async context=>{
     const {state,pos}=context;
+    context.abortOnDocChange=true;
     if(state.readOnly)return null;
     for(let node=syntaxTree(state).resolveInner(pos,-1);node;node=node.parent)
       if(/Comment|String|CharLiteral|CharacterLiteral|TextBlock/.test(node.name))return null;
@@ -64,9 +66,10 @@ export function semanticCompletionSource(language) {
         return response.json();
       })();
       const result=await request;
-      if(context.aborted||!Array.isArray(result?.items))return null;
+      if(context.aborted||ticket!==revision||!Array.isArray(result?.items))return null;
       const from=word?.from??pos;
-      const options=result.items.map(item=>semanticOption(item,state,from,pos)).filter(Boolean);
+      const member=/(?:\.|->|::)\s*$/.test(state.sliceDoc(Math.max(0,from-8),from));
+      const options=result.items.map(item=>semanticOption(item,state,from,pos,member)).filter(Boolean);
       return options.length?{from,options,commitCharacters:[]}:null;
     } catch { return null; }
     finally {clearTimeout(timer);request=null;}

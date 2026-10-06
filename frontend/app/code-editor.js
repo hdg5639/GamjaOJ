@@ -16,6 +16,7 @@ import { javaNameCompletion } from './java-completion';
 import {cppNameCompletion,pythonNameCompletion} from './native-completion';
 import {snippetCompletionSource} from './code-snippets';
 import {semanticCompletionSource} from './semantic-completion';
+import {stableCompletionSelection} from './completion-policy';
 import {memberCompletionSource} from './member-completion-source';
 
 // Ex commands are registered globally by Vim, but actions belong to the focused editor.
@@ -148,6 +149,7 @@ export default function CodeEditor({ id = 'source', label = 'Main.java', languag
         indentOnInput(), bracketMatching(), closeBrackets(), foldGutter(), highlightSelectionMatches(),
         syntaxHighlighting(colors), theme,
         tooltips({tooltipSpace:()=>({left:8,top:8,right:document.documentElement.clientWidth-8,bottom:window.innerHeight-8})}),
+        stableCompletionSelection,
         autocompletion({override:[snippetCompletionSource(language),semanticCompletionSource(language),memberCompletionSource(language),language==='JAVA'?javaNameCompletion:language==='CPP'?cppNameCompletion:pythonNameCompletion], defaultKeymap:false, activateOnTyping:true, selectOnOpen:true, interactionDelay:0}),
         editable.current.of([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled)]),
         EditorView.contentAttributes.of({ 'aria-label': label, 'aria-description': 'Ctrl+Space 후보 열기, 방향키 선택, Enter 또는 Tab 확정, Esc 닫기. 후보가 없으면 Tab은 들여쓰기.',

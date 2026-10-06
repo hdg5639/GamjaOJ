@@ -1,3 +1,4 @@
+import {completionPriority} from './completion-policy';
 import { javaStandardNames } from './java-standard-completion';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { afterDot } from './member-completion-source';
@@ -61,7 +62,7 @@ export function javaNameCompletion(context) {
   for (const name of names) {
     if (pos >= name.from && pos <= name.to) continue;
     const key = `${name.type}:${name.label}`;
-    options.set(key, {label:name.label, type:name.type, detail:name.type === 'function' ? '문서 내 메서드' : name.type === 'class' ? '문서 내 타입' : '문서 내 변수'});
+    options.set(key, {label:name.label, type:name.type, boost:completionPriority.document, detail:name.type === 'function' ? '문서 내 메서드' : name.type === 'class' ? '문서 내 타입' : '문서 내 변수'});
   }
   return {from:word?.from ?? pos, options:[...options.values()], validFor:/^[\p{ID_Continue}$]*$/u, commitCharacters:[]};
 }
