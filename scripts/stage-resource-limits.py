@@ -6,6 +6,7 @@ import argparse,copy,hashlib,json,sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from scripts.resource_evidence import canonical,digest,complete_qualification,audit_plan,complete_measurement,public_example_plan,profiling_seconds,compatible_execution_evidence
+from scripts.resource_time_policy import POLICY, measured_seconds
 
 def quote(v):return "'"+str(v).replace("'","''")+"'"
 
@@ -52,6 +53,13 @@ def stage(jobs,measurements,certificates,output):
    slow=report.get('slow',{});witness=job.get('slow',{}).get(language)
    if job.get('resourceTimePolicy') is not None and report.get('resourceTimePolicy')!=job['resourceTimePolicy']:
     issues.append(dict(version=version,language=language,reason='resource time policy requires new qualification'));continue
+   if job.get('resourceTimePolicy') is not None:
+    policy=job['resourceTimePolicy']
+    try:
+     if policy.get('version')!=POLICY or policy.get('mode') not in ('GENERAL','ALGORITHM_SENSITIVE'):raise ValueError('invalid policy')
+     if proposal['testWallSeconds']!=measured_seconds(language,report['maxWallMs'],algorithm_sensitive=policy['mode']=='ALGORITHM_SENSITIVE'):raise ValueError('wrong time headroom')
+    except (KeyError,TypeError,ValueError):
+     issues.append(dict(version=version,language=language,reason='resource time headroom policy mismatch'));continue
    efficiency_required=job.get('intent',{}).get('efficiencyRequired') or (job.get('resourceTimePolicy') is None and proof.get('inefficientApproaches'))
    if efficiency_required and (evidence.get('inefficientWitnessSeparated') is not True or not witness or slow.get('sourceHash')!=hashlib.sha256(witness.encode()).hexdigest() or not expected_plan.get('samples') or not complete_qualification(slow.get('small',{}),language,slow['sourceHash'],public_example_plan(expected_plan),trusted_profile) or slow.get('large',{}).get('verdict') not in ('TLE','MLE')):
     issues.append(dict(version=version,language=language,reason='intended inefficient approach not separated'));continue
