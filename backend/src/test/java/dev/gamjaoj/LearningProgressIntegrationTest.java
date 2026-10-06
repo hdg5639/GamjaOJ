@@ -91,5 +91,35 @@ class LearningProgressIntegrationTest {
         mvc.perform(get("/api/my/learning")).andExpect(status().isUnauthorized());
         assertThat(jdbc.sql("SELECT count(*) FROM ai_task").query(Integer.class).single()).isZero();
     }
+    @Test void performanceHistoryIsOwnerScopedFormalAndLegacyMetricsRemainMissing()throws Exception{
+        submit(alice,"lp-arrays","AC",at(today),false);
+        submit(bob,"lp-bfs","AC",at(today),false);
+        submit(alice,"lp-dp","AC",at(today),true);
+        submit(alice,"lp-held","AC",at(today),false);
+        submit(alice,"lp-diagnostic","AC",at(today),false);
+        mvc.perform(get("/api/my/performance")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/my/performance?page=-1").with(user("alice"))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/my/performance").with(user("alice"))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.items[0].version").value("lp-arrays"))
+            .andExpect(jsonPath("$.items[0].eligibility").value("MISSING_METRICS"))
+            .andExpect(jsonPath("$.items[0].maxWallMs").isEmpty()).andExpect(jsonPath("$.hasMore").value(false));
+        assertThat(learning.dashboard("alice",today).efficiencyRetry()).isEmpty();
+    }
+    @Test void judgeEvidenceFeedsEfficiencySeparatelyFromReflectionsAndGrowth()throws Exception{
+        UUID worker=UUID.randomUUID();var metrics=new PerformanceHistoryTest();
+        for(int day=0;day<6;day++){
+            UUID id=submit(alice,"lp-arrays","AC",at(today.minusDays(6-day)),false);
+            String report=metrics.report(day<3?100:300,day<3?10*1048576:30*1048576);
+            jdbc.sql("UPDATE submission SET source_sha256=? WHERE id=?").param(JudgeJson.hash(day<3?"old":"new")).param(id).update();
+            jdbc.sql("UPDATE judge_job SET attempt=1,result_json=?,result_sha256=? WHERE submission_id=?").param(report).param(JudgeJson.hash(report)).param(id).update();
+            jdbc.sql("INSERT INTO judge_attempt(submission_id,attempt,token,worker_id,status,result_json) VALUES (?,1,?,?,'COMPLETED',?)").param(id).param(UUID.randomUUID()).param(worker).param(report).update();
+        }
+        var result=learning.dashboard("alice",today);
+        assertThat(result.efficiencyRetry()).hasSize(2);assertThat(result.revisit()).isEmpty();
+        assertThat(result.categories().stream().filter(c->c.category().equals("배열·문자열")).findFirst().orElseThrow().solved()).isEqualTo(1);
+        mvc.perform(get("/api/my/performance").with(user("alice"))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].maxWallMs").value(300)).andExpect(jsonPath("$.items[0].comparisonProfile.worker").value(worker.toString()));
+        assertThat(learning.dashboard("bob",today).efficiencyRetry()).isEmpty();
+    }
     String body(UUID id,String confidence,String note){return JudgeJson.JSON.createObjectNode().put("submissionId",id.toString()).put("confidence",confidence).put("note",note).toString();}
 }

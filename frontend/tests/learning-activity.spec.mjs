@@ -8,6 +8,7 @@ async function fixture(page,categories){
   const req=route.request(),url=new URL(req.url());let data=[];
   if(url.pathname==='/api/me')data={id:'learning-user',username:'learner',nickname:'감자'};
   if(url.pathname==='/api/problems')data=[problem,{...problem,version:'v2',title:'처음 보는 그래프',category:'너비 우선 탐색'}];
+  if(url.pathname==='/api/my/performance')data={items:[{submissionId:'s1',title:'기억할 풀이',language:'JAVA',submittedAt:'2026-10-02T00:00:00Z',maxWallMs:389,maxMemoryBytes:null,executionProfile:{language:'JAVA'},eligibility:'UNKNOWN_PROFILE',comparisonKey:null}],hasMore:false};
   if(url.pathname==='/api/my/summary')data={submitted:8,attemptedProblems:5,solvedProblems:1};
   if(url.pathname==='/api/my/growth')data={layer:0,nextLayer:1,nextSolved:1,required:5,eligibleProblems:1,categories:1,evidence:[1,0,0,0,0,0,0,0,0]};
   if(url.pathname==='/api/my/problems')data={total:1,items:[{...problem,attempts:8,accepted:1,lastSubmitted:'2026-10-02T00:00:00Z',confidence:reflection.confidence,reflectionNote:reflection.note}]};
@@ -78,4 +79,16 @@ for(const width of [390,1440])test(`many learning categories stay compact and re
  expect(seen.size).toBe(36);await balance.getByRole('button',{name:'도전한 유형 13'}).click();await expect(rows.first()).toContainText('유형 00');
  await expect(page.getByRole('region',{name:'다음 학습'}).getByRole('button',{name:'처음 보는 그래프 풀기'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await balance.screenshot({path:`/tmp/gamja-category-overview-${width}.png`,animations:'disabled'});
+});
+
+test('AC performance records show missing memory and profile without skill scoring',async({page})=>{
+ await fixture(page);await page.goto(base+'/#mypage');
+ const history=page.getByRole('region',{name:'AC 성능 이력',exact:true});
+ await expect(history.getByText('389 ms',{exact:false})).toBeVisible();
+ await expect(history.getByText('메모리 미측정',{exact:false})).toBeVisible();
+ await expect(history.getByText('실행 조건 확인 불가',{exact:true})).toBeVisible();
+ await history.getByText('실행 profile',{exact:true}).click();
+ await expect(history.locator('pre')).toContainText('JAVA');
+ await expect(history.getByRole('button',{name:'다음',exact:true})).toBeDisabled();
+ await expect(page.getByRole('region',{name:'효율 재도전',exact:true})).toHaveCount(0);
 });
