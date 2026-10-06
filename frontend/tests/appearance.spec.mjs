@@ -117,3 +117,22 @@ test('settings remain usable without local storage and on mobile',async({page})=
  await dialog.getByRole('button',{name:'닫기',exact:true}).click();
  await expect(page.locator('.code-editor .cm-editor')).toHaveCSS('background-color','rgb(18, 52, 86)');
 });
+
+for(const width of [390,1440])test(`settings scroll within a fixed glass shell without live backdrop blur at ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:844});await open(page);
+ const editor=page.getByLabel('Main.java',{exact:true});await editor.fill('public class Main {}');await editor.press('End');await editor.pressSequentially(' // keep undo');
+ const dialog=await settings(page,'에디터'),content=dialog.locator('.appearance-content'),header=dialog.locator('.modal-head');
+ await expect(dialog).toHaveCSS('overflow-y','hidden');await expect(dialog).toHaveCSS('backdrop-filter','none');await expect(content).toHaveCSS('overflow-y','auto');
+ expect(await dialog.evaluate(el=>getComputedStyle(el,'::backdrop').backdropFilter)).toBe('none');
+ await dialog.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));
+ const editorNode=await editor.elementHandle(),before=await header.boundingBox();
+ const bounds=await content.boundingBox();await page.mouse.move(bounds.x+bounds.width/2,bounds.y+Math.min(150,bounds.height/2));await page.mouse.wheel(0,900);
+ await expect.poll(()=>content.evaluate(el=>el.scrollTop)).toBeGreaterThan(100);
+ expect((await header.boundingBox()).y).toBe(before.y);expect(await dialog.evaluate(el=>el.scrollTop)).toBe(0);
+ await dialog.getByRole('button',{name:'이 영역 색상 초기화'}).scrollIntoViewIfNeeded();await expect(dialog.getByRole('button',{name:'이 영역 색상 초기화'})).toBeInViewport();
+ await dialog.getByLabel('에디터 배경 HEX',{exact:true}).fill('#123456');await expect(page.locator('.code-editor .cm-editor')).toHaveCSS('background-color','rgb(18, 52, 86)');
+ await page.screenshot({path:`/tmp/gamja-appearance-scroll-${width}.png`});
+ await page.keyboard.press('Escape');await expect(dialog).not.toBeVisible();await expect(page.getByRole('button',{name:'화면 설정',exact:true})).toBeFocused();
+ expect(await editor.evaluate((node,original)=>node===original,editorNode)).toBe(true);await editor.focus();await editor.press('ControlOrMeta+z');await expect(editor).not.toContainText('keep undo');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
