@@ -9,3 +9,11 @@
 .problem-statement p[data-inline-illustration] .statement-image {margin:0;}
 .problem-statement p[data-inline-illustration] .statement-image-button {margin-inline:auto;}
 .problem-statement .statement-figure-explanation {margin:0 0 22px!important;}
+
+/* Bound statement layout/paint invalidation to the existing scrolling pane.
+   Its size comes from the solving grid; containment does not skip content or
+   estimate heights, so anchors, selection and the scroll extent stay intact. */
+.problem-card,
+.diagnostic-panel[data-solving="true"] .diagnostic-workspace > article {
+ contain:layout paint;
+}

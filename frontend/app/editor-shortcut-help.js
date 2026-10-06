@@ -3,11 +3,11 @@ function fitTools(element) {
   if(element?.open)element.style.setProperty('--tool-panel-height',`${Math.max(60,window.innerHeight-element.getBoundingClientRect().bottom-16)}px`);
 }
 export function EditorTools({id,children}) {
-  const host=useRef(null);
+  const host=useRef(null),frame=useRef(null);
   useEffect(()=>{
-    const fit=()=>fitTools(host.current);
-    window.addEventListener('resize',fit);window.addEventListener('scroll',fit,true);
-    return()=>{window.removeEventListener('resize',fit);window.removeEventListener('scroll',fit,true);};
+    const fit=()=>{if(!host.current?.open||frame.current!==null)return;frame.current=requestAnimationFrame(()=>{frame.current=null;fitTools(host.current);});};
+    window.addEventListener('resize',fit);window.addEventListener('scroll',fit,{capture:true,passive:true});
+    return()=>{if(frame.current!==null)cancelAnimationFrame(frame.current);window.removeEventListener('resize',fit);window.removeEventListener('scroll',fit,true);};
   },[]);
   return <details id={id} ref={host} className="tool-pop" onToggle={event=>fitTools(event.currentTarget)}>{children}</details>;
 }

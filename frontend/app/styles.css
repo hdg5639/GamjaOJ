@@ -19,8 +19,8 @@ a { color: inherit; }
 button, a, summary, input, textarea, select { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 input:focus, textarea:focus, select:focus { border-color: var(--green); }
-button { min-height: 36px; }
-button:not(:disabled):hover { filter: brightness(.96); }
+/* Keep controls isolated so hover color changes do not repaint adjacent panes. */
+button { min-height: 36px; transform:translateZ(0); }
 button[aria-pressed="true"] { color: var(--green); }
 button.primary { color: white; }
 .shell { max-width: 1120px; margin: auto; padding: 0 32px; }

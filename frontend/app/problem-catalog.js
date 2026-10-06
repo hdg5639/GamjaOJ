@@ -1,7 +1,7 @@
 'use client';
 import SelectControl from './select-control';
 
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import SiteNotice from './site-notice';
 import GrowthSummary from './growth-summary';
 import ProblemId,{shortProblemId} from './problem-id';
@@ -10,7 +10,7 @@ import {ThinkingGuide,thinkingLayers,thinkingSource} from './thinking-difficulty
 const solveLabels={SOLVED:'해결',ATTEMPTED:'제출했지만 미해결',UNATTEMPTED:'미제출'};
 const levels={UNRATED:'겹 미배정',...Object.fromEntries(thinkingLayers.map(([name],i)=>[String(i+1),`${i+1}겹 · ${name}`]))};
 
-export default function ProblemCatalog({ problems, loaded, error, selectedVersion, locked, onChoose, api, onChanged, home=false, onNavigate, activity=0 }) {
+function ProblemCatalog({ problems, loaded, error, selectedVersion, locked, onChoose, api, onChanged, home=false, onNavigate, activity=0 }) {
   const [query,setQuery]=useState(''),[scope,setScope]=useState('all'),[category,setCategory]=useState(''),[difficulty,setDifficulty]=useState(''),[tag,setTag]=useState(''),[solve,setSolve]=useState('');
   const [editing,setEditing]=useState(null),[saving,setSaving]=useState(false),[saveError,setSaveError]=useState(''),[saved,setSaved]=useState('');
   const [page,setPage]=useState(1),[sort,setSort]=useState(''),[editLayer,setEditLayer]=useState('UNRATED');
@@ -28,20 +28,20 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
   useEffect(()=>{ const media=window.matchMedia('(min-width: 801px)'); const sync=()=>setFiltersOpen(media.matches); sync(); media.addEventListener('change',sync); return ()=>media.removeEventListener('change',sync); },[]);
   const filterCount=[category,difficulty,tag,solve,sort].filter(Boolean).length;
   // Held problems leave the shared lists; their owner still sees them under 내가 만든 문제 to review or delete.
-  problems=problems.map(p=>({...p,title:p.title?.trim()||`연습 문제 · ${shortProblemId(p.version)}`})).filter(p=>!p.problemHeld||(p.mine&&scope==='mine'));
+  problems=useMemo(()=>problems.map(p=>({...p,title:p.title?.trim()||`연습 문제 · ${shortProblemId(p.version)}`})).filter(p=>!p.problemHeld||(p.mine&&scope==='mine')),[problems,scope]);
   const term=query.trim().toLocaleLowerCase();
-  const matches=problems.filter(p=>(scope==='mine'?p.mine:scope==='others'?p.shared&&!p.mine&&p.generated:p.shared!==false)
+  const matches=useMemo(()=>problems.filter(p=>(scope==='mine'?p.mine:scope==='others'?p.shared&&!p.mine&&p.generated:p.shared!==false)
     &&(!category||(p.category||'미분류')===category)&&(!difficulty||(difficulty.startsWith('MIN')?(p.thinking?.layer||0)>=Number(difficulty.slice(3))&&['CURATED_ESTIMATE','MODEL_ESTIMATE'].includes(p.thinking?.source):String(p.thinking?.layer||'UNRATED')===difficulty))&&(!tag||(p.tags||[]).includes(tag))
     &&(!solve||(solve==='UNSOLVED'?['UNATTEMPTED','ATTEMPTED'].includes(p.solveStatus):p.solveStatus===solve))
-    &&`${p.title} ${p.version} ${shortProblemId(p.version)} ${p.category||''} ${(p.tags||[]).join(' ')}`.toLocaleLowerCase().includes(term)).sort((a,b)=>sort==='asc'?(a.thinking?.layer??10)-(b.thinking?.layer??10):sort==='desc'?(b.thinking?.layer??0)-(a.thinking?.layer??0):0);
+    &&`${p.title} ${p.version} ${shortProblemId(p.version)} ${p.category||''} ${(p.tags||[]).join(' ')}`.toLocaleLowerCase().includes(term)).sort((a,b)=>sort==='asc'?(a.thinking?.layer??10)-(b.thinking?.layer??10):sort==='desc'?(b.thinking?.layer??0)-(a.thinking?.layer??0):0),[problems,scope,category,difficulty,tag,solve,term,sort]);
   const pages=Math.max(1,Math.ceil(matches.length/pageSize)),currentPage=Math.min(page,pages);
   const visible=matches.slice((currentPage-1)*pageSize,currentPage*pageSize);
   useEffect(()=>setPage(1),[query,scope,category,difficulty,tag,solve,sort]);
   useEffect(()=>setPage(p=>Math.min(p,pages)),[pages]);
   function focusResults(){requestAnimationFrame(()=>{const results=document.getElementById('catalog-results');results?.scrollIntoView({block:'start'});results?.focus({preventScroll:true});});}
   function changePage(value){setPage(value);setRemoving(null);focusResults();}
-  const categories=[...new Set(problems.map(p=>p.category||'미분류'))].sort();
-  const tags=[...new Set(problems.flatMap(p=>p.tags||[]))].sort();
+  const categories=useMemo(()=>[...new Set(problems.map(p=>p.category||'미분류'))].sort(),[problems]);
+  const tags=useMemo(()=>[...new Set(problems.flatMap(p=>p.tags||[]))].sort(),[problems]);
   async function save(event){
     event.preventDefault();if(saving)return;setSaving(true);setSaveError('');setSaved('');
     const fields=Object.fromEntries(new FormData(event.currentTarget));
@@ -108,3 +108,5 @@ export default function ProblemCatalog({ problems, loaded, error, selectedVersio
     {home&&<SiteNotice/>}
   </section>;
 }
+
+export default memo(ProblemCatalog);

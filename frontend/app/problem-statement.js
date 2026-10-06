@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {memo,useEffect,useMemo,useRef,useState} from 'react';
 import Markdown,{defaultUrlTransform} from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Modal from './modal';
@@ -11,7 +11,7 @@ function StatementImage({src,alt='',caption='',width,height,onExpand}){
  const [failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[src]);
  return <span className="statement-image">{failed?<span className="statement-image-missing" role="status">그림을 불러오지 못했어요. {alt}<button type="button" className="secondary" onClick={()=>setFailed(false)}>다시 불러오기</button></span>:<button type="button" className="statement-image-button" aria-label={`${alt||'문제 그림'} 확대`} onClick={()=>onExpand({src,alt,caption})}><img src={src} alt={alt} width={width} height={height} loading="lazy" decoding="async" onError={()=>setFailed(true)}/><span className="statement-image-hint">클릭하여 확대</span></button>}{caption&&<span className="statement-image-caption">{caption}</span>}</span>;
 }
-export default function ProblemStatement({statement='',version,api,className='',manage=true}){
+function ProblemStatement({statement='',version,api,className='',manage=true}){
  const [savedPresentation,setPresentation]=useState({canEdit:false,illustrations:[],scope:null}),[expanded,setExpanded]=useState(null),[editing,setEditing]=useState(false),[file,setFile]=useState(null),[preview,setPreview]=useState(''),[alt,setAlt]=useState(''),[caption,setCaption]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[loadError,setLoadError]=useState(''),[pending,setPending]=useState(null),[deleting,setDeleting]=useState(null);
  const revision=useRef(0),executionLock=useRef(false),fileInput=useRef(null);
  const path=version?`/api/problems/${encodeURIComponent(version)}/illustrations`:null;
@@ -33,8 +33,9 @@ export default function ProblemStatement({statement='',version,api,className='',
   a:({href,children})=><a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
   table:({children})=><div className="statement-table-scroll"><table>{children}</table></div>,
  }),[presentation.illustrations]);
+ const renderedStatement=useMemo(()=>(<Markdown key={version||statement} remarkPlugins={[remarkGfm,[remarkStatementIllustrations,{placements:layout.placements}]]} skipHtml components={components} urlTransform={(url,key)=>key==='src'?statementImageUrl(url):defaultUrlTransform(url)}>{typeof statement==='string'?statement:''}</Markdown>),[version,statement,layout.placements,components]);
  return <div className={`problem-statement ${className}`}>
-  <Markdown key={version||statement} remarkPlugins={[remarkGfm,[remarkStatementIllustrations,{placements:layout.placements}]]} skipHtml components={components} urlTransform={(url,key)=>key==='src'?statementImageUrl(url):defaultUrlTransform(url)}>{typeof statement==='string'?statement:''}</Markdown>
+  {renderedStatement}
   {loadError&&<p className="statement-illustration-error" role="status">{loadError} <button type="button" className="secondary" onClick={refresh}>다시 불러오기</button></p>}
   {layout.remainder.length>0&&<section className="statement-illustrations" aria-label="문제 이해 그림">{layout.remainder.map((image,i)=>statementImageUrl(image.src)&&<figure key={image.id||image.src||i}><StatementImage {...image} onExpand={setExpanded}/></figure>)}</section>}
   {manage&&presentation.canEdit&&<button type="button" className="secondary statement-manage" onClick={()=>setEditing(true)}>문제 그림 관리</button>}
@@ -53,3 +54,5 @@ export default function ProblemStatement({statement='',version,api,className='',
   </div></Modal>
  </div>;
 }
+
+export default memo(ProblemStatement);

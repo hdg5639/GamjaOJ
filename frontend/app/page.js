@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Workspace from './workspace';
+import dynamic from 'next/dynamic';
+const Workspace = dynamic(() => import('./workspace'));
 import AppHeader from './auto-header';
 import ThemeToggle from './theme-toggle';
 import AppearanceSettings from './appearance-settings';
 import SiteNotice from './site-notice';
-import IntegrationsPanel from './integrations-panel';
+const IntegrationsPanel = dynamic(() => import('./integrations-panel'));
 import {cachedApi} from './client-cache.mjs';
 
 async function request(path, options = {}) {

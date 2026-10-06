@@ -23,21 +23,26 @@ test('reduced motion disables transitions and modal keeps keyboard dismissal and
  await page.emulateMedia({reducedMotion:'reduce'});await open(page);await page.getByRole('button',{name:'사이드바 접기'}).click();await expect(page.locator('.app-navigation')).toHaveCSS('width','64px');expect(await page.locator('.workspace').evaluate(n=>n.getAnimations({subtree:true}).length)).toBe(0);
  const trigger=page.getByRole('button',{name:'화면 설정',exact:true});await trigger.click();const dialog=page.getByRole('dialog',{name:'화면 설정',exact:true});await expect(dialog).toBeVisible();expect(await dialog.evaluate(n=>n.getAnimations().length)).toBe(0);await dialog.press('Escape');await expect(dialog).not.toBeVisible();await expect(trigger).toBeFocused();
 });
-for(const width of [390,1440]) test(`uniform glass surfaces remain translucent in light and custom dark themes at ${width}px`,async({page})=>{
+for(const width of [390,1440]) test(`lightweight glass surfaces remain translucent in light and custom dark themes at ${width}px`,async({page})=>{
  await open(page);await page.setViewportSize({width,height:950});
  const trigger=page.getByRole('button',{name:'화면 설정',exact:true});await trigger.click();const dialog=page.getByRole('dialog',{name:'화면 설정',exact:true});
  for(const dark of [false,true]) {
   if(dark){await dialog.getByRole('button',{name:'다크',exact:true}).click();await dialog.getByRole('button',{name:/밤바다/}).click();}
-  for(const surface of [page.locator('.header-slot'),page.locator('.app-navigation'),dialog,dialog.locator('.modal-head')]) {
-   await expect(surface).toHaveCSS('background-image','none');await expect(surface).toHaveCSS('backdrop-filter',/blur/);
+  for(const [surface,blur] of [[page.locator('.header-slot'),'blur(8px)'],[page.locator('.app-navigation'),'blur(10px)'],[dialog,'blur(10px)'],[dialog.locator('.modal-head'),'none']]) {
+   await expect(surface).toHaveCSS('background-image','none');await expect(surface).toHaveCSS('backdrop-filter',blur);
    const alpha=await surface.evaluate(n=>{const ctx=document.createElement('canvas').getContext('2d');ctx.fillStyle=getComputedStyle(n).backgroundColor;ctx.fillRect(0,0,1,1);return ctx.getImageData(0,0,1,1).data[3]/255;});expect(alpha).toBeGreaterThan(.5);expect(alpha).toBeLessThan(.95);
   }
+  await expect(page.locator('.practice-grid')).toHaveCSS('backdrop-filter','none');
+  await expect(page.locator('.practice-view .primary').first()).toHaveCSS('filter','none');
   await expect(dialog.locator('.modal-body')).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
   await expect(page.locator('body')).toHaveCSS('background-image',/linear-gradient/);
   const previousWash=await page.locator('body').evaluate(n=>getComputedStyle(n).backgroundImage);
   await dialog.getByLabel('화면 배경 HEX',{exact:true}).fill(dark?'#171b2b':'#f1efe9');
   await expect.poll(()=>page.locator('body').evaluate(n=>getComputedStyle(n).backgroundImage)).not.toBe(previousWash);
   await expect(page.locator('body')).toHaveCSS('background-color',dark?'rgb(23, 27, 43)':'rgb(241, 239, 233)');
+  // The cached wash must track custom colors and stay behind interactive content.
+  const wash=await page.locator('body').evaluate(n=>{const layer=getComputedStyle(n,'::before'),body=getComputedStyle(n);return {position:layer.position,inset:layer.inset,pointer:layer.pointerEvents,color:layer.backgroundColor,image:layer.backgroundImage,bodyColor:body.backgroundColor,bodyImage:body.backgroundImage};});
+  expect(wash.position).toBe('fixed');expect(wash.inset).toBe('0px');expect(wash.pointer).toBe('none');expect(wash.color).toBe(wash.bodyColor);expect(wash.image).toBe(wash.bodyImage);
   const edge=dialog.locator('.appearance-color').first(),oldEdge=await edge.evaluate(n=>getComputedStyle(n).borderBottomColor);
   await dialog.getByLabel('테두리 HEX',{exact:true}).fill('#887766');
   await expect.poll(()=>edge.evaluate(n=>getComputedStyle(n).borderBottomColor)).not.toBe(oldEdge);
