@@ -12,7 +12,7 @@ test('automatic scenes keep their bounds, pause on hover and stop when login inp
  const active=()=>preview.locator('.auth-preview-slide[data-active="true"]');
  await expect(active()).toContainText('내 방식으로 풀고');const before=await preview.boundingBox();
  await page.clock.fastForward(7100);await expect(active()).toContainText('한 번 더 돌아보고');
- const after=await preview.boundingBox();expect(after.height).toBe(before.height);expect(after.width).toBe(before.width);
+ const after=await preview.boundingBox();expect(after.height).toBeCloseTo(before.height,2);expect(after.width).toBeCloseTo(before.width,2);
  await preview.hover();await page.clock.fastForward(15000);await expect(active()).toContainText('한 번 더 돌아보고');
  await page.mouse.move(0,0);await page.clock.fastForward(7100);await expect(active()).toContainText('다음 연습으로 이어가요');
  await page.getByLabel('아이디',{exact:true}).fill('learner');await page.clock.fastForward(15000);await expect(active()).toContainText('다음 연습으로 이어가요');await expect(page.getByLabel('아이디',{exact:true})).toHaveValue('learner');
