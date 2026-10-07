@@ -205,3 +205,31 @@
  .shell[data-auth-mode="signup"] .login-page .card > form { gap:8px; }
  .shell[data-auth-mode="signup"] .login-page .card > .help { margin-top:8px; }
 }
+/* Browser chrome can leave only 600–700px on a laptop. Reserve room for
+   the full footer by reducing secondary content, never clipping its copy. */
+@media(min-width:701px) and (max-height:700px) {
+ .auth-start-guide { display:none; }
+ .shell[data-auth-mode="signup"] .login-page .card > form { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+ .shell[data-auth-mode="signup"] .login-page .card > form > .primary { grid-column:1/-1; }
+}
+@media(min-width:1280px) and (max-height:700px) {
+ .auth-preview-slide-title > p { display:none; }
+ .auth-preview-slide-title { padding-top:10px; }
+ .auth-preview-problem { padding-block:8px; }
+ .auth-preview-notes > div { padding-block:8px; }
+ .auth-preview-notes span { margin-bottom:4px; }
+ .auth-preview-training { gap:8px; }
+ .auth-preview-slide-title h2 { font-size:16px; }
+}
+@media(min-width:701px) and (max-height:700px) {
+ .login-page > .auth-story { padding:16px; gap:16px; }
+}
+@media(min-width:1280px) and (max-height:640px) {
+ .auth-practice-preview pre { line-height:1.45; }
+ .auth-preview-controls { padding-block:4px; }
+ .auth-preview-problem dl { margin-top:6px; }
+ .auth-preview-slide-title h2 { margin-block:6px; }
+}
+@media(min-width:701px) and (max-height:640px) {
+ .shell:not(.signed-in) .login-page { padding-block:6px; }
+}
