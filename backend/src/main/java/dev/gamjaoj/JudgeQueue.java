@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -113,8 +114,23 @@ public class JudgeQueue {
         if (current.status().equals("FINISHED") && token.equals(current.token()) && hash.equals(current.resultSha256())) return;
         if (!current.status().equals("RUNNING") || !token.equals(current.token()) || !current.leaseUntil().isAfter(now()))
             throw new AccountException(409, "Expired or superseded judge attempt");
-        validate(assignment(current), report);
+        Assignment expected=assignment(current);
+        validate(expected, report);
         OffsetDateTime now = now();
+        // One isolated replay protects timing boundaries during normalization.
+        // Keep the provisional evidence but never publish it as a final verdict.
+        if(expected.executionMode().equals("FUNCTIONAL")&&expected.executionProfile()!=null
+                &&jdbc.sql("SELECT count(*) FROM submission WHERE id=? AND generation_job_id IS NULL AND spec_draft_id IS NULL AND hybrid_branch_id IS NULL").param(id).query(Integer.class).single()==1) {
+            boolean cpu=expected.executionProfile().has("testCpuSeconds");
+            double budget=expected.executionProfile().path(cpu?"testCpuSeconds":"testWallSeconds").asDouble()*1000;
+            boolean boundary=false;
+            for(var test:report.path("tests"))if(test.path("verdict").asText().equals("TLE")||test.path(cpu?"cpu_ms":"wall_ms").asDouble()>=budget*.8)boundary=true;
+            if(boundary) {
+                jdbc.sql("UPDATE judge_attempt SET status='COMPLETED',result_json=?,finished_at=? WHERE submission_id=? AND token=?").param(json).param(now).param(id).param(token).update();
+                jdbc.sql("UPDATE judge_job SET status='QUEUED',execution_mode='EXCLUSIVE',token=NULL,worker_id=NULL,lease_until=NULL WHERE submission_id=?").param(id).update();
+                return;
+            }
+        }
         jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict=?,result_json=?,result_sha256=?,finished_at=? WHERE submission_id=?")
                 .param(report.path("verdict").asText()).param(json).param(hash).param(now).param(id).update();
         jdbc.sql("UPDATE judge_attempt SET status='COMPLETED',result_json=?,finished_at=? WHERE submission_id=? AND token=?")
@@ -153,6 +169,11 @@ public class JudgeQueue {
         if (judgeAll && !expected.judgeAll()) throw new AccountException(400, "Judge-all report for a plan that stops at the first failure");
         String firstFailure = null;
         for (int i = 0; i < tests.size(); i++) {
+            if(expected.executionProfile()!=null&&expected.executionProfile().has("testCpuSeconds")) {
+                var cpu=tests.get(i).path("cpu_ms");
+                if(!cpu.isNumber()||!Double.isFinite(cpu.asDouble())||cpu.asDouble()<0||!tests.get(i).path("cpu_measurement").asText().equals("cgroup-v2-delta"))throw new AccountException(400,"CPU evidence missing or invalid");
+                if(List.of("AC","OK").contains(tests.get(i).path("verdict").asText())&&cpu.asDouble()>expected.executionProfile().path("testCpuSeconds").asDouble()*1000)throw new AccountException(400,"Successful result exceeded CPU budget");
+            }
             var memory=tests.get(i).get("memory_peak_bytes");
             if(memory!=null&&(!memory.isIntegralNumber()||!memory.canConvertToLong()||memory.asLong()<0||!tests.get(i).path("memory_measurement").asText().equals("cgroup-peak-observed")))throw new AccountException(400,"Invalid memory evidence");
             String testVerdict = tests.get(i).path("verdict").asText();
