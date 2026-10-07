@@ -91,8 +91,10 @@ const theme = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'var(--editor-gutter, #313335)', color: 'var(--editor-gutter-ink, #909090)', borderRight: '1px solid var(--editor-border, #3c3f41)' },
   '.cm-activeLineGutter': { backgroundColor: 'var(--editor-active-line, #323232)' },
   '.cm-activeLine': { backgroundColor: 'var(--editor-active-line, #323232)' },
+  // Selection is drawn behind the content; an opaque active line would cover it.
+  '&[data-text-selected="true"] .cm-activeLine': { backgroundColor: 'transparent' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: 'var(--editor-selection, #ffe08a) !important' },
-  '.cm-selected-code, .cm-selected-code *': { color:'var(--editor-selection-ink, #18232d) !important' },
+  '.cm-selected-code, .cm-selected-code *': { backgroundColor:'var(--editor-selection, #ffe08a) !important', color:'var(--editor-selection-ink, #18232d) !important' },
   '.cm-content ::selection': { backgroundColor:'var(--editor-selection, #ffe08a)', color:'var(--editor-selection-ink, #18232d)' },
   '.cm-matchingBracket': { backgroundColor: 'var(--editor-bracket, #3b514d)', outline: '1px solid var(--editor-bracket-line, #7f9c96)' },
   '.cm-panels': { backgroundColor: 'var(--editor-gutter, #3c3f41)', color: 'var(--editor-ink, #a9b7c6)' },
@@ -145,7 +147,9 @@ export default function CodeEditor({ id = 'source', label = 'Main.java', languag
         // Vim bindings go first so they see keys before the default keymaps; completion still works in insert mode.
         keys.current.of(vim ? vimMode({ status: true }) : []),
         lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), drawSelection(),
-        history(), EditorState.allowMultipleSelections.of(true), ...(language==='JAVA'?[javaLanguage,declarationColors]:[language==='CPP'?cpp():python()]), selectedText, indentUnit.of('    '), EditorState.tabSize.of(4),
+        history(), EditorState.allowMultipleSelections.of(true), ...(language==='JAVA'?[javaLanguage,declarationColors]:[language==='CPP'?cpp():python()]), selectedText,
+        EditorView.editorAttributes.compute(['selection'],state=>({'data-text-selected':String(state.selection.ranges.some(range=>!range.empty))})),
+        indentUnit.of('    '), EditorState.tabSize.of(4),
         indentOnInput(), bracketMatching(), closeBrackets(), foldGutter(), highlightSelectionMatches(),
         syntaxHighlighting(colors), theme,
         tooltips({tooltipSpace:()=>({left:8,top:8,right:document.documentElement.clientWidth-8,bottom:window.innerHeight-8})}),
