@@ -134,7 +134,7 @@ export default function Home() {
     try{localStorage.setItem(`gamjaoj-sidebar-${user.id}`,next?'collapsed':'expanded');}catch{}
   }
 
-  return <div className={`shell ${user ? 'signed-in' : ''}`} data-sidebar-collapsed={sidebarCollapsed} data-login-intro={user?'done':loading?'pending':loginIntro}>
+  return <div className={`shell ${user ? 'signed-in' : ''}`} data-sidebar-collapsed={sidebarCollapsed} data-auth-mode={mode} data-login-intro={user?'done':loading?'pending':loginIntro}>
     <a className="skip-link" href="#main-content">본문으로 이동</a>
     <AppHeader key={user?.id || 'anonymous'}><a href="/" className="brand"><img className="brand-symbol" src="/gamjaoj-favicon.svg?v=hex-check-v1" alt="" width="34" height="34"/><span>Gamja<span className="brand-accent">OJ</span></span></a>
       <span className="header-note">문제를 풀고, 나의 다음 단계를 찾다.</span>
