@@ -1,6 +1,7 @@
 'use client';
 import LoadingIndicator from './loading-indicator';
 import LoginIntro from './login-intro';
+import AuthLearningPreview from './auth-learning-preview';
 
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
@@ -149,6 +150,7 @@ export default function Home() {
           <h1 id="auth-story-title">한 문제씩,<br/><span>내 것으로.</span></h1>
           <p>풀어낸 문제는 기록으로,<br/>막혔던 순간은 다음 연습으로 이어집니다.</p>
         </div>
+        <AuthLearningPreview visible={!user}/>
         <ol className="auth-learning-path" aria-label="학습 흐름">
           <li><span className="auth-step-number">01</span><div><h2>내 방식으로 풀고</h2><p>Java · C++ · Python으로 작성하고,<br/>실제 실행 결과를 확인해요.</p></div></li>
           <li><span className="auth-step-number">02</span><div><h2>한 번 더 돌아보고</h2><p>풀이 자신감과 AI 피드백으로<br/>이해한 부분과 헷갈린 부분을 구분해요.</p></div></li>
