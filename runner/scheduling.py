@@ -15,6 +15,23 @@ def functional_slots():
 
 
 @contextmanager
+def sandbox_lock(directory=None):
+    """Bound actual compile/test containers across jobs and testcase threads."""
+    directory=Path(directory or Path.home() / '.local/state/gamjaoj')
+    directory.mkdir(parents=True,exist_ok=True,mode=0o700)
+    slot=None
+    while slot is None:
+        for number in range(functional_slots()):
+            candidate=(directory / f'sandbox-{number}.lock').open('a')
+            try:fcntl.flock(candidate,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:candidate.close()
+            else:slot=candidate;break
+        if slot is None:time.sleep(.02)
+    try:yield
+    finally:slot.close()
+
+
+@contextmanager
 def large_input_lock(directory=None):
     """Two host-wide large generated suites bound coordinator input buffers.
 

@@ -28,15 +28,15 @@ public class Submissions {
     public record View(UUID id, String problemVersion, String sourceSha256, String source,
                        String status, String verdict, String compileMessage, OffsetDateTime createdAt,
                        OffsetDateTime finishedAt, String input, String stdout, String stderr, boolean outputTruncated, UUID sessionId, String runnerPolicy, boolean problemHeld, UUID diagnosticItemId, String language, LanguageProfiles.Option execution,
-                       List<TestResult> tests, int testCount,Long wallMs,Long memoryPeakBytes) {}
+                       List<TestResult> tests, int testCount,Long wallMs,Long memoryPeakBytes,Double cpuMs) {}
     /** One judged test of a formal submission, in plan order: number and verdict only, never its input or output. */
-    public record TestResult(int number, String verdict, Integer wallMs,Long memoryPeakBytes) {}
+    public record TestResult(int number, String verdict, Integer wallMs,Long memoryPeakBytes,Double cpuMs) {}
     private static List<TestResult> testResults(String result) {
         var out = new java.util.ArrayList<TestResult>();
         if (result == null) return out;
         int number = 1;
         for (JsonNode t : JudgeJson.parse(result).path("tests"))
-            out.add(new TestResult(number++, t.path("verdict").asText(), t.has("wall_ms") ? t.path("wall_ms").asInt() : null,t.hasNonNull("memory_peak_bytes")?t.path("memory_peak_bytes").asLong():null));
+            out.add(new TestResult(number++, t.path("verdict").asText(), t.has("wall_ms") ? t.path("wall_ms").asInt() : null,t.hasNonNull("memory_peak_bytes")?t.path("memory_peak_bytes").asLong():null,t.hasNonNull("cpu_ms")?t.path("cpu_ms").asDouble():null));
         return out;
     }
     /** A public example; explanation only for worked examples confirmed by the Runner (ExampleEnrichment). */
@@ -201,7 +201,8 @@ public class Submissions {
                             includeSource && input == null ? testResults(result) : List.of(),
                             includeSource && input == null && "FINISHED".equals(row.getString("status")) ? testCount(row.getString("plan_json")) : 0,
                             result==null?null:ExecutionMetrics.maximum(JudgeJson.parse(result),"wall_ms"),
-                            result==null?null:ExecutionMetrics.maximum(JudgeJson.parse(result),"memory_peak_bytes"));
+                            result==null?null:ExecutionMetrics.maximum(JudgeJson.parse(result),"memory_peak_bytes"),
+                            result==null?null:ExecutionMetrics.maximumCpu(JudgeJson.parse(result)));
 
     }
 }

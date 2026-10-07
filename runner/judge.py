@@ -16,11 +16,13 @@ import time
 import uuid
 import threading
 from contextlib import ExitStack
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from runner.memory_peak import MemoryPeak
 from runner.telemetry import Timings, workspace
 from runner.docker_control import EngineControl
-from runner.scheduling import execution_lock, large_input_lock
+from runner.scheduling import execution_lock, large_input_lock, sandbox_lock
+from runner.cpu_usage import CpuUsage
 from runner.execution_contract import PROFILE, contract
 
 EXECUTION_CONTRACT = contract()
@@ -37,10 +39,16 @@ def checked_profile(profile, language, image):
         raise ValueError("Unsupported language execution snapshot")
     seconds = profile.get('testWallSeconds')
     memory = profile.get('memoryMb')
+    expected=base | {'testWallSeconds':seconds,'memoryMb':memory} if base else {}
+    if 'testCpuSeconds' in profile:
+        cpu=profile['testCpuSeconds']
+        if type(cpu) not in (int,float) or not 0.1<=cpu<=180 or abs(cpu*1000-round(cpu*1000))>0.00001:
+            raise ValueError('Unsupported CPU budget')
+        expected['testCpuSeconds']=cpu
     if (type(seconds) not in (int, float) or not 0.1 <= seconds <= 180
             or abs(seconds * 1000 - round(seconds * 1000)) > 0.00001
             or type(memory) is not int or not 32 <= memory <= base['memoryMb']
-            or profile != base | {'testWallSeconds': seconds, 'memoryMb': memory} or profile['image'] != image):
+            or profile != expected or profile['image'] != image):
         raise ValueError("Unsupported language execution snapshot")
     return dict(profile)
 
@@ -194,7 +202,7 @@ def docker(*args):
     return docker_cli(*args)
 
 
-def capture(command, stdin, seconds, limit):
+def capture(command, stdin, seconds, limit, cpu_exceeded=None):
     """Drain both pipes concurrently; stdin is a bounded regular file, never a pipe."""
     output = {"stdout": bytearray(), "stderr": bytearray()}
     reason = None
@@ -209,7 +217,7 @@ def capture(command, stdin, seconds, limit):
                 selector.register(process.stderr, selectors.EVENT_READ, "stderr")
                 try:
                     while selector.get_map():
-                        if time.monotonic() - started > seconds:
+                        if time.monotonic() - started > seconds or (cpu_exceeded and cpu_exceeded()):
                             reason = "TIME_LIMIT"
                             break
                         for key, _ in selector.select(timeout=0.05):
@@ -253,8 +261,66 @@ class Runner:
         # Learner formal submissions run every test (coding-test style per-test results); validation
         # checks keep stopping at the first failure. The overall verdict is always the first failure.
         self.judge_all = False
+        self.observe_cpu = False
+
+    def test_parallelism(self):
+        if self.execution_mode!='FUNCTIONAL' or not self.judge_all or 'testCpuSeconds' not in self.profile:return 1
+        try:return max(1,min(4,int(os.environ.get('GAMJAOJ_TEST_PARALLELISM','4'))))
+        except ValueError:return 1
+
+    def explicit_test(self,classes,test,custom):
+        result=self.timings.call('test_total',self.sandbox,classes,self.profile['testCommand'],test['input'].encode())
+        verdict=classify(result,None if custom else test['output'].encode())
+        return {'id':test['id'],'verdict':verdict,**evidence(result),**({'stdout':result['stdout'][:16384].decode(errors='replace'),
+                'stdout_truncated':len(result['stdout'])>16384 or result['limit']=='OUTPUT_LIMIT'} if custom else {})}
 
     def sandbox(self, mount, command, stdin=b"", compile_phase=False, output_limit=None):
+        with sandbox_lock():
+            if not compile_phase and (self.observe_cpu or 'testCpuSeconds' in self.profile):
+                return self.cpu_sandbox(mount,command,stdin,output_limit)
+            return self._sandbox(mount,command,stdin,compile_phase,output_limit)
+
+    def cpu_sandbox(self,mount,command,stdin,output_limit):
+        # Keep the trusted supervisor alive until the final controller read. A
+        # normal container's cgroup disappears at exit and loses final counters.
+        name='gamjaoj-sandbox-'+uuid.uuid4().hex
+        flags=list(PROFILE['sandboxFlags'])
+        for flag in ('--memory','--memory-swap'):flags[flags.index(flag)+1]=str(self.profile['memoryMb'])+'m'
+        args=['create','--name',name,'--label','com.gamjaoj.role=sandbox',*flags,'--mount',
+              'type=bind,src='+str(mount)+',dst=/work,readonly','--workdir',PROFILE['workdir'],
+              '--entrypoint','/bin/sh',self.image,'-c','exec sleep 1000']
+        if self.attempt:args[1:1]=['--label','com.gamjaoj.attempt='+self.attempt]
+        meter=None
+        try:
+            container_id=self.timings.call('test.container_create',docker,*args).decode().strip()
+            self.timings.call('test.container_start',docker,'start',name)
+            state=json.loads(docker('inspect','--format','{{json .State}}',name))
+            if not state['Running']:raise InfrastructureError('CPU supervisor failed to start')
+            cpu=CpuUsage(state['Pid'])
+            meter=MemoryPeak(container_id);meter.__enter__()
+            budget=self.profile.get('testCpuSeconds')
+            seconds=self.profile['testWallSeconds'] if budget is None else max(self.profile['testWallSeconds'],budget*4+2)
+            result=self.timings.call('test.exec_wait',capture,
+                ['docker','exec','-i',name,PROFILE['entrypoint'],PROFILE['timeoutSignal'],str(seconds+3)+'s',*command],
+                stdin,seconds,output_limit or OUTPUT_LIMIT,
+                cpu_exceeded=(lambda:cpu.milliseconds()>budget*1000) if budget is not None else None)
+            final_cpu=cpu.milliseconds()
+            if budget is not None and final_cpu>budget*1000 and result['limit']!='OUTPUT_LIMIT':result['limit']='TIME_LIMIT'
+            meter.__exit__()
+            state=json.loads(docker('inspect','--format','{{json .State}}',name))
+            result.update(cpu_ms=round(final_cpu,3),cpu_measurement='cgroup-v2-delta',
+                          exit_code=result['client_exit'],oom_killed=state['OOMKilled'] or cpu.oom_killed())
+            if not state['Running'] and not result['limit'] and not state['OOMKilled']:
+                raise InfrastructureError('CPU supervisor terminated unexpectedly')
+            if meter.peak is not None:result.update(memory_peak_bytes=meter.peak,memory_measurement='cgroup-peak-observed')
+            return result
+        except (OSError,ValueError,KeyError,StopIteration) as exc:
+            raise InfrastructureError('CPU accounting unavailable: '+str(exc)) from exc
+        finally:
+            if meter is not None:meter.__exit__()
+            self.timings.call('test.container_remove',docker,'rm','--force',name)
+
+    def _sandbox(self, mount, command, stdin=b"", compile_phase=False, output_limit=None):
         name = "gamjaoj-sandbox-" + uuid.uuid4().hex
         settings = self.profile
         flags = list(PROFILE['sandboxFlags'])
@@ -408,17 +474,17 @@ class Runner:
                     if self.compile_cache is not None and not cache_hit:
                         self.compile_cache.put(cache_key, result)
                     failed = None
-                    for test in problem["tests"]:
-                        result = self.timings.call("test_total", self.sandbox, classes, self.profile['testCommand'], test["input"].encode())
-                        verdict = classify(result, None if custom else test["output"].encode())
-                        report["tests"].append({"id": test["id"], "verdict": verdict,
-                                                **evidence(result), **({"stdout": result["stdout"][:16384].decode(errors="replace"),
-                                                "stdout_truncated": len(result["stdout"]) > 16384 or result["limit"] == "OUTPUT_LIMIT"} if custom else {})})
-                        if verdict not in ("AC", "OK"):
-                            failed = failed or verdict
-                        report["verdict"] = failed or verdict
-                        if failed and not self.judge_all:
-                            break
+                    with ThreadPoolExecutor(max_workers=self.test_parallelism()) as pool:
+                        # Concurrent completion never changes saved testcase order or
+                        # first-failure precedence. Early-stop plans stay serial.
+                        tests=(pool.map(lambda test:self.explicit_test(classes,test,custom),problem['tests'])
+                               if self.test_parallelism()>1 else
+                               (self.explicit_test(classes,test,custom) for test in problem['tests']))
+                        for entry in tests:
+                            report['tests'].append(entry)
+                            if entry['verdict'] not in ('AC','OK'):failed=failed or entry['verdict']
+                            report['verdict']=failed or entry['verdict']
+                            if failed and not self.judge_all:break
                     if problem.get("generated") and (report["verdict"] == "AC" or self.judge_all):
                         self._generated(problem, classes, report)
         except (InfrastructureError, OSError, tarfile.TarError) as exc:
@@ -473,7 +539,9 @@ class Runner:
         spec = problem["generated"]
         input_limit = spec.get("inputLimit", GENERATED_INPUT_LIMIT)
         output_limit = spec.get("outputLimit", GENERATED_OUTPUT_LIMIT)
-        with tempfile.TemporaryDirectory(prefix="gamjaoj-generated-") as parent:
+        parallel=self.test_parallelism()>1 and input_limit<=GENERATED_INPUT_LIMIT and output_limit<=GENERATED_OUTPUT_LIMIT
+        pending=[]
+        with ThreadPoolExecutor(max_workers=self.test_parallelism()) as pool, tempfile.TemporaryDirectory(prefix="gamjaoj-generated-") as parent:
             Path(parent).chmod(0o755)
             generator = reference = None
             for test in spec["tests"]:
@@ -502,20 +570,26 @@ class Runner:
                         data["expected"], data["reference_wall_ms"] = solved["stdout"], solved["wall_ms"]
                     if self.generated_cache is not None:
                         self.generated_cache.put(key, data)
-                result = self.timings.call("test_total", self.sandbox, classes, self.profile["testCommand"], data["input"], output_limit=output_limit)
-                verdict = classify(result, data["expected"])
-                entry |= {"verdict": verdict, **evidence(result), "input_sha256": hashlib.sha256(data["input"]).hexdigest(),
-                          "input_bytes": len(data["input"]), "expected_sha256": hashlib.sha256(data["expected"]).hexdigest(),
-                          "generator_wall_ms": data.get("generator_wall_ms"), "reference_wall_ms": data.get("reference_wall_ms")}
-                report["tests"].append(entry)
-                if input_limit > GENERATED_INPUT_LIMIT or output_limit > GENERATED_OUTPUT_LIMIT:
-                    # Release the previous large input before constructing the next one.
-                    data = produced = solved = None
-                if verdict != "AC":
-                    if report["verdict"] == "AC":
-                        report["verdict"] = verdict
-                    if not self.judge_all:
-                        break
+                if parallel:
+                    pending.append(pool.submit(self.generated_test,classes,data,entry,output_limit))
+                else:
+                    finished=self.generated_test(classes,data,entry,output_limit)
+                    report['tests'].append(finished)
+                    if finished['verdict']!='AC':
+                        if report['verdict']=='AC':report['verdict']=finished['verdict']
+                        if not self.judge_all:break
+                if input_limit>GENERATED_INPUT_LIMIT or output_limit>GENERATED_OUTPUT_LIMIT:
+                    data=produced=solved=None
+            for future in pending:
+                finished=future.result();report['tests'].append(finished)
+                if finished['verdict']!='AC' and report['verdict']=='AC':report['verdict']=finished['verdict']
+
+    def generated_test(self,classes,data,entry,output_limit):
+        result=self.timings.call('test_total',self.sandbox,classes,self.profile['testCommand'],data['input'],output_limit=output_limit)
+        return entry | {'verdict':classify(result,data['expected']),**evidence(result),
+            'input_sha256':hashlib.sha256(data['input']).hexdigest(),'input_bytes':len(data['input']),
+            'expected_sha256':hashlib.sha256(data['expected']).hexdigest(),
+            'generator_wall_ms':data.get('generator_wall_ms'),'reference_wall_ms':data.get('reference_wall_ms')}
 
 
 def unpack_classes(archive, destination, artifact="class"):
