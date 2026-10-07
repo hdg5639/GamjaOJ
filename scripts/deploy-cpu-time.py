@@ -8,7 +8,7 @@ from pathlib import Path
 
 def run(args,**kwargs):return subprocess.run(args,check=True,**kwargs)
 def main():
- os.umask(0o077);p=argparse.ArgumentParser();p.add_argument('--web-root',type=Path,required=True);p.add_argument('--runner-ssh',required=True);p.add_argument('--evidence',type=Path,required=True);args=p.parse_args()
+ os.umask(0o077);p=argparse.ArgumentParser();p.add_argument('--web-root',type=Path,required=True);p.add_argument('--runner-ssh',required=True);p.add_argument('--evidence',type=Path,required=True);p.add_argument('--skip-limits',action='store_true',help='Deploy a compatible runtime update without reapplying the reviewed limits SQL');args=p.parse_args()
  source=Path(__file__).resolve().parents[1];root=args.web_root;proof=json.loads((args.evidence/'release-review.json').read_text())
  if not proof['problems'] or not all(f['status'] in ('READY','EXCLUDED') for f in proof['fits'].values()):raise ValueError('CPU calibration is not reviewable')
  lock=(root/'.deploy.lock').open('a');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);previous=(root/'current').resolve();stamp=time.strftime('%Y%m%dT%H%M%SZ',time.gmtime());release=root/'releases'/stamp
@@ -40,7 +40,8 @@ systemctl --user stop gamjaoj-worker.service
  applied=False
  try:
   run(compose+['up','-d','--no-deps','--wait','--wait-timeout','180','application'],env=env)
-  with (backup/'cpu-release.sql').open() as sql:run(['docker','exec','-i','gamjaoj-postgres-1','psql','-U','gamjaoj','-d','gamjaoj','-v','ON_ERROR_STOP=1'],stdin=sql)
+  if not args.skip_limits:
+   with (backup/'cpu-release.sql').open() as sql:run(['docker','exec','-i','gamjaoj-postgres-1','psql','-U','gamjaoj','-d','gamjaoj','-v','ON_ERROR_STOP=1'],stdin=sql)
   applied=True
   run(['ssh',args.runner_ssh,'bash','-s','--',stamp],input='''set -euo pipefail
 stamp="$1"

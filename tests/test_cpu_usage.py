@@ -23,3 +23,5 @@ class CpuUsageTests(unittest.TestCase):
   r.profile=r.profile|{'testCpuSeconds':2.65};self.assertEqual(4,r.test_parallelism())
   r.execution_mode='EXCLUSIVE';self.assertEqual(1,r.test_parallelism())
   r.execution_mode='FUNCTIONAL';r.judge_all=False;self.assertEqual(1,r.test_parallelism())
+  self.assertEqual(4,r.test_parallelism(custom=True))
+  r.execution_mode='EXCLUSIVE';self.assertEqual(1,r.test_parallelism(custom=True))
