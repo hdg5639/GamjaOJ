@@ -28,7 +28,14 @@ public class Submissions {
     public record View(UUID id, String problemVersion, String sourceSha256, String source,
                        String status, String verdict, String compileMessage, OffsetDateTime createdAt,
                        OffsetDateTime finishedAt, String input, String stdout, String stderr, boolean outputTruncated, UUID sessionId, String runnerPolicy, boolean problemHeld, UUID diagnosticItemId, String language, LanguageProfiles.Option execution,
-                       List<TestResult> tests, int testCount,Long wallMs,Long memoryPeakBytes,Double cpuMs) {}
+                       List<TestResult> tests, int testCount,Long wallMs,Long memoryPeakBytes,Double cpuMs,List<RunCase> runCases) {}
+    public record RunCase(int number,String verdict,String stdout,String stderr,boolean outputTruncated,Integer wallMs,Long memoryPeakBytes,Double cpuMs) {}
+    private static List<RunCase> runCases(String result) {
+        var out=new java.util.ArrayList<RunCase>();
+        if(result!=null)for(JsonNode t:JudgeJson.parse(result).path("tests"))
+            out.add(new RunCase(out.size()+1,t.path("verdict").asText(),t.path("stdout").asText(""),t.path("stderr").asText(""),t.path("stdout_truncated").asBoolean(),t.has("wall_ms")?t.path("wall_ms").asInt():null,t.hasNonNull("memory_peak_bytes")?t.path("memory_peak_bytes").asLong():null,t.hasNonNull("cpu_ms")?t.path("cpu_ms").asDouble():null));
+        return out;
+    }
     /** One judged test of a formal submission, in plan order: number and verdict only, never its input or output. */
     public record TestResult(int number, String verdict, Integer wallMs,Long memoryPeakBytes,Double cpuMs) {}
     private static List<TestResult> testResults(String result) {
@@ -92,12 +99,18 @@ public class Submissions {
 
     @Transactional
     public View run(String username, UUID key, RunController.Request request) {
-        if (request.input().getBytes(StandardCharsets.UTF_8).length > 16384)
+        if((request.input()==null)==(request.inputs()==null))
+            throw new AccountException(400,"입력 또는 입력 목록 중 하나를 보내 주세요.");
+        var inputs=request.inputs()==null?List.of(request.input()):request.inputs();
+        if(inputs.isEmpty()||inputs.size()>20||inputs.stream().anyMatch(java.util.Objects::isNull))
+            throw new AccountException(400,"테스트 입력은 1~20개로 설정해 주세요.");
+        if (inputs.stream().anyMatch(input->input.getBytes(StandardCharsets.UTF_8).length > 16384))
             throw new AccountException(400, "입력은 UTF-8 기준 16 KiB 이내로 작성해 주세요.");
-        return save(username, key, new SubmissionController.Request(request.problemVersion(), request.source(), request.sessionId(), request.diagnosticItemId(), request.language()), request.input());
+        return save(username, key, new SubmissionController.Request(request.problemVersion(), request.source(), request.sessionId(), request.diagnosticItemId(), request.language()), List.copyOf(inputs));
     }
 
-    private View save(String username, UUID key, SubmissionController.Request request, String input) {
+    private View save(String username, UUID key, SubmissionController.Request request, List<String> inputs) {
+        String input=inputs==null?null:inputs.get(0);
         if (request.source().getBytes(StandardCharsets.UTF_8).length > 65536)
             throw new AccountException(400, "코드는 UTF-8 기준 64 KiB 이내로 제출해 주세요.");
         String language = LanguageProfiles.normalize(request.language());
@@ -109,7 +122,8 @@ public class Submissions {
             View view = find(user, existing.get(), true);
             if (!view.language().equals(language) || !view.sourceSha256().equals(hash) || !view.problemVersion().equals(request.problemVersion())
                     || !java.util.Objects.equals(view.input(), input) || !java.util.Objects.equals(view.sessionId(), request.sessionId())
-                    || !java.util.Objects.equals(view.diagnosticItemId(),request.diagnosticItemId()))
+                    || !java.util.Objects.equals(view.diagnosticItemId(),request.diagnosticItemId())
+                    || (inputs!=null&&!inputs.equals(savedRunInputs(existing.get()))))
                 throw new AccountException(409, "같은 요청 키에 다른 코드가 들어왔어요. 새 제출로 보내 주세요.");
             return view;
         }
@@ -149,7 +163,10 @@ public class Submissions {
         }
         if (input != null || problemData.has("api")) {
             var plan = input==null?(com.fasterxml.jackson.databind.node.ObjectNode)problemData.deepCopy():JudgeJson.JSON.createObjectNode().put("version", request.problemVersion()).put("output_policy", "RUN_ONLY");
-            if(input!=null)plan.putArray("tests").addObject().put("id", "custom-input").put("input", input).put("output", "");
+            if(input!=null) {
+                var tests=plan.putArray("tests");
+                for(int i=0;i<inputs.size();i++)tests.addObject().put("id",inputs.size()==1?"custom-input":"custom-input-"+(i+1)).put("input",inputs.get(i)).put("output","");
+            }
             if(problemData.has("api"))plan.set("callable",NativeCallablePrograms.bundleForProblem(problemData,language,input!=null));
             String json = JudgeJson.canonical(plan);
             if(input==null)jdbc.sql("UPDATE submission SET callable_package=?,callable_package_sha256=? WHERE id=?").param(json).param(JudgeJson.hash(json)).param(id).update();
@@ -160,6 +177,13 @@ public class Submissions {
         return find(user, id, true);
     }
 
+    private List<String> savedRunInputs(UUID id) {
+        String plan=jdbc.sql("SELECT run_package FROM submission WHERE id=?").param(id).query(String.class).single();
+        if(plan==null)return List.of();
+        var inputs=new java.util.ArrayList<String>();
+        for(var test:JudgeJson.parse(plan).path("tests"))inputs.add(test.path("input").asText());
+        return inputs;
+    }
     public List<View> history(String username) { return history(username,null,0); }
     public List<View> history(String username,String problemVersion,int page) {return history(username,problemVersion,page,50);}
     public List<View> history(String username,String problemVersion,int page,int size) {
@@ -202,7 +226,8 @@ public class Submissions {
                             includeSource && input == null && "FINISHED".equals(row.getString("status")) ? testCount(row.getString("plan_json")) : 0,
                             result==null?null:ExecutionMetrics.maximum(JudgeJson.parse(result),"wall_ms"),
                             result==null?null:ExecutionMetrics.maximum(JudgeJson.parse(result),"memory_peak_bytes"),
-                            result==null?null:ExecutionMetrics.maximumCpu(JudgeJson.parse(result)));
+                            result==null?null:ExecutionMetrics.maximumCpu(JudgeJson.parse(result)),
+                            includeSource&&input!=null?runCases(result):List.of());
 
     }
 }

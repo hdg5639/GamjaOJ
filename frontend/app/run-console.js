@@ -27,8 +27,8 @@ function outcome(c,callable) {
 
 /**
  * Coding-test style console under the editor, shared by practice and diagnostics.
- * '코드 실행' runs every public example and then the learner's own test cases one by one (sequential, so the
- * per-user limit of three unfinished jobs is never hit by the run itself) and compares each with its expected output.
+ * '코드 실행' sends examples and learner cases as one job, compiling once and running up to four inputs
+ * concurrently. Each output is compared with its own expected value in the original input order.
  * Added cases are kept per problem in this browser. It fills the lower pane of the editor/console split.
  */
 export default function RunConsole({ user, api, body, examples, scope, disabled, runRequest, casesRequest, onCaseCount, onActivity, submission, onShowRecords, exportEnabled=false, callable, children }) {
@@ -83,21 +83,23 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
     const list = [...examples.map((e, i) => ({ label: `테스트 ${i + 1}`, input: e.input || '', output: e.output ?? '' })),
       ...cases.map((c, i) => ({ label: `추가 ${i + 1}`, input: c.input, output: c.output || '', custom: true }))];
     if (list.some(c => bytes(c.input) > 16384)) { setError('입력은 케이스마다 16 KiB 이내로 작성해 주세요.'); return; }
+    if (list.length > 20) { setError('예제와 추가 입력은 합쳐서 최대 20개까지 실행할 수 있어요.'); return; }
     setBusy(true); setError(''); setEditing(false); setMode('runs');
     const snapshot = { scope, source: body.source, cases: list };
     setRuns(snapshot);
-    const update = (index, result) => live.current && setRuns(state => state && state.scope === scope
-      ? { ...state, cases: state.cases.map((c, j) => j === index ? { ...c, result } : c) } : state);
+    const update = result => live.current && setRuns(state => state && state.scope === scope
+      ? { ...state, cases: state.cases.map((c, index) => {
+          const entry=result.runCases?.[index];
+          return {...c,result:entry?{...result,...entry}:list.length===1||result.status!=='FINISHED'?result:
+            {...result,stdout:'',stderr:'',outputTruncated:false,wallMs:null,cpuMs:null,memoryPeakBytes:null}};
+        }) } : state);
     try {
-      for (let index = 0; index < list.length; index++) {
-        let result = await api('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-          body: JSON.stringify({ ...body, input: list[index].input }) });
-        update(index, result); onActivity?.();
-        while (result.status !== 'FINISHED' && live.current) {
-          await new Promise(resolve => setTimeout(resolve, 900));
-          result = await api(`/api/runs/${result.id}`); update(index, result);
-        }
-        if (result.verdict === 'CE' || !live.current) break;
+      let result = await api('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify({ ...body, ...(list.length===1?{input:list[0].input}:{inputs:list.map(c=>c.input)}) }) });
+      update(result); onActivity?.();
+      while (result.status !== 'FINISHED' && live.current) {
+        await new Promise(resolve => setTimeout(resolve, 900));
+        result = await api(`/api/runs/${result.id}`); update(result);
       }
     } catch (e) { if (live.current) setError(e.message); }
     finally { if (live.current) setBusy(false); }
@@ -156,7 +158,7 @@ export default function RunConsole({ user, api, body, examples, scope, disabled,
         {exportEnabled&&submission.verdict==='AC'&&<ExportSubmission key={submission.id} api={api} submission={submission}/>}
         {onShowRecords && <button type="button" className="secondary" onClick={onShowRecords}>제출 기록·피드백 보기</button>}
       </article>}
-      {showing === 'runs' && !shown && <p className="muted">‘코드 실행’을 누르면 예제 {examples.length}개{cases.length ? `와 추가한 케이스 ${cases.length}개` : ''}를 차례로 실행하고 기댓값과 비교한 결과가 여기에 나와요. 실행은 제출 기록에 남지 않아요.</p>}
+      {showing === 'runs' && !shown && <p className="muted">‘코드 실행’을 누르면 예제 {examples.length}개{cases.length ? `와 추가한 케이스 ${cases.length}개` : ''}를 최대 4개씩 동시에 실행하고 기댓값과 비교한 결과가 여기에 나와요. 실행은 제출 기록에 남지 않아요.</p>}
       {showing === 'runs' && shown && shown.source !== body.source && <p className="notice">현재 편집 중인 코드와 다른 실행의 결과예요.</p>}
       {showing === 'runs' && shown?.cases.map((c, index) => <article className="run-detail" key={index} data-passed={results[index][1] === undefined ? undefined : String(results[index][1])}>
         <dl className="console-case">

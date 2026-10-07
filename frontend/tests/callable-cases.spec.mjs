@@ -15,7 +15,8 @@ for(const width of [390,1024,1440])test(`callable test editing, precision, files
   if(path==='/api/problems')data=[{version:'case-api',title:'호출 테스트',statement:'구현한 함수를 순서대로 호출합니다.',submissionsEnabled:true,api:{api:definition,sourceFile:'UserSolution.java',template:'public class UserSolution {}',driver:'read-only driver'},examples:[{input:sample,output:'"a b"'}],languages:[{id:'JAVA',label:'Java 8'}]}];
   if(path==='/api/runs'){
    const body=req.postDataJSON();runs.push(body);
-   data={id:'run-'+runs.length,status:'FINISHED',verdict:'OK',language:'JAVA',stdout:body.input.includes('"one"')?'"one"\n"two"':'"a\\u0020b"'};
+   const inputs=body.inputs||[body.input];
+   data={id:'run-'+runs.length,status:'FINISHED',verdict:'OK',language:'JAVA',runCases:inputs.map((input,i)=>({number:i+1,verdict:'OK',stdout:input.includes('"one"')?'"one"\n"two"':'"a\\u0020b"',stderr:'',outputTruncated:false}))};
   }
   await route.fulfill({json:data});
  });
@@ -42,7 +43,7 @@ for(const width of [390,1024,1440])test(`callable test editing, precision, files
  await console.getByRole('button',{name:'완료',exact:true}).click();
  await page.getByRole('button',{name:'코드 실행',exact:true}).click();
  await expect(console.locator('.console-outcome').last()).toHaveText('테스트를 통과하였습니다.');
- expect(runs).toHaveLength(2);expect(runs[1].input).toBe(sample);
+ expect(runs).toHaveLength(1);expect(runs[0].inputs).toEqual([sample,sample]);
  await page.getByRole('button',{name:/^테스트 케이스 추가/}).click();
  await console.getByText('입력·출력 파일 불러오기',{exact:true}).click();
  const input='[[["init",1],["query","one"]],[["init",2],["query","two"]]]';
@@ -54,7 +55,7 @@ for(const width of [390,1024,1440])test(`callable test editing, precision, files
  await expect(console.getByLabel('추가 1 · 입력')).toHaveValue(input);
  await console.getByRole('button',{name:'완료',exact:true}).click();await page.getByRole('button',{name:'코드 실행',exact:true}).click();
  await expect(console.locator('.console-outcome').last()).toHaveText('테스트를 통과하였습니다.');
- await expect.poll(()=>runs.length).toBe(4);expect(runs[3].input).toBe(input);
+ await expect.poll(()=>runs.length).toBe(2);expect(runs[1].inputs).toEqual([sample,input]);
  await expect(console.getByLabel('추가 1 출력')).toHaveText('"one"\n"two"');
  await page.getByRole('button',{name:/^테스트 케이스 추가/}).click();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
