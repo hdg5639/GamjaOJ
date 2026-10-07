@@ -5,12 +5,15 @@ async function open(page,width,height){
  await page.route('**/api/**',r=>r.fulfill({status:new URL(r.request().url()).pathname==='/api/me'?401:200,json:{}}));
  await page.goto(base);await page.getByLabel('아이디',{exact:true}).waitFor();
 }
-for(const [width,height] of [[1280,720],[1366,768],[1440,900],[1920,1080],[1024,768],[768,950]])test('login and signup fit '+width+'×'+height,async({page})=>{
+for(const [width,height] of [[1280,600],[1280,640],[1366,650],[1440,700],[1024,650],[1280,720],[1366,768],[1440,900],[1920,1080],[1024,768],[768,950]])test('login and signup fit '+width+'×'+height,async({page})=>{
  await open(page,width,height);
  for(const mode of ['login','signup']){
   if(mode==='signup')await page.getByRole('button',{name:'처음 왔어요',exact:true}).click();
   const sizes=await page.evaluate(()=>({height:innerHeight,scroll:document.documentElement.scrollHeight,width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));
   expect(sizes.scroll).toBeLessThanOrEqual(sizes.height+1);expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.width);
+  const footer=await page.locator('.shell > footer').boundingBox();expect(footer.y+footer.height).toBeLessThanOrEqual(height+1);
+  const lastLine=await page.locator('.shell > footer .site-notice a').boundingBox();expect(lastLine.y+lastLine.height).toBeLessThanOrEqual(height-4);
+  const card=await page.locator('.login-page > .card').boundingBox();expect(card.y+card.height).toBeLessThanOrEqual(footer.y);
   const button=page.getByRole('button',{name:mode==='login'?'내 연습장으로':'가입하기',exact:true});const rect=await button.boundingBox();expect(rect.y+rect.height).toBeLessThan(height);
   await page.screenshot({path:'/tmp/gamja-login-fit-'+width+'-'+height+'-'+mode+'.png',fullPage:true});
  }
