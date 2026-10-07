@@ -30,8 +30,18 @@ final class ProblemTimeLimits {
     static final List<String> LANGUAGES=List.of("JAVA","CPP","PYTHON");
     static JsonNode parse(String json) {return json==null?null:validate(JudgeJson.parse(json));}
     static JsonNode validate(JsonNode limits) {
-        if(limits.has("memory"))HybridArtifacts.fields(limits,"JAVA","CPP","PYTHON","analysis","memory");
-        else HybridArtifacts.fields(limits,"JAVA","CPP","PYTHON","analysis");
+        var fields=new java.util.ArrayList<>(List.of("JAVA","CPP","PYTHON","analysis"));
+        if(limits.has("memory"))fields.add("memory");
+        if(limits.has("cpu"))fields.add("cpu");
+        HybridArtifacts.fields(limits,fields.toArray(String[]::new));
+        if(limits.has("cpu")) {
+            var cpu=limits.path("cpu");
+            HybridArtifacts.require(cpu.isObject()&&!cpu.isEmpty(),"INVALID_CPU_LIMITS");
+            cpu.fieldNames().forEachRemaining(language->{
+                var n=cpu.path(language);
+                HybridArtifacts.require(LANGUAGES.contains(language)&&n.isNumber()&&Double.isFinite(n.asDouble())&&n.asDouble()>=0.1&&n.asDouble()<=180&&Math.abs(n.asDouble()*1000-Math.rint(n.asDouble()*1000))<0.00001,"INVALID_CPU_LIMITS");
+            });
+        }
         for(String language:LANGUAGES) {
             var n=limits.path(language);
             HybridArtifacts.require(n.isNumber()&&Double.isFinite(n.asDouble())&&n.asDouble()>=0.1&&n.asDouble()<=MEASURED_LIMIT_CEILING_SECONDS&&Math.abs(n.asDouble()*1000-Math.rint(n.asDouble()*1000))<0.00001,"INVALID_TIME_LIMITS");

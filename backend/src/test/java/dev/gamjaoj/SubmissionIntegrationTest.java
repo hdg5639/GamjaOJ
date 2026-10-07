@@ -225,6 +225,37 @@ class SubmissionIntegrationTest {
         return report;
     }
 
+    @Test void cpuBoundaryReplaysOnceExclusivelyAndFencesTheProvisionalResult() {
+        try {
+            jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id='sum-v1'").param("{\"JAVA\":5,\"CPP\":3,\"PYTHON\":8,\"cpu\":{\"JAVA\":2.65},\"analysis\":\"CPU calibration\"}").update();
+            var saved=submit(alice,UUID.randomUUID());
+            jdbc.sql("UPDATE judge_job SET execution_mode='FUNCTIONAL' WHERE submission_id=?").param(saved.id()).update();
+            var first=queue.claim(UUID.randomUUID()).orElseThrow();var provisional=report(first);
+            for(var test:provisional.path("tests"))((ObjectNode)test).put("cpu_ms",2300).put("cpu_measurement","cgroup-v2-delta");
+            queue.complete(saved.id(),first.token(),provisional);
+            assertThat(submissions.detail(alice,saved.id()).status()).isEqualTo("QUEUED");
+            assertThat(submissions.detail(alice,saved.id()).verdict()).isNull();
+            var second=queue.claim(UUID.randomUUID()).orElseThrow();assertThat(second.executionMode()).isEqualTo("EXCLUSIVE");
+            assertThat(second.executionProfile()).isEqualTo(first.executionProfile());
+            assertThatThrownBy(()->queue.complete(saved.id(),first.token(),provisional)).isInstanceOf(AccountException.class);
+            var finalReport=report(second);
+            for(var test:finalReport.path("tests"))((ObjectNode)test).put("cpu_ms",2400).put("cpu_measurement","cgroup-v2-delta");
+            queue.complete(saved.id(),second.token(),finalReport);
+            assertThat(submissions.detail(alice,saved.id()).verdict()).isEqualTo("AC");assertThat(submissions.detail(alice,saved.id()).cpuMs()).isEqualTo(2400);
+        } finally {jdbc.sql("UPDATE problem_version SET time_limits_json=NULL WHERE id='sum-v1'").update();}
+    }
+
+    @Test void functionalTimeLimitReplaysButExclusiveTimeLimitIsFinal() {
+        var saved=submit(alice,UUID.randomUUID());jdbc.sql("UPDATE judge_job SET execution_mode='FUNCTIONAL' WHERE submission_id=?").param(saved.id()).update();
+        var first=queue.claim(UUID.randomUUID()).orElseThrow();var timed=report(first).put("verdict","TLE");
+        for(var t:timed.path("tests"))((ObjectNode)t).put("verdict","TLE");
+        timed.put("judge_all",true);queue.complete(saved.id(),first.token(),timed);
+        var second=queue.claim(UUID.randomUUID()).orElseThrow();assertThat(second.executionMode()).isEqualTo("EXCLUSIVE");
+        var finalReport=report(second).put("verdict","TLE").put("judge_all",true);
+        for(var t:finalReport.path("tests"))((ObjectNode)t).put("verdict","TLE");
+        queue.complete(saved.id(),second.token(),finalReport);assertThat(submissions.detail(alice,saved.id()).verdict()).isEqualTo("TLE");
+    }
+
     @Test void formalSubmissionsJudgeEveryTestAndKeepTheFirstFailureVerdict() {
         var saved=submissions.submit(alice,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,"JAVA"));
         var assignment=queue.claim(UUID.randomUUID()).orElseThrow();

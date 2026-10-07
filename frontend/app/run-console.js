@@ -184,7 +184,7 @@ export function SubmitTests({ submission }) {
   const rest = total - tests.length;
   return <ol className="submit-tests" aria-label="테스트별 채점 결과">
     {tests.map(t => <li key={t.number} data-pass={t.verdict === 'AC'}>테스트 {t.number} 〉 <strong>{t.verdict === 'AC' ? '통과' : '실패'}</strong>
-      <span> ({t.verdict === 'AC' ? (t.wallMs != null ? `${t.wallMs}ms` : '통과') : verdictNames[t.verdict] || t.verdict}) · 메모리 {memoryText(t.memoryPeakBytes)}</span></li>)}
+      <span> ({t.verdict === 'AC' ? (submission.execution?.timeMetric==='CPU'?(t.cpuMs!=null?`CPU ${t.cpuMs}ms`:'통과'):(t.wallMs != null ? `${t.wallMs}ms` : '통과')) : verdictNames[t.verdict] || t.verdict}) · 메모리 {memoryText(t.memoryPeakBytes)}</span></li>)}
     {rest > 0 && <li className="skipped">테스트 {tests.length + 1}{rest > 1 ? `~${total}` : ''} 〉 앞선 실패로 채점하지 않았어요</li>}
   </ol>;
 }
