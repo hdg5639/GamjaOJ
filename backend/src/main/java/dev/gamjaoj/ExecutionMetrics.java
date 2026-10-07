@@ -4,6 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Locale;
 
 final class ExecutionMetrics {
+    static Double maximumCpu(JsonNode report){
+        Double max=null;
+        for(var test:report.path("tests")){
+            var value=test.path("cpu_ms");
+            if(value.isNumber()&&Double.isFinite(value.asDouble())&&value.asDouble()>=0)max=max==null?value.asDouble():Math.max(max,value.asDouble());
+        }
+        return max;
+    }
     static Long maximum(JsonNode report,String field){
         Long max=null;
         for(var test:report.path("tests")){

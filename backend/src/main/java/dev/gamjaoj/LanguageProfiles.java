@@ -5,7 +5,7 @@ import java.util.List;
 
 /** Server-owned, versioned execution profiles. Never accept commands or limits from a client. */
 final class LanguageProfiles {
-    public record Option(String id, String label, String file, int timeLimitMs, int memoryMb) {}
+    public record Option(String id, String label, String file, int timeLimitMs, int memoryMb, String timeMetric) {}
     static String normalize(String language) {
         String value=language==null?"JAVA":language;
         if(!List.of("JAVA","CPP","PYTHON").contains(value))
@@ -20,12 +20,13 @@ final class LanguageProfiles {
             var seconds=limits.path(normalize(language));
             if(seconds.isIntegralNumber())p.put("testWallSeconds",seconds.asInt());else p.put("testWallSeconds",seconds.asDouble());
             if(limits.has("memory"))p.put("memoryMb",limits.path("memory").path(normalize(language)).asInt());
+            if(limits.path("cpu").has(normalize(language)))p.put("testCpuSeconds",limits.path("cpu").path(normalize(language)).asDouble());
         }
         return p;
     }
     static Option option(JsonNode profile) {
         return new Option(profile.path("language").asText(),profile.path("label").asText(),profile.path("sourceFile").asText(),
-                (int)Math.round(profile.path("testWallSeconds").asDouble()*1000),profile.path("memoryMb").asInt());
+                (int)Math.round(profile.path(profile.has("testCpuSeconds")?"testCpuSeconds":"testWallSeconds").asDouble()*1000),profile.path("memoryMb").asInt(),profile.has("testCpuSeconds")?"CPU":"WALL");
     }
     static List<Option> options() { return List.of(option(profile("JAVA")),option(profile("CPP")),option(profile("PYTHON"))); }
     static List<Option> options(String limitsJson) {
