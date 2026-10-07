@@ -10,6 +10,7 @@ Environment=GAMJAOJ_DOCKER_CONTROL=engine
 # 20 slots x 0.5 CPU sandboxes on the 12-core / 16 GB Runner VM (2 cores left for dockerd and the OS);
 # the server caps assignments with RUNNER_FUNCTIONAL_SLOTS.
 Environment=GAMJAOJ_FUNCTIONAL_SLOTS=20
+Environment=GAMJAOJ_TEST_PARALLELISM=4
 ExecStart=/usr/bin/python3 -m runner.worker --state-dir %h/gamjaoj-worker/state --slots 20
 Restart=on-failure
 RestartSec=5
