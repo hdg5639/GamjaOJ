@@ -35,7 +35,9 @@ final class GitHubSolutionLayout {
         if(!target.path("layout").asText().equals("problem-v1"))return target.path("prefix").asText()+"/"+payload.path("username").asText()+"/"+payload.path("problemVersion").asText()+"/"+payload.path("language").asText();
         String version=payload.path("problemVersion").asText();
         if(!version.matches("[A-Za-z0-9_.-]{1,80}")||version.equals(".")||version.equals(".."))throw new ExportRemote.Failure("INVALID_TARGET",false);
-        return target.path("prefix").asText()+"/"+ratingFolder(payload)+"/"+version+". "+safeTitle(payload.path("title").asText(),238-version.length());
+        String label="["+safeTitle(rating(payload),48)+"] ";
+        int titleBudget=240-label.getBytes(StandardCharsets.UTF_8).length-3-version.length();
+        return target.path("prefix").asText()+"/"+ratingFolder(payload)+"/"+label+safeTitle(payload.path("title").asText(),titleBudget)+" - "+version;
     }
     static String safeTitle(String title,int budget){
         String normalized=Normalizer.normalize(title,Normalizer.Form.NFC);
