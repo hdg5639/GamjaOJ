@@ -1,6 +1,7 @@
 'use client';
 import LoadingIndicator from './loading-indicator';
 import LoginIntro from './login-intro';
+import AnnouncementCenter from './announcement-center';
 import AuthLearningPreview from './auth-learning-preview';
 
 import { useEffect, useState } from 'react';
@@ -138,10 +139,10 @@ export default function Home() {
     <AppHeader key={user?.id || 'anonymous'}><a href="/" className="brand"><img className="brand-symbol" src="/gamjaoj-favicon.svg?v=hex-check-v1" alt="" width="34" height="34"/><span>Gamja<span className="brand-accent">OJ</span></span></a>
       <span className="header-note">문제를 풀고, 나의 다음 단계를 찾다.</span>
       {user ? <nav className="account-nav" aria-label="계정 메뉴"><span className="user-name">{user.nickname}님</span>
-        <ThemeToggle/><AppearanceSettings/>
+        <AnnouncementCenter accountId={user.id}/><ThemeToggle/><AppearanceSettings/>
         <button className="secondary" onClick={() => setSettings(value => !value)}>{settings ? '문제 풀기' : '내 설정'}</button>
         <button className="secondary" onClick={logout} disabled={busy}>로그아웃</button></nav>
-        : <span className="anonymous-theme"><ThemeToggle/><AppearanceSettings/></span>}
+        : <span className="anonymous-theme"><AnnouncementCenter/><ThemeToggle/><AppearanceSettings/></span>}
     </AppHeader>
     <main id={user && !settings ? undefined : "main-content"} tabIndex={-1} hidden={!!user && !settings} className={user ? 'settings-page' : 'login-page'}>
       <section className="intro auth-story" hidden={!!user} aria-labelledby="auth-story-title">
