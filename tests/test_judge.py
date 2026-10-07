@@ -56,6 +56,13 @@ class ContractTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_problem({"version": "v1", "output_policy": "RUN_ONLY", "tests": tests})
 
+    def test_batch_run_inputs_are_bounded_ordered_and_never_contain_expected_answers(self):
+        tests=[{'id':f'custom-input-{i+1}','input':str(i),'output':''} for i in range(20)]
+        plan={'version':'batch','output_policy':'RUN_ONLY','tests':tests}
+        validate_problem(plan)
+        for field,value in [('id','wrong'),('input','x'*16385),('output','answer')]:
+            with self.assertRaises(ValueError):validate_problem(plan|{'tests':[tests[0]|{field:value}]+tests[1:]})
+
     def test_comparison_and_failure_precedence(self):
         result = {"stdout": b"  3\n", "limit": None, "exit_code": 0, "oom_killed": False}
         self.assertEqual("AC", classify(result, b"3"))
