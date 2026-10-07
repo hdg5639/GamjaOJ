@@ -1,5 +1,6 @@
 'use client';
 import LoadingIndicator from './loading-indicator';
+import LoginIntro from './login-intro';
 
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
@@ -33,6 +34,7 @@ const api = cachedApi(request);
 
 export default function Home() {
   const [sidebarCollapsed,setSidebarCollapsed]=useState(true);
+  const [loginIntro,setLoginIntro]=useState('done');
 
   const [user, setUser] = useState(null);
   const [settings, setSettings] = useState(false);
@@ -130,7 +132,7 @@ export default function Home() {
     try{localStorage.setItem(`gamjaoj-sidebar-${user.id}`,next?'collapsed':'expanded');}catch{}
   }
 
-  return <div className={`shell ${user ? 'signed-in' : ''}`} data-sidebar-collapsed={sidebarCollapsed}>
+  return <div className={`shell ${user ? 'signed-in' : ''}`} data-sidebar-collapsed={sidebarCollapsed} data-login-intro={user?'done':loading?'pending':loginIntro}>
     <a className="skip-link" href="#main-content">본문으로 이동</a>
     <AppHeader key={user?.id || 'anonymous'}><a href="/" className="brand"><img className="brand-symbol" src="/gamjaoj-favicon.svg?v=hex-check-v1" alt="" width="34" height="34"/><span>Gamja<span className="brand-accent">OJ</span></span></a>
       <span className="header-note">문제를 풀고, 나의 다음 단계를 찾다.</span>
@@ -141,11 +143,18 @@ export default function Home() {
         : <span className="anonymous-theme"><ThemeToggle/><AppearanceSettings/></span>}
     </AppHeader>
     <main id={user && !settings ? undefined : "main-content"} tabIndex={-1} hidden={!!user && !settings} className={user ? 'settings-page' : 'login-page'}>
-      <section className="intro" hidden={!!user}>
-        <span className="eyebrow">알고리즘 연습장</span>
-        <h1>한 문제씩,<br/>내 것으로.</h1>
-        <p>막혔던 개념도, 스스로 풀어낸 순간도.<br/>각자의 속도로 연습하고 함께 성장해요.</p>
-        <div className="intro-path" aria-label="학습 흐름"><span>01 <strong>탐색</strong></span><span>02 <strong>풀이</strong></span><span>03 <strong>다음 훈련</strong></span></div><p className="intro-detail">함께 만든 문제, 선택 진단, 나에게 맞는 연습.<br/>Java · C++ · Python으로 한 곳에서 이어가세요.</p>
+      <section className="intro auth-story" hidden={!!user} aria-labelledby="auth-story-title">
+        <div className="auth-story-copy">
+          <span className="eyebrow">GamjaBox에서 이어지는 알고리즘 연습장</span>
+          <h1 id="auth-story-title">한 문제씩,<br/><span>내 것으로.</span></h1>
+          <p>풀어낸 문제는 기록으로,<br/>막혔던 순간은 다음 연습으로 이어집니다.</p>
+        </div>
+        <ol className="auth-learning-path" aria-label="학습 흐름">
+          <li><span className="auth-step-number">01</span><div><h2>내 방식으로 풀고</h2><p>Java · C++ · Python으로 작성하고,<br/>실제 실행 결과를 확인해요.</p></div></li>
+          <li><span className="auth-step-number">02</span><div><h2>한 번 더 돌아보고</h2><p>풀이 자신감과 AI 피드백으로<br/>이해한 부분과 헷갈린 부분을 구분해요.</p></div></li>
+          <li><span className="auth-step-number">03</span><div><h2>다음 연습으로 이어가요</h2><p>진단과 풀이 기록을 바탕으로<br/>나에게 맞는 훈련을 시작해요.</p></div></li>
+        </ol>
+        <div className="auth-story-footer"><span>정답을 넘어, 내 실력으로.</span><small>GamjaBox Family · GamjaOJ</small></div>
       </section>
       <section className={user ? 'settings-container' : 'card'} aria-label={user ? '내 계정' : '계정 시작하기'}>
         {loading ? <LoadingIndicator>내 연습장을 불러오고 있어요…</LoadingIndicator> : user ? <>
@@ -188,6 +197,7 @@ export default function Home() {
             </div>
           </div>
         </> : <>
+          <p className="auth-form-eyebrow">나의 알고리즘 연습장</p>
           <div className="tabs" role="group" aria-label="로그인 또는 가입">
             <button aria-pressed={mode === 'login'} disabled={busy} className={mode === 'login' ? 'selected' : ''} onClick={() => { setMode('login'); setError(''); setMessage(''); }}>로그인</button>
             <button aria-pressed={mode === 'signup'} disabled={busy} className={mode === 'signup' ? 'selected' : ''} onClick={() => { setMode('signup'); setError(''); setMessage(''); }}>처음 왔어요</button>
@@ -201,6 +211,10 @@ export default function Home() {
             {mode === 'signup' && <label>비밀번호 확인<input name="confirmPassword" type="password" required maxLength={72} autoComplete="new-password" /></label>}
             <button className="primary" disabled={busy}>{busy ? '잠시만요…' : mode === 'login' ? '내 연습장으로' : '가입하기'}</button>
           </form>
+          <section className="auth-start-guide" aria-label="첫 연습 안내">
+            <h3>처음이라면, 이렇게 시작해요.</h3>
+            <dl><div><dt>바로 문제 풀기</dt><dd>익숙한 언어와 관심 있는 유형부터.</dd></div><div><dt>진단으로 방향 잡기</dt><dd>어디서 시작할지 고민된다면.</dd></div></dl>
+          </section>
           <p className="help">계정에 문제가 생겼다면 운영자에게 알려주세요.</p>
         </>}
         {!user && error && <p role="alert" className="notice error">{error}</p>}
@@ -211,6 +225,7 @@ export default function Home() {
       {error && <p role="alert" className="notice error">{error}</p>}
       <Workspace key={user.id} user={user} api={api} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={toggleSidebar} />
     </main>}
+    {!loading&&!user&&<LoginIntro onPhaseChange={setLoginIntro}/>}
     <footer><div className="footer-line">GamjaOJ <span>잘하는 것보다, 어제보다 한 걸음.</span></div><SiteNotice/></footer>
   </div>;
 }
