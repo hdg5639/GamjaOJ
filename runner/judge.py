@@ -263,8 +263,8 @@ class Runner:
         self.judge_all = False
         self.observe_cpu = False
 
-    def test_parallelism(self):
-        if self.execution_mode!='FUNCTIONAL' or not self.judge_all or 'testCpuSeconds' not in self.profile:return 1
+    def test_parallelism(self,custom=False):
+        if self.execution_mode!='FUNCTIONAL' or (not custom and (not self.judge_all or 'testCpuSeconds' not in self.profile)):return 1
         try:return max(1,min(4,int(os.environ.get('GAMJAOJ_TEST_PARALLELISM','4'))))
         except ValueError:return 1
 
@@ -474,17 +474,17 @@ class Runner:
                     if self.compile_cache is not None and not cache_hit:
                         self.compile_cache.put(cache_key, result)
                     failed = None
-                    with ThreadPoolExecutor(max_workers=self.test_parallelism()) as pool:
+                    with ThreadPoolExecutor(max_workers=self.test_parallelism(custom)) as pool:
                         # Concurrent completion never changes saved testcase order or
                         # first-failure precedence. Early-stop plans stay serial.
                         tests=(pool.map(lambda test:self.explicit_test(classes,test,custom),problem['tests'])
-                               if self.test_parallelism()>1 else
+                               if self.test_parallelism(custom)>1 else
                                (self.explicit_test(classes,test,custom) for test in problem['tests']))
                         for entry in tests:
                             report['tests'].append(entry)
                             if entry['verdict'] not in ('AC','OK'):failed=failed or entry['verdict']
                             report['verdict']=failed or entry['verdict']
-                            if failed and not self.judge_all:break
+                            if failed and not self.judge_all and not custom:break
                     if problem.get("generated") and (report["verdict"] == "AC" or self.judge_all):
                         self._generated(problem, classes, report)
         except (InfrastructureError, OSError, tarfile.TarError) as exc:
@@ -628,10 +628,12 @@ def validate_problem(problem):
     tests = problem.get("tests", [])
     if not 1 <= len(tests) <= 20:
         raise ValueError("Expected 1 to 20 trusted tests")
-    if problem["output_policy"] == "RUN_ONLY" and (len(tests) != 1
-            or tests[0].get("id") != "custom-input" or tests[0].get("output") != ""
-            or len(tests[0].get("input", "").encode()) > 16384):
-        raise ValueError("Custom run requires one bounded input and no expected output")
+    if problem["output_policy"] == "RUN_ONLY":
+        for index,test in enumerate(tests):
+            if (test.get("id") != ("custom-input" if len(tests)==1 else f"custom-input-{index+1}")
+                    or test.get("output") != "" or not isinstance(test.get("input"),str)
+                    or len(test['input'].encode())>16384):
+                raise ValueError("Custom run requires bounded inputs and no expected output")
     generated = problem.get("generated")
     if generated is not None:
         if problem["output_policy"] != "TOKEN_EXACT" or not isinstance(generated, dict) or set(generated) - {"generator", "reference", "tests", "inputLimit", "outputLimit"}:
