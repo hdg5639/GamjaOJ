@@ -80,7 +80,7 @@
 @media(min-width:1280px) {
  .shell:not(.signed-in) { max-width:1720px; padding-inline:clamp(32px,4vw,72px); }
  .shell:not(.signed-in) .login-page { grid-template-columns:minmax(0,1fr) minmax(400px,460px); gap:28px; min-height:calc(100dvh - 168px); }
- .login-page > .auth-story { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,1fr); grid-template-rows:1fr auto auto; align-items:center; gap:36px 32px; padding:clamp(28px,2.5vw,44px); }
+ .login-page > .auth-story { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,1fr); grid-template-rows:1fr auto; align-items:center; gap:36px 32px; padding:clamp(28px,2.5vw,44px); }
  .auth-story h1 { font-size:clamp(44px,3.6vw,66px); }
  .auth-story :is(p,h2) { word-break:keep-all; overflow-wrap:break-word; }
  .auth-practice-preview { display:block; min-width:0; align-self:center; border:1px solid #c8ff5826; border-radius:14px; background:#091b1480; overflow:hidden; box-shadow:0 16px 32px #00000014; }
@@ -101,7 +101,7 @@
  .auth-preview-reflection > span { color:#c8ff58; font-size:10px; }
  .auth-preview-reflection p { color:#b7c8bc; font-size:11px; line-height:1.8; margin:6px 0 0; }
  .auth-preview-reflection strong { font-weight:600; color:#e0ece4; }
- .auth-learning-path { grid-column:1/-1; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; padding-top:28px; border-top:1px solid #c8ff581a; }
+ .auth-learning-path { display:none; grid-column:1/-1; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; padding-top:28px; border-top:1px solid #c8ff581a; }
  .auth-learning-path li { gap:12px; }
  .auth-learning-path li:not(:last-child)::after { display:none; }
  .auth-learning-path h2 { font-size:13px; }
@@ -145,7 +145,7 @@
    fixed guess from the viewport. Content can still grow for zoom and errors. */
 .shell:not(.signed-in) { display:grid; grid-template-rows:auto minmax(0,1fr) auto; min-height:100dvh; }
 .shell:not(.signed-in) .login-page { min-height:0; padding-block:20px; }
-@media(min-width:701px) and (max-height:900px) {
+@media(min-width:701px) and (max-height:1100px) {
  .shell:not(.signed-in) .login-page { padding-block:12px; }
  .login-page > .auth-story { padding:24px; gap:20px; }
  .auth-story h1 { margin:16px 0 14px; font-size:44px; }
@@ -163,7 +163,7 @@
  .shell[data-auth-mode="signup"] .auth-start-guide { display:none; }
  .shell:not(.signed-in) > footer { padding-block:10px; gap:6px; }
 }
-@media(min-width:1280px) and (max-height:900px) {
+@media(min-width:1280px) and (max-height:1100px) {
  .login-page > .auth-story { grid-template-rows:minmax(0,1fr) auto; gap:16px 24px; }
  .auth-story .auth-learning-path { display:none; }
  .auth-preview-heading { padding:10px 14px; }
@@ -232,4 +232,11 @@
 }
 @media(min-width:701px) and (max-height:640px) {
  .shell:not(.signed-in) .login-page { padding-block:6px; }
+}
+@media(min-width:701px) and (max-height:640px) {
+ .auth-story h1 { font-size:36px; }
+ .auth-learning-path { gap:12px; }
+}
+@media(min-width:701px) and (max-height:640px) {
+ .auth-learning-path p { font-size:11px; }
 }

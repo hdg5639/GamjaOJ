@@ -5,7 +5,7 @@ async function open(page,width,height){
  await page.route('**/api/**',r=>r.fulfill({status:new URL(r.request().url()).pathname==='/api/me'?401:200,json:{}}));
  await page.goto(base);await page.getByLabel('아이디',{exact:true}).waitFor();
 }
-for(const [width,height] of [[1280,600],[1280,640],[1366,650],[1440,700],[1024,650],[1280,720],[1366,768],[1440,900],[1920,1080],[1024,768],[768,950]])test('login and signup fit '+width+'×'+height,async({page})=>{
+for(const [width,height] of [[1024,600],[1710,985],[1720,980],[1600,1000],[1440,950],[1280,1024],[1280,1101],[1920,1101],[1280,600],[1280,640],[1366,650],[1440,700],[1024,650],[1280,720],[1366,768],[1440,900],[1920,1080],[1024,768],[768,950]])test('login and signup fit '+width+'×'+height,async({page})=>{
  await open(page,width,height);
  for(const mode of ['login','signup']){
   if(mode==='signup')await page.getByRole('button',{name:'처음 왔어요',exact:true}).click();
