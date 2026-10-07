@@ -304,6 +304,47 @@ class SubmissionIntegrationTest {
                 .isInstanceOf(AccountException.class);
     }
 
+    @Test void batchRunsPinEveryInputAndReturnIndependentFailuresWithoutLeakingFormalOutputs() {
+        UUID key=UUID.randomUUID();
+        var inputs=List.of("first","second","third","fourth");
+        var request=new RunController.Request("sum-v1",SOURCE,null,null,null,"PYTHON",inputs);
+        var saved=submissions.run(alice,key,request);
+        assertThat(submissions.run(alice,key,request).id()).isEqualTo(saved.id());
+        assertThatThrownBy(()->submissions.run(alice,key,new RunController.Request("sum-v1",SOURCE,null,null,null,"PYTHON",List.of("first","changed")))).isInstanceOf(AccountException.class);
+        var assignment=queue.claim(UUID.randomUUID()).orElseThrow();
+        assertThat(assignment.judgeAll()).isFalse();
+        assertThat(assignment.problem().path("tests")).hasSize(4);
+        for(int i=0;i<4;i++)assertThat(assignment.problem().path("tests").path(i).path("input").asText()).isEqualTo(inputs.get(i));
+        var report=report(assignment).put("verdict","RE");
+        for(int i=0;i<4;i++)((ObjectNode)report.path("tests").get(i)).put("verdict",i==0?"RE":"OK").put("stdout","output-"+i).put("stderr",i==0?"error":"").put("stdout_truncated",false);
+        var partial=report.deepCopy();((com.fasterxml.jackson.databind.node.ArrayNode)partial.path("tests")).remove(3);
+        assertThatThrownBy(()->queue.complete(saved.id(),assignment.token(),partial)).isInstanceOf(AccountException.class);
+        queue.complete(saved.id(),assignment.token(),report);
+        var detail=submissions.runDetail(alice,saved.id());
+        assertThat(detail.runCases()).extracting(Submissions.RunCase::verdict).containsExactly("RE","OK","OK","OK");
+        assertThat(detail.runCases()).extracting(Submissions.RunCase::stdout).containsExactly("output-0","output-1","output-2","output-3");
+        assertThatThrownBy(()->submissions.runDetail(bob,saved.id())).isInstanceOf(AccountException.class);
+        assertThat(submissions.history(alice)).isEmpty();
+        var formal=submit(alice,UUID.randomUUID());
+        assertThat(submissions.detail(alice,formal.id()).runCases()).isEmpty();
+    }
+    @Test void batchRunRequestIsAcceptedAndValidatedOverHttp() throws Exception {
+        var body=JudgeJson.JSON.createObjectNode().put("problemVersion","sum-v1").put("source",SOURCE);
+        body.putArray("inputs").add("1 2").add("3 4");
+        mvc.perform(post("/api/runs").with(user(alice)).with(csrf()).header("Idempotency-Key",UUID.randomUUID()).contentType("application/json").content(body.toString()))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.runCases").isArray());
+        for(var inputs:List.of(JudgeJson.JSON.createArrayNode(),JudgeJson.JSON.createArrayNode().addNull())) {
+            body.set("inputs",inputs);
+            mvc.perform(post("/api/runs").with(user(alice)).with(csrf()).header("Idempotency-Key",UUID.randomUUID()).contentType("application/json").content(body.toString()))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+    @Test void batchRunInputBoundsAndAmbiguousRequestsAreRejected() {
+        for(var inputs:List.of(List.<String>of(),java.util.Collections.nCopies(21,""),List.of("가".repeat(6000))))
+            assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,null,null,null,null,inputs))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"",null,null,null,List.of("")))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,null,null,null,null,null))).isInstanceOf(AccountException.class);
+    }
     @Test void customRunsUseChosenLanguageAndItsOwnRunPolicy() {
         for(String language:List.of("CPP","PYTHON")) {
             var saved=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2",null,null,language));

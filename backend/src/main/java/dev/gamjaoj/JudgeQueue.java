@@ -179,13 +179,15 @@ public class JudgeQueue {
             String testVerdict = tests.get(i).path("verdict").asText();
             if (!tests.get(i).path("id").equals(expectedTests.get(i).path("id"))
                     || (i >= explicit) != "generated".equals(tests.get(i).path("kind").asText())
-                    || (!judgeAll && i < tests.size()-1 && !testVerdict.equals(success)))
+                    || (!judgeAll && !run && i < tests.size()-1 && !testVerdict.equals(success)))
                 throw new AccountException(400, "Invalid test order or evidence");
             if (firstFailure == null && !testVerdict.equals(success)) firstFailure = testVerdict;
         }
         if (verdict.equals(success) && (tests.size() != expectedTests.size()
                 || tests.findValuesAsText("verdict").stream().anyMatch(value -> !value.equals(success))))
             throw new AccountException(400, "AC requires all saved tests to pass");
+        if(run&&!Set.of("CE","IE").contains(verdict)&&tests.size()!=expectedTests.size())
+            throw new AccountException(400,"Custom execution requires every saved input result");
         if (run) for (JsonNode test : tests) {
             if (!test.path("stdout").isTextual() || test.path("stdout").asText().length() > 32768
                     || !test.path("stderr").isTextual() || test.path("stderr").asText().length() > 8192
