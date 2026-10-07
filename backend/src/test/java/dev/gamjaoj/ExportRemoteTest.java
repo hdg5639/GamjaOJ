@@ -20,13 +20,13 @@ class ExportRemoteTest {
   p.set("thinking",ExportRemote.obj().put("layer",5).put("name","뒤집어보기").put("insight",4).put("implementation",2).put("edgeCases",3).put("source","CURATED_ESTIMATE").put("rationale","질문의 방향을 바꿔 생각해야 해요."));
   assertThat(GitHubSolutionLayout.readme(p)).contains("5겹 · 뒤집어보기","발상 4/5","구현 2/5","경계 3/5","검토 추정");
   assertThat(ExportRemote.info("identity",p)).contains("5겹 · 뒤집어보기","발상 4/5");
-  assertThat(folder).isEqualTo("GamjaOJ/Easy/sum-v1. 두 수의 합");
-  assertThat(GitHubSolutionLayout.folder(target,p)).isEqualTo("GamjaOJ/5겹/sum-v1. 두 수의 합");
+  assertThat(folder).isEqualTo("GamjaOJ/Easy/[Easy] 두 수의 합 - sum-v1");
+  assertThat(GitHubSolutionLayout.folder(target,p)).isEqualTo("GamjaOJ/5겹/[5겹 · 뒤집어보기] 두 수의 합 - sum-v1");
   ((ObjectNode)p.path("thinking")).put("layer",1).put("name","그대로");
-  assertThat(GitHubSolutionLayout.folder(target,p)).isEqualTo("GamjaOJ/1겹/sum-v1. 두 수의 합");
+  assertThat(GitHubSolutionLayout.folder(target,p)).isEqualTo("GamjaOJ/1겹/[1겹 · 그대로] 두 수의 합 - sum-v1");
   assertThat(GitHubSolutionLayout.readme(p)).contains("1겹 · 그대로").doesNotContain("[Easy]");
   p.putNull("thinking");assertThat(GitHubSolutionLayout.rating(p)).isEqualTo("겹 미배정");
-  assertThat(GitHubSolutionLayout.folder(target,p)).isEqualTo("GamjaOJ/겹 미배정/sum-v1. 두 수의 합");
+  assertThat(GitHubSolutionLayout.folder(target,p)).isEqualTo("GamjaOJ/겹 미배정/[겹 미배정] 두 수의 합 - sum-v1");
   p.remove("thinking");assertThat(GitHubSolutionLayout.rating(p)).isEqualTo("Easy");
   assertThat(GitHubSolutionLayout.folder(target,p)).isEqualTo(folder);
  }
