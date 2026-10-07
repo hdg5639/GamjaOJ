@@ -15,6 +15,7 @@
 .auth-learning-path p { margin:0; font-size:12px; line-height:1.75; color:#a5bbae; }
 .auth-story-footer { display:flex; flex-direction:column; gap:6px; padding-top:20px; border-top:1px solid #c8ff5814; font-size:12px; color:#c7d7cc; }
 .auth-story-footer small { color:#94ad9c; font-size:10px; letter-spacing:.035em; }
+.auth-practice-preview { display:none; }
 :root:root:root .login-page > .card { display:flex; flex-direction:column; justify-content:center; min-width:0; padding:36px 40px; border-radius:22px; }
 .auth-form-eyebrow { margin:0 0 18px; font-size:11px; color:var(--muted); letter-spacing:.025em; }
 .login-page .tabs { margin:0 0 26px; padding:4px; gap:4px; border:0; border-radius:10px; background:color-mix(in srgb,var(--subtle) 65%,transparent); box-shadow:var(--surface-inset); }
@@ -75,3 +76,67 @@
 }
 
 @media(min-width:1024px) { .shell[data-login-intro="pending"] .auth-story { opacity:0; visibility:hidden; } }
+
+@media(min-width:1280px) {
+ .shell:not(.signed-in) { max-width:1720px; padding-inline:clamp(32px,4vw,72px); }
+ .shell:not(.signed-in) .login-page { grid-template-columns:minmax(0,1fr) minmax(400px,460px); gap:28px; min-height:calc(100dvh - 168px); }
+ .login-page > .auth-story { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,1fr); grid-template-rows:1fr auto auto; align-items:center; gap:36px 32px; padding:clamp(28px,2.5vw,44px); }
+ .auth-story h1 { font-size:clamp(44px,3.6vw,66px); }
+ .auth-story :is(p,h2) { word-break:keep-all; overflow-wrap:break-word; }
+ .auth-practice-preview { display:block; min-width:0; align-self:center; border:1px solid #c8ff5826; border-radius:14px; background:#091b1480; overflow:hidden; box-shadow:0 16px 32px #00000014; }
+ .auth-preview-heading { display:flex; justify-content:space-between; gap:12px; padding:12px 16px; border-bottom:1px solid #c8ff581a; color:#b7c8bc; font-size:10px; }
+ .auth-preview-heading > span:last-child { color:#c8ff58; }
+ .auth-preview-problem { padding:18px 18px 16px; }
+ .auth-preview-problem > span { font-size:10px; color:#9bb8a6; }
+ .auth-preview-problem h2 { font-size:18px; letter-spacing:-.04em; margin:8px 0; }
+ .auth-preview-problem p { color:#b7c8bc; font-size:11px; line-height:1.8; margin:0; }
+ .auth-preview-problem dl { display:flex; flex-wrap:wrap; gap:16px 28px; margin:14px 0 0; }
+ .auth-preview-problem dl > div { display:grid; gap:4px; }
+ .auth-preview-problem dt { font-size:10px; color:#9bb8a6; }
+ .auth-preview-problem dd { margin:0; font:12px/1.5 ui-monospace,monospace; }
+ .auth-practice-preview pre { margin:0; padding:18px; background:#07160f80; overflow:auto; font:11px/1.9 ui-monospace,monospace; color:#e0ece4; }
+ .auth-code-comment { color:#8aa794; }
+ .auth-code-keyword { color:#c8ff58; }
+ .auth-preview-reflection { padding:16px 18px; }
+ .auth-preview-reflection > span { color:#c8ff58; font-size:10px; }
+ .auth-preview-reflection p { color:#b7c8bc; font-size:11px; line-height:1.8; margin:6px 0 0; }
+ .auth-preview-reflection strong { font-weight:600; color:#e0ece4; }
+ .auth-learning-path { grid-column:1/-1; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; padding-top:28px; border-top:1px solid #c8ff581a; }
+ .auth-learning-path li { gap:12px; }
+ .auth-learning-path li:not(:last-child)::after { display:none; }
+ .auth-learning-path h2 { font-size:13px; }
+ .auth-learning-path p { font-size:11px; }
+ .auth-story-footer { grid-column:1/-1; flex-direction:row; justify-content:space-between; align-items:baseline; gap:16px; padding-top:18px; }
+ :root:root:root .login-page > .card { padding:32px; }
+}
+
+@media(min-width:1280px) {
+ .auth-preview-slides { display:grid; }
+ .auth-preview-slide { grid-area:1/1; min-width:0; display:flex; flex-direction:column; opacity:0; visibility:hidden; transform:translateY(6px); transition:opacity 450ms ease,transform 450ms ease,visibility 450ms; }
+ .auth-preview-slide[data-active="true"] { opacity:1; visibility:visible; transform:none; }
+ .auth-preview-slide-title { padding:20px 18px 0; }
+ .auth-preview-slide-title > span { color:#c8ff58; font-size:10px; }
+ .auth-preview-slide-title h2 { font-size:20px; margin:8px 0; letter-spacing:-.04em; }
+ .auth-preview-slide-title p { margin:0; font-size:11px; color:#b7c8bc; line-height:1.8; }
+ .auth-preview-problem h3 { font-size:15px; margin:8px 0; }
+ .auth-preview-slide > .auth-preview-reflection { margin-top:auto; }
+ .auth-preview-notes { padding:0 18px; display:grid; gap:12px; }
+ .auth-preview-notes > div { padding:14px; border-left:2px solid #c8ff5840; background:#07160f80; }
+ .auth-preview-notes span { display:block; color:#9bb8a6; font-size:10px; margin-bottom:8px; }
+ .auth-preview-notes strong,.auth-preview-training strong { font-size:12px; font-weight:600; }
+ .auth-preview-notes p,.auth-preview-training p { margin:6px 0 0; color:#b7c8bc; font-size:11px; line-height:1.8; }
+ .auth-preview-training { list-style:none; padding:0 18px; margin:0; display:grid; gap:18px; }
+ .auth-preview-training li { display:flex; align-items:flex-start; gap:12px; }
+ .auth-preview-training li > span { color:#c8ff58; font:11px/1.8 ui-monospace,monospace; }
+ .auth-preview-controls { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; border-top:1px solid #c8ff581a; }
+ .auth-preview-controls > div { display:flex; gap:2px; }
+ .auth-preview-controls button { min-width:32px; min-height:32px; display:grid; place-items:center; padding:4px; border:0; background:transparent; color:#b7c8bc; box-shadow:none; }
+ .auth-preview-controls button > span { display:block; width:6px; height:6px; border-radius:8px; background:#9bb8a660; transition:width 250ms ease,background-color 250ms ease; }
+ .auth-preview-controls button[aria-pressed="true"] > span { width:20px; background:#c8ff58; }
+ .auth-preview-controls .auth-preview-play { padding-inline:8px; font-size:10px; }
+ .auth-preview-controls button:hover { color:#c8ff58; background:#c8ff580a; }
+ .auth-preview-controls button:focus-visible { outline-color:#c8ff58; outline-offset:0; }
+}
+@media(prefers-reduced-motion:reduce) {
+ .auth-preview-slide,.auth-preview-controls button > span { transition:none; transform:none; }
+}
