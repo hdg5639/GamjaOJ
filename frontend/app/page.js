@@ -150,6 +150,14 @@ export default function Home() {
           <span className="eyebrow">GamjaBox에서 이어지는 알고리즘 연습장</span>
           <h1 id="auth-story-title">한 문제씩,<br/><span>내 것으로.</span></h1>
           <p>풀어낸 문제는 기록으로,<br/>막혔던 순간은 다음 연습으로 이어집니다.</p>
+          <div className="auth-story-services">
+            <p className="auth-language-line" aria-label="지원 언어"><span>Java</span><span>C++</span><span>Python</span><span className="auth-language-caption">익숙한 언어로, 한 곳에서.</span></p>
+            <dl>
+              <div><dt>내 실력을 살피는 진단</dt><dd>기초부터 A·B형 목표 진단까지.</dd></div>
+              <div><dt>다음 문제까지 이어지는 훈련</dt><dd>진단 기반 계획과 알고리즘별 훈련 코스.</dd></div>
+              <div><dt>흩어지지 않는 풀이 기록</dt><dd>성장 겹·활동 잔디, GitHub·Notion 저장.</dd></div>
+            </dl>
+          </div>
         </div>
         <AuthLearningPreview visible={!user}/>
         <ol className="auth-learning-path" aria-label="학습 흐름">
