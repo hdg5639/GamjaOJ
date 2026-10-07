@@ -178,7 +178,7 @@
  .auth-preview-training { padding-inline:14px; gap:12px; }
  .auth-story-footer { padding-top:12px; }
 }
-@media(min-width:701px) and (max-height:780px) {
+@media(min-width:701px) and (max-height:850px) {
  .login-page > .auth-story { padding:20px; }
  .auth-story h1 { font-size:40px; margin:12px 0; }
  .auth-story-copy > p { font-size:12px; }
@@ -191,16 +191,16 @@
  .auth-start-guide { margin-top:14px; padding-top:12px; }
  .login-page .card > .help { font-size:10px; margin-top:12px; }
 }
-@media(min-width:1280px) and (max-height:780px) {
+@media(min-width:1280px) and (max-height:850px) {
  .login-page > .auth-story { grid-template-rows:minmax(0,1fr); }
 }
 @media(min-width:701px) {
  .shell[data-auth-mode="signup"] .auth-start-guide { display:none; }
 }
-@media(min-width:1280px) and (max-height:780px) {
+@media(min-width:1280px) and (max-height:850px) {
  .auth-preview-slide > .auth-preview-reflection { display:none; }
 }
-@media(min-width:701px) and (max-height:780px) {
+@media(min-width:701px) and (max-height:850px) {
  :root:root:root .shell[data-auth-mode="signup"] .login-page > .card { padding-block:16px; }
  .shell[data-auth-mode="signup"] .login-page .card > form { gap:8px; }
  .shell[data-auth-mode="signup"] .login-page .card > .help { margin-top:8px; }
@@ -239,4 +239,21 @@
 }
 @media(min-width:701px) and (max-height:640px) {
  .auth-learning-path p { font-size:11px; }
+}
+
+.auth-story-services { display:none; }
+/* Give the editorial column its own substance next to the worked example.
+   The short-screen layout retains the compact introduction and full footer. */
+@media(min-width:1280px) and (min-height:800px) {
+ .auth-story-copy { align-self:center; }
+ .auth-story h1 { font-size:clamp(48px,3.8vw,66px); margin-block:20px 18px; }
+ .auth-story-copy > p { font-size:14px; }
+ .auth-story-services { display:block; margin-top:26px; }
+ .auth-language-line { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:0 0 24px; font-size:11px; color:#c8ff58; }
+ .auth-language-line > span:not(.auth-language-caption) { font-family:ui-monospace,monospace; }
+ .auth-language-caption { flex-basis:100%; color:#a5bbae; font-size:11px; }
+ .auth-story-services dl { margin:0; display:grid; gap:18px; }
+ .auth-story-services dl > div { padding-left:14px; border-left:2px solid #c8ff5830; }
+ .auth-story-services dt { font-size:14px; line-height:1.5; font-weight:650; color:#eff5ef; }
+ .auth-story-services dd { margin:5px 0 0; font-size:11px; line-height:1.7; color:#a5bbae; }
 }
