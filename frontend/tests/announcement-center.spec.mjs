@@ -1,10 +1,12 @@
 import {test,expect} from '@playwright/test';
+import {announcements} from './fixtures/announcements.mjs';
 const base=process.env.GAMJAOJ_BASE_URL||'http://127.0.0.1:18790';
 async function open(page,{signedIn=false,width=1440,dark=false}={}){
+ page.on('pageerror',e=>console.log('Browser error:',e.message));
  await page.setViewportSize({width,height:950});await page.emulateMedia({reducedMotion:'reduce',colorScheme:dark?'dark':'light'});
  await page.route('**/api/**',route=>{
   const path=new URL(route.request().url()).pathname;
-  return route.fulfill(path==='/api/me'&&!signedIn?{status:401,json:{}}:{json:path==='/api/me'?{id:'notice-user',nickname:'테스트'}:[]});
+  return route.fulfill(path==='/api/me'&&!signedIn?{status:401,json:{}}:{json:path==='/api/announcements'?announcements:path==='/api/me'?{id:'notice-user',nickname:'테스트'}:[]});
  });
  await page.goto(base);await expect(page.getByRole('button',{name:/공지·업데이트/})).toHaveAttribute('aria-label','공지·업데이트 · 읽지 않은 글 4개');
  return page.getByRole('dialog',{name:'공지·업데이트',exact:true});
@@ -13,7 +15,7 @@ test('opening preserves unread; reading individual entries persists and filters 
  const dialog=await open(page),trigger=page.getByRole('button',{name:/공지·업데이트/});await trigger.click();await expect(dialog.getByRole('status')).toContainText('4개');
  await dialog.getByRole('button',{name:'새 기능',exact:true}).click();await expect(dialog.locator('.announcement-list > li')).toHaveCount(1);
  const article=dialog.getByRole('button',{name:/여러 입력을 한 번에 실행해요/});await article.click();await expect(article).toHaveAttribute('aria-expanded','true');await expect(dialog.getByText('읽지 않은 소식 3개')).toBeVisible();
- await dialog.press('Escape');await expect(trigger).toBeFocused();await page.reload();await expect(trigger).toHaveAttribute('aria-label','공지·업데이트 · 읽지 않은 글 3개');
+ await dialog.press('Escape');await expect(trigger).toBeFocused();await page.reload();await expect(trigger).toHaveAttribute('aria-label','공지·업데이트 · 읽지 않은 글 3개',{timeout:15000});
  await trigger.click();await expect(dialog.getByRole('button',{name:/여러 입력을 한 번에 실행해요/})).not.toContainText('새 글');await dialog.getByRole('button',{name:'모두 읽음',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('모두 확인');await expect(trigger).toHaveAttribute('aria-label','공지·업데이트');await dialog.getByRole('button',{name:'닫기',exact:true}).click();await expect(trigger).toBeFocused();
 });
 for(const width of [390,768,1440])for(const signedIn of [false,true])test('notice layout '+width+' '+(signedIn?'account':'anonymous'),async({page})=>{

@@ -16,6 +16,19 @@ public class TrainingCoursesRepository {
     this.jdbc = jdbc;
   }
 
+  public java.util.List<String> overrides() {
+    return jdbc.sql("SELECT course_json FROM admin_course_setting WHERE course_json IS NOT NULL")
+        .query(String.class)
+        .list();
+  }
+
+  public java.util.Set<String> disabledCourses() {
+    return new java.util.HashSet<>(
+        jdbc.sql("SELECT id FROM admin_course_setting WHERE enabled=false")
+            .query(String.class)
+            .list());
+  }
+
   public <T> List<T> enrolledTrainingCourseEnrollment(UUID owner, RowMapper<T> mapper) {
     return jdbc.sql(
             "SELECT id,course_json FROM training_course_enrollment WHERE user_id=? ORDER BY"

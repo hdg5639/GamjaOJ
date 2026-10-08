@@ -56,7 +56,7 @@ public class SubmissionsRepository {
     var query =
         jdbc.sql(
             "SELECT"
-                + " p.id,p.package_sha256,p.owner_id,p.shared,p.review_hold,p.review_reason,p.catalog_category,p.catalog_tags,p.catalog_difficulty,p.time_limits_json,p.examples_json,"
+                + " p.id,p.package_sha256,p.owner_id,p.shared,p.review_hold,p.review_reason,p.catalog_title,p.catalog_category,p.catalog_tags,p.catalog_difficulty,p.time_limits_json,p.examples_json,"
                 + packageColumn
                 + " AS package_json,"
                 + ProblemSql.COLUMNS

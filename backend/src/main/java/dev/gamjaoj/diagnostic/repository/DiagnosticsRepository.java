@@ -21,10 +21,10 @@ public class DiagnosticsRepository {
   public Stream<String> banksDiagnosticBank() {
     return jdbc
         .sql(
-            "SELECT bank.id FROM diagnostic_bank bank WHERE bank.reviewed=true AND NOT EXISTS"
-                + " (SELECT 1 FROM diagnostic_bank_item i JOIN diagnostic_reassessment_pair r ON"
-                + " r.target_version=i.problem_version WHERE i.bank_id=bank.id AND r.reviewed=true)"
-                + " ORDER BY bank.id")
+            "SELECT bank.id FROM diagnostic_bank bank WHERE bank.reviewed=true AND"
+                + " bank.admin_enabled=true AND NOT EXISTS (SELECT 1 FROM diagnostic_bank_item i"
+                + " JOIN diagnostic_reassessment_pair r ON r.target_version=i.problem_version WHERE"
+                + " i.bank_id=bank.id AND r.reviewed=true) ORDER BY bank.id")
         .query(String.class)
         .list()
         .stream();
@@ -87,7 +87,9 @@ public class DiagnosticsRepository {
   }
 
   public Integer startInternalDiagnosticBank(String bank) {
-    return jdbc.sql("SELECT count(*) FROM diagnostic_bank WHERE id=? AND reviewed=true")
+    return jdbc.sql(
+            "SELECT count(*) FROM diagnostic_bank WHERE id=? AND reviewed=true AND"
+                + " admin_enabled=true")
         .param(bank)
         .query(Integer.class)
         .single();
@@ -163,7 +165,9 @@ public class DiagnosticsRepository {
   }
 
   public List<String> allocateExamDiagnosticBank(String argument0) {
-    return jdbc.sql("SELECT id FROM diagnostic_bank WHERE reviewed=true AND id LIKE ? ORDER BY id")
+    return jdbc.sql(
+            "SELECT id FROM diagnostic_bank WHERE reviewed=true AND admin_enabled=true AND id LIKE"
+                + " ? ORDER BY id")
         .param(argument0)
         .query(String.class)
         .list();
@@ -199,7 +203,8 @@ public class DiagnosticsRepository {
   }
 
   public List<String> reassessmentOptionsDiagnosticBank() {
-    return jdbc.sql("SELECT id FROM diagnostic_bank WHERE reviewed=true ORDER BY id")
+    return jdbc.sql(
+            "SELECT id FROM diagnostic_bank WHERE reviewed=true AND admin_enabled=true ORDER BY id")
         .query(String.class)
         .list();
   }
