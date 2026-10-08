@@ -52,7 +52,8 @@
 
 ```mermaid
 flowchart TD
-    Browser[브라우저 · Next.js / React / CodeMirror] --> App[Spring Boot · API / 인증 / 학습 관리]
+    Browser[브라우저 · Next.js / React / CodeMirror] --> Web[Nginx · 정적 화면 / Host 분기]
+    Web -->|API 프록시| App[Spring Boot · API / 인증 / 학습 관리]
     App <--> DB[(PostgreSQL · 제출 / 작업 / 학습 기록)]
     Runner[별도 Runner VM · Python Worker] -->|작업 가져오기 / 결과 보고| App
     Runner --> Sandbox[Docker · 제출 코드 컴파일 / 실행]
@@ -66,7 +67,7 @@ flowchart TD
     App --> Completion[별도 자동완성 서비스 · JDT LS / clangd / Jedi]
 ```
 
-프런트엔드는 정적 파일로 빌드해 Spring Boot 애플리케이션에서 함께 제공한다. 제출은 DB에 작업으로 저장하고, 별도 Runner가 가져가 실행한 뒤 결과를 보고한다. 브라우저는 작업 상태를 조회하므로 채점이 끝날 때까지 하나의 HTTP 요청을 오래 붙잡지 않는다.
+프런트엔드는 정적 파일로 빌드해 별도 Nginx 컨테이너에서 제공하고, `/api`와 `/internal` 요청을 Spring Boot로 전달한다. 백엔드 재시작 중에도 HTML·JS·CSS는 계속 제공하며, API는 503으로 일시적인 연결 실패를 알린다. 제출은 DB에 작업으로 저장하고, 별도 Runner가 가져가 실행한 뒤 결과를 보고한다. 브라우저는 작업 상태를 조회하므로 채점이 끝날 때까지 하나의 HTTP 요청을 오래 붙잡지 않는다.
 
 사용자 코드는 웹 서버에서 직접 실행하지 않는다. Runner의 Docker 컨테이너에 네트워크·CPU·메모리·프로세스 수·실행 시간 제한을 적용하고, 실행할 언어 이미지와 명령은 서버가 관리한다.
 
@@ -110,14 +111,15 @@ export/
 
 ## ControlOJ와 프런트 서빙
 
-프런트는 Next.js/React의 **정적 export**다. `next build` 결과인 `frontend/out`을 Spring Boot JAR의 `static`에 포함하므로 운영에서 별도 Node/Vite 컨테이너나 프런트 포트를 열지 않는다. HTML·JS·CSS와 API 모두 같은 application 포트에서 제공한다.
+프런트는 Next.js/React의 **정적 export**다. `next build` 결과인 `frontend/out`을 별도 Nginx 이미지에 포함하고, Spring Boot JAR에서는 제외한다. 운영 Node/Vite 서버는 필요 없다. 브라우저는 프런트 포트로 접속하며 Nginx가 API만 Spring으로 전달한다.
 
-ControlOJ는 같은 빌드에 포함된 별도 운영 화면이다. Spring이 요청의 **Host**를 보고 `/`에서 GamjaOJ 또는 ControlOJ HTML을 선택한다. CNAME은 DNS 연결만 담당하며, 실제 화면 분기는 HTTP Host로 결정한다. ControlOJ 초기 화면은 관리자 로그인과 회원·공개 문제 수, 채점·문제 생성·AI 작업 상태 조회를 제공한다.
+ControlOJ는 같은 빌드에 포함된 별도 운영 화면이다. Nginx가 요청의 **Host**를 보고 `/`에서 GamjaOJ 또는 ControlOJ HTML을 선택한다. CNAME은 DNS 연결만 담당하며, 실제 화면 분기는 HTTP Host로 결정한다. ControlOJ 초기 화면은 관리자 로그인과 회원·공개 문제 수, 채점·문제 생성·AI 작업 상태 조회를 제공한다.
 
 ```dotenv
 # 서버의 기존 .env에 추가. 호스트만 입력하고 스킴·포트·경로는 제외한다.
 CONTROL_OJ_HOST=controloj.gamjabox.cloud
 CONTROL_OJ_ADMIN_USERS=hdg5639
+FRONTEND_HTTP_PORT=18082
 ```
 
 `CONTROL_OJ_HOST`를 비우면 관리 라우트는 비활성화된다. 관리자 목록은 쉼표로 구분한 **정확한 기존 계정 아이디**이며, 비어 있으면 어떤 회원도 관리 API에 접근할 수 없다. AI 운영자 설정과 별개다. 관리자 목록 검사는 매 요청에 적용하며, 공개 회원가입으로 관리 권한을 얻을 수 없다.
@@ -126,7 +128,13 @@ CONTROL_OJ_ADMIN_USERS=hdg5639
 
 일반 호스트에서는 `/controloj`, `/controloj.html`, 관련 페이지 payload 및 `/api/admin/**`가 404다. ControlOJ 호스트에서도 관리 API는 로그인하지 않으면 401, 지정된 관리자가 아니면 403이다. 비공개 라우트와 별도로 서버 권한 검사를 유지하고, 기존 CSRF 보호를 그대로 사용한다. Host 분기는 관리 권한을 대신하지 않는다.
 
-로컬에서는 `CONTROL_OJ_HOST=controloj.localhost`로 설정하고 같은 포트의 `localhost`와 `controloj.localhost`에 접속해 두 화면을 비교할 수 있다. 환경변수를 변경하면 application 컨테이너를 다시 생성해야 한다.
+운영 웹 라우트는 GamjaOJ·ControlOJ 모두 `192.168.0.210:18082`로 연결한다. API 직통 라우트 `oj-api.gamjabox.cloud`는 기존 `192.168.0.210:18081`로 연결한다. 백엔드 포트는 API·Worker 호환을 위해 유지하며, 직접 접속해도 화면 파일은 제공하지 않는다. `FRONTEND_HTTP_PORT` 기본값은 `18082`이고 바인딩 주소는 기존 `BIND_ADDRESS`를 사용한다. 브라우저는 웹 호스트의 상대 경로 `/api`를 사용하므로 API 도메인으로 교차 출처 요청을 보내지 않는다.
+
+프런트 자체 상태는 `/web-healthz`, 백엔드 상태는 프록시된 `/healthz`로 구분한다. `/_next/static/`의 빌드 해시 자산만 장기 캐시하고, 첫 HTML·관리 화면·API를 공유 캐시하지 않는다. API·Worker POST 요청은 자동 재시도하지 않으며, 쿠키·CSRF·Host를 보존한다. Docker DNS를 주기적으로 갱신해 application 컨테이너 재생성 후에도 API 연결을 복구한다.
+
+로컬에서는 `CONTROL_OJ_HOST=controloj.localhost`로 설정하고 프런트 포트의 `localhost`와 `controloj.localhost`에 접속해 두 화면을 비교할 수 있다. 호스트를 변경하면 frontend와 application을 함께 다시 생성한다. 프런트는 application의 시작·종료 의존성을 갖지 않는다.
+
+`python3 scripts/test-web-proxy.py`는 별도 Docker 네트워크와 전송 검증용 fixture를 사용해 호스트 분기, POST·쿼리·쿠키 전달, 백엔드 제거 중 정적 화면 유지, 503 응답, 새 IP로 재생성한 백엔드 연결 복구를 확인한다. 실제 계정·관리자 권한은 Spring 통합 테스트에서 별도로 검증한다.
 
 ## 러너는 어떻게 채점하나
 
