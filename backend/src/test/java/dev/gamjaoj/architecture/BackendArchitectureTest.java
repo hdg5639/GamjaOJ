@@ -54,10 +54,10 @@ class BackendArchitectureTest {
               .as(file + ": JDBC belongs to repositories")
               .doesNotContain("JdbcClient", "JdbcTemplate");
         }
-        if (file.toString().contains("/controller/")) {
+        if (file.toString().contains("/api/")) {
           assertThat(source)
               .as(file + ": controllers do not own database transactions")
-              .doesNotContain("@Transactional", "TransactionTemplate", "dev.gamjaoj.repository.");
+              .doesNotContain("@Transactional", "TransactionTemplate", ".repository.");
         }
       }
     }
@@ -67,6 +67,37 @@ class BackendArchitectureTest {
     String pkg = unit.getPackageName().toString();
     String file = Path.of(unit.getSourceFile().toUri()).getFileName().toString();
     List<? extends com.sun.source.tree.Tree> types = unit.getTypeDecls();
+    if (!pkg.equals("dev.gamjaoj")) {
+      if (!Set.of(
+              "account",
+              "judge",
+              "problem",
+              "diagnostic",
+              "learning",
+              "generation",
+              "ai",
+              "export",
+              "editor",
+              "shared")
+          .contains(feature(pkg))) {
+        violations.add(file + ": unknown feature package " + pkg);
+      }
+      if (!file.equals("package-info.java")
+          && !Set.of(
+                  "api",
+                  "dto",
+                  "service",
+                  "repository",
+                  "domain",
+                  "infrastructure",
+                  "config",
+                  "exception",
+                  "support")
+              .contains(layer(pkg))) {
+        violations.add(file + ": feature classes require a layer package " + pkg);
+      }
+    }
+
     if (!file.equals("package-info.java")) {
       if (types.size() != 1
           || !(types.getFirst() instanceof ClassTree type)
@@ -89,7 +120,7 @@ class BackendArchitectureTest {
 
       @Override
       public Void visitLiteral(LiteralTree node, Void unused) {
-        if (!pkg.startsWith("dev.gamjaoj.repository")
+        if (!layer(pkg).equals("repository")
             && node.getValue() instanceof String value
             && value
                 .stripLeading()
@@ -101,7 +132,7 @@ class BackendArchitectureTest {
 
       @Override
       public Void visitMethodInvocation(MethodInvocationTree node, Void unused) {
-        if (!pkg.startsWith("dev.gamjaoj.repository")
+        if (!layer(pkg).equals("repository")
             && node.getMethodSelect() instanceof MemberSelectTree select
             && select.getIdentifier().contentEquals("sql")) {
           violations.add(file + ": SQL execution belongs to repositories");
@@ -113,16 +144,16 @@ class BackendArchitectureTest {
       public Void visitIdentifier(IdentifierTree node, Void unused) {
         String name = node.getName().toString();
         if (Set.of("RestController", "RestControllerAdvice").contains(name)
-            && !pkg.startsWith("dev.gamjaoj.controller")) {
+            && !layer(pkg).equals("api")) {
           violations.add(file + ": HTTP endpoints belong to controllers");
         }
-        if (name.equals("Repository") && !pkg.startsWith("dev.gamjaoj.repository")) {
+        if (name.equals("Repository") && !layer(pkg).equals("repository")) {
           violations.add(file + ": persistence beans belong to repositories");
         }
-        if (name.equals("Service") && !pkg.startsWith("dev.gamjaoj.service")) {
+        if (name.equals("Service") && !layer(pkg).equals("service")) {
           violations.add(file + ": application services belong to the service layer");
         }
-        if (name.equals("Configuration") && !pkg.startsWith("dev.gamjaoj.config")) {
+        if (name.equals("Configuration") && !layer(pkg).equals("config")) {
           violations.add(file + ": Spring configuration belongs to config");
         }
         return super.visitIdentifier(node, unused);
@@ -132,24 +163,41 @@ class BackendArchitectureTest {
 
   private static void dependency(
       String pkg, String file, String reference, List<String> violations) {
-    boolean invalid = false;
-    if (pkg.startsWith("dev.gamjaoj.service")) {
-      invalid =
-          reference.startsWith("dev.gamjaoj.controller")
-              || reference.startsWith("org.springframework.web.bind.annotation");
-    } else if (pkg.startsWith("dev.gamjaoj.repository")) {
-      invalid =
-          reference.startsWith("dev.gamjaoj.service")
-              || reference.startsWith("dev.gamjaoj.controller")
-              || reference.startsWith("dev.gamjaoj.infrastructure");
-    } else if (pkg.startsWith("dev.gamjaoj.domain") || pkg.startsWith("dev.gamjaoj.dto")) {
-      invalid =
-          reference.startsWith("dev.gamjaoj.service")
-              || reference.startsWith("dev.gamjaoj.controller")
-              || reference.startsWith("dev.gamjaoj.repository")
-              || reference.startsWith("dev.gamjaoj.infrastructure")
-              || reference.startsWith("org.springframework.web");
+    String sourceLayer = layer(pkg);
+    String targetLayer = layer(reference);
+    boolean invalid =
+        switch (sourceLayer) {
+          case "service" ->
+              targetLayer.equals("api")
+                  || reference.startsWith("org.springframework.web.bind.annotation");
+          case "repository" -> Set.of("service", "api", "infrastructure").contains(targetLayer);
+          case "domain", "dto" ->
+              Set.of("service", "api", "repository", "infrastructure").contains(targetLayer)
+                  || reference.startsWith("org.springframework.web");
+          default -> false;
+        };
+    if (reference.startsWith("dev.gamjaoj.")) {
+      if (targetLayer.equals("repository")
+          && !feature(reference).equals("shared")
+          && !feature(pkg).equals(feature(reference))) {
+        violations.add(
+            file + ": a feature may not access another feature's repository: " + reference);
+      }
+      if (feature(pkg).equals("shared") && !feature(reference).equals("shared")) {
+        violations.add(file + ": shared must not depend on a feature: " + reference);
+      }
     }
     if (invalid) violations.add(file + ": forbidden dependency " + reference);
+  }
+
+  private static String feature(String pkg) {
+    if (!pkg.startsWith("dev.gamjaoj.")) return "";
+    return pkg.substring("dev.gamjaoj.".length()).split("\\.")[0];
+  }
+
+  private static String layer(String pkg) {
+    if (!pkg.startsWith("dev.gamjaoj.")) return "";
+    String[] parts = pkg.substring("dev.gamjaoj.".length()).split("\\.");
+    return parts.length < 2 ? "" : parts[1];
   }
 }
