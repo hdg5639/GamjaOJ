@@ -1,4 +1,10 @@
 package dev.gamjaoj;
+import dev.gamjaoj.domain.ArtifactValidation;
+import dev.gamjaoj.service.generation.HybridArtifacts;
+import dev.gamjaoj.service.generation.HybridPackagePlan;
+import dev.gamjaoj.service.generation.HybridProfiles;
+import dev.gamjaoj.service.generation.HybridStatementQuality;
+import dev.gamjaoj.support.JudgeJson;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -8,8 +14,8 @@ class HybridStatementQualityTest {
     final HybridGenerationIntegrationTest fixtures=new HybridGenerationIntegrationTest();
     @Test void englishContractProseIsRejectedButQuotedTokensAndVariablesPass() {
         assertThatThrownBy(()->HybridStatementQuality.korean("input","첫 줄에 vertices and undirected edges가 주어집니다."))
-                .isInstanceOf(HybridArtifacts.Invalid.class).hasMessage("STATEMENT_NOT_KOREAN_INPUT");
-        assertThatThrownBy(()->HybridStatementQuality.korean("context","at vertex S with distance 0")).isInstanceOf(HybridArtifacts.Invalid.class);
+                .isInstanceOf(ArtifactValidation.Invalid.class).hasMessage("STATEMENT_NOT_KOREAN_INPUT");
+        assertThatThrownBy(()->HybridStatementQuality.korean("context","at vertex S with distance 0")).isInstanceOf(ArtifactValidation.Invalid.class);
         HybridStatementQuality.korean("output","가능하면 `POSSIBLE`, 아니면 \"Impossible\"을 출력합니다. N, M, S, T와 BFS, DP, MOD는 그대로 씁니다.");
     }
     @Test void callableSectionsAcceptOnlyDeclaredIdentifiersAlongsideKoreanProse() {
@@ -26,7 +32,7 @@ class HybridStatementQualityTest {
         assertThat(HybridStatementQuality.contractBounds(semantics)).extracting(Number::longValue).containsExactly(100L,1000L,10000L);
         HybridStatementQuality.bounds(semantics,"N은 100 이하, W는 1,000 이하, 비용 1000 이하, 가치 10^4 이하");
         assertThatThrownBy(()->HybridStatementQuality.bounds(semantics,"N은 100 이하, W는 1000 이하입니다."))
-                .isInstanceOf(HybridArtifacts.Invalid.class).hasMessage("STATEMENT_BOUND_MISSING");
+                .isInstanceOf(ArtifactValidation.Invalid.class).hasMessage("STATEMENT_BOUND_MISSING");
         var dijkstra=HybridArtifacts.publicSemantics(HybridProfiles.DIJKSTRA.contract());
         HybridStatementQuality.bounds(dijkstra,"1 ≤ N ≤ 100, 0 ≤ M ≤ 200, 1 ≤ w ≤ 10⁹");
         HybridStatementQuality.bounds(dijkstra,"N ≤ 100, M ≤ 2×10^2, w ≤ 1e9");

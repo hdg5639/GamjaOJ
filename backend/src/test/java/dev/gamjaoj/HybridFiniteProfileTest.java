@@ -1,4 +1,5 @@
 package dev.gamjaoj;
+import dev.gamjaoj.service.generation.HybridFiniteProfile;
 
 import java.util.*;
 import org.junit.jupiter.api.Test;

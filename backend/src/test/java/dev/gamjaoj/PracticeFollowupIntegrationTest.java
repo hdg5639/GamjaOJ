@@ -1,4 +1,11 @@
 package dev.gamjaoj;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.learning.PracticeFollowups;
+import dev.gamjaoj.dto.RunDtos;
+import dev.gamjaoj.dto.SubmissionDtos;
+import dev.gamjaoj.service.judge.Submissions;
+import dev.gamjaoj.service.learning.TrainingSessions;
 
 import java.util.UUID;
 import org.junit.jupiter.api.*;
@@ -23,7 +30,7 @@ class PracticeFollowupIntegrationTest {
         jdbc.sql("DELETE FROM generation_spec_draft").update();jdbc.sql("DELETE FROM generation_job").update();jdbc.sql("DELETE FROM problem_version WHERE owner_id IS NOT NULL").update();jdbc.sql("DELETE FROM app_user").update();
         jdbc.sql("UPDATE problem_version SET review_hold=false").update();
         owner=UUID.randomUUID();for(String name:new String[]{"alice","bob"})jdbc.sql("INSERT INTO app_user(id,username,password_hash,nickname) VALUES (?,?,?,?)").param(name.equals("alice")?owner:UUID.randomUUID()).param(name).param("unused").param(name).update();
-        var first=submissions.submit("alice",UUID.randomUUID(),new SubmissionController.Request("total-v1","class Main {}"));finish(first.id(),"WA");
+        var first=submissions.submit("alice",UUID.randomUUID(),new SubmissionDtos.Request("total-v1","class Main {}"));finish(first.id(),"WA");
         analysis=UUID.randomUUID();jdbc.sql("INSERT INTO ai_task(id,user_id,submission_id,kind,cache_key,settings_json,input_json,status,result_json) VALUES (?,?,?,'ANALYSIS',?,'{}','{}','COMPLETED',?)")
                 .param(analysis).param(owner).param(first.id()).param(JudgeJson.hash(analysis.toString())).param(AiIntegrationTest.feedback().toString()).update();
         target=candidate(owner,"overflow");
@@ -42,7 +49,7 @@ class PracticeFollowupIntegrationTest {
         var started=followups.start("alice",goal.id(),target);assertThat(started.sessionId()).isEqualTo(goal.id());
         assertThat(followups.start("alice",goal.id(),target).sessionId()).isEqualTo(goal.id());
         assertThatThrownBy(()->followups.reflect("alice",goal.id(),false)).isInstanceOf(AccountException.class);
-        var submission=submissions.submit("alice",UUID.randomUUID(),new SubmissionController.Request(target,"class Main {}",started.sessionId()));
+        var submission=submissions.submit("alice",UUID.randomUUID(),new SubmissionDtos.Request(target,"class Main {}",started.sessionId()));
         training.end("alice",started.sessionId(),"경계값 재확인");
         assertThat(followups.detail("alice",goal.id()).status()).isEqualTo("WAITING_JUDGE");
         assertThatThrownBy(()->followups.reflect("alice",goal.id(),false)).isInstanceOf(AccountException.class);
@@ -62,7 +69,7 @@ class PracticeFollowupIntegrationTest {
         mvc.perform(post("/api/practice-followups/"+goal.id()+"/start").with(user("alice")).contentType("application/json").content("{\"problemVersion\":\""+target+"\"}")).andExpect(status().isForbidden());
         assertThatThrownBy(()->followups.confirm("bob",analysis,0,"overflow")).isInstanceOf(AccountException.class);
         assertThatThrownBy(()->followups.start("bob",goal.id(),target)).isInstanceOf(AccountException.class);
-        var solved=submissions.submit("alice",UUID.randomUUID(),new SubmissionController.Request(target,"class Main {}"));finish(solved.id(),"AC");
+        var solved=submissions.submit("alice",UUID.randomUUID(),new SubmissionDtos.Request(target,"class Main {}"));finish(solved.id(),"AC");
         assertThat(followups.detail("alice",goal.id()).candidates()).isEmpty();
         assertThatThrownBy(()->followups.start("alice",goal.id(),target)).isInstanceOf(AccountException.class);
         jdbc.sql("UPDATE problem_version SET review_hold=true WHERE id='total-v1'").update();
@@ -81,7 +88,7 @@ class PracticeFollowupIntegrationTest {
     }
     @Test void runSuccessDoesNotProveTheFinalGoalAndHeldTargetBlocksReflection(){
         var goal=followups.confirm("alice",analysis,0,"overflow");followups.start("alice",goal.id(),target);
-        var run=submissions.run("alice",UUID.randomUUID(),new RunController.Request(target,"class Main {}","",goal.id()));finish(run.id(),"OK");
+        var run=submissions.run("alice",UUID.randomUUID(),new RunDtos.Request(target,"class Main {}","",goal.id()));finish(run.id(),"OK");
         training.end("alice",goal.id(),"");assertThat(followups.detail("alice",goal.id()).status()).isEqualTo("NEEDS_PRACTICE");
         assertThatThrownBy(()->followups.reflect("alice",goal.id(),false)).isInstanceOf(AccountException.class);
         jdbc.sql("UPDATE problem_version SET review_hold=true WHERE id=?").param(target).update();
@@ -90,8 +97,8 @@ class PracticeFollowupIntegrationTest {
     }
     @Test void finalWaAfterAcNeedsPracticeAndHelpRemainsExplicit(){
         var goal=followups.confirm("alice",analysis,0,"overflow");followups.start("alice",goal.id(),target);
-        var first=submissions.submit("alice",UUID.randomUUID(),new SubmissionController.Request(target,"class Main {}",goal.id()));finish(first.id(),"AC");
-        var last=submissions.submit("alice",UUID.randomUUID(),new SubmissionController.Request(target,"class Main { }",goal.id()));finish(last.id(),"WA");
+        var first=submissions.submit("alice",UUID.randomUUID(),new SubmissionDtos.Request(target,"class Main {}",goal.id()));finish(first.id(),"AC");
+        var last=submissions.submit("alice",UUID.randomUUID(),new SubmissionDtos.Request(target,"class Main { }",goal.id()));finish(last.id(),"WA");
         jdbc.sql("UPDATE submission SET created_at=DATEADD('SECOND',1,CURRENT_TIMESTAMP) WHERE id=?").param(last.id()).update();
         training.end("alice",goal.id(),"");assertThat(followups.detail("alice",goal.id()).status()).isEqualTo("NEEDS_PRACTICE");
         assertThatThrownBy(()->followups.reflect("alice",goal.id(),false)).isInstanceOf(AccountException.class);
@@ -110,7 +117,7 @@ class PracticeFollowupIntegrationTest {
     @Test void repeatPreservesFailedAttemptAndFencesAllStaleRoundMutations(){
         var goal=followups.confirm("alice",analysis,0,"overflow");followups.start("alice",goal.id(),target);
         assertThatThrownBy(()->followups.repeat("alice",goal.id(),1)).isInstanceOf(AccountException.class);
-        var first=submissions.submit("alice",UUID.randomUUID(),new SubmissionController.Request(target,"class Main {}",goal.id()));
+        var first=submissions.submit("alice",UUID.randomUUID(),new SubmissionDtos.Request(target,"class Main {}",goal.id()));
         training.end("alice",goal.id(),"첫 시도");
         assertThatThrownBy(()->followups.repeat("alice",goal.id(),1)).isInstanceOf(AccountException.class);
         finish(first.id(),"WA");
@@ -132,7 +139,7 @@ class PracticeFollowupIntegrationTest {
     }
     @Test void assistedSuccessRemainsInHistoryAndNeedsDifferentUnsolvedProblem(){
         var goal=followups.confirm("alice",analysis,0,"overflow");followups.start("alice",goal.id(),target);
-        var first=submissions.submit("alice",UUID.randomUUID(),new SubmissionController.Request(target,"class Main {}",goal.id()));finish(first.id(),"AC");training.end("alice",goal.id(),"");
+        var first=submissions.submit("alice",UUID.randomUUID(),new SubmissionDtos.Request(target,"class Main {}",goal.id()));finish(first.id(),"AC");training.end("alice",goal.id(),"");
         assertThatThrownBy(()->followups.repeat("alice",goal.id(),1)).isInstanceOf(AccountException.class);
         followups.reflect("alice",goal.id(),true);
         String next=candidate(owner,"overflow");
@@ -141,7 +148,7 @@ class PracticeFollowupIntegrationTest {
         assertThat(repeated.attempts().getFirst().reviewedSubmissionId()).isEqualTo(first.id());
         assertThat(repeated.candidates()).extracting(PracticeFollowups.Candidate::version).containsExactly(next);
         var started=followups.start("alice",goal.id(),next,2);
-        var second=submissions.submit("alice",UUID.randomUUID(),new SubmissionController.Request(next,"class Main {}",started.sessionId()));finish(second.id(),"AC");training.end("alice",started.sessionId(),"");
+        var second=submissions.submit("alice",UUID.randomUUID(),new SubmissionDtos.Request(next,"class Main {}",started.sessionId()));finish(second.id(),"AC");training.end("alice",started.sessionId(),"");
         var reflected=followups.reflect("alice",goal.id(),false,2);
         assertThat(reflected.status()).isEqualTo("SELF_REPORTED_UNASSISTED_AC");
         assertThat(reflected.attempts().getFirst().status()).isEqualTo("AC_WITH_HELP");

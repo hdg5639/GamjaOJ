@@ -1,4 +1,12 @@
 package dev.gamjaoj;
+import dev.gamjaoj.service.account.AccountDeletion;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.service.generation.GenerationJobs;
+import dev.gamjaoj.service.generation.GenerationSpecDrafts;
+import dev.gamjaoj.dto.SubmissionDtos;
+import dev.gamjaoj.service.judge.Submissions;
+import dev.gamjaoj.dto.TrainingSessionDtos;
+import dev.gamjaoj.service.learning.TrainingSessions;
 
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -38,12 +46,12 @@ class AccountDeletionIntegrationTest {
         jdbc.sql("UPDATE generation_job SET status='FAILED' WHERE id=?").param(job).update();
         String sharedGenerated="generated-"+job+"-r"+jdbc.sql("SELECT revision FROM generation_job WHERE id=?").param(job).query(Integer.class).single();
         problem(personal,owner,false);problem(sharedGenerated,owner,true);problem(solvedByBob,owner,true);
-        var bobSubmission=submissions.submit(bob,UUID.randomUUID(),new SubmissionController.Request(solvedByBob,"class Main {}"));
+        var bobSubmission=submissions.submit(bob,UUID.randomUUID(),new SubmissionDtos.Request(solvedByBob,"class Main {}"));
         jdbc.sql("UPDATE problem_version SET shared=false WHERE id=?").param(solvedByBob).update();
         String category=submissions.problems(bob).stream().filter(p->p.version().equals(sharedGenerated)).findFirst().orElseThrow().category();
         // Alice's own activity.
-        var mine=submissions.submit(alice,UUID.randomUUID(),new SubmissionController.Request("sum-v1","class Main {}"));
-        training.start(alice,UUID.randomUUID(),new TrainingSessionController.Start(personal,"개인 연습"));
+        var mine=submissions.submit(alice,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1","class Main {}"));
+        training.start(alice,UUID.randomUUID(),new TrainingSessionDtos.Start(personal,"개인 연습"));
         UUID draft=UUID.randomUUID();drafts.create(alice,draft,"삭제될 초안",false);
         jdbc.sql("UPDATE generation_spec_draft SET status='FAILED' WHERE id=?").param(draft).update();
 

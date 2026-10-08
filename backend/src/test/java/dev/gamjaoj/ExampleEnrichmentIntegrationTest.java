@@ -1,4 +1,9 @@
 package dev.gamjaoj;
+import dev.gamjaoj.service.generation.ExampleEnrichment;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.JudgeQueue;
+import dev.gamjaoj.dto.SubmissionDtos;
+import dev.gamjaoj.service.judge.Submissions;
 
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -45,7 +50,7 @@ class ExampleEnrichmentIntegrationTest {
         assertThat(jdbc.sql("SELECT count(*) FROM submission WHERE problem_version=? AND example_check=true AND run_input IS NOT NULL").param(version).query(Integer.class).single()).isEqualTo(4);
         assertThat(submissions.history(name)).isEmpty(); // internal checks never appear as the owner's submissions
         // The owner's own submissions are not blocked by the example checks.
-        submissions.submit(name,UUID.randomUUID(),new SubmissionController.Request(version,"class Main {}"));
+        submissions.submit(name,UUID.randomUUID(),new SubmissionDtos.Request(version,"class Main {}"));
 
         for(var c:checks)jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict=? WHERE submission_id=?")
                 .param((int)c[0]==1&&c[1].equals("REFERENCE")?"WA":"AC").param(c[2]).update();

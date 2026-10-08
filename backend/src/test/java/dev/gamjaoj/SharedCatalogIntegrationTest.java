@@ -1,4 +1,14 @@
 package dev.gamjaoj;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.service.generation.GenerationJobs;
+import dev.gamjaoj.service.generation.GenerationSpecDrafts;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.domain.LanguageProfiles;
+import dev.gamjaoj.dto.RunDtos;
+import dev.gamjaoj.dto.SubmissionDtos;
+import dev.gamjaoj.service.judge.Submissions;
+import dev.gamjaoj.dto.TrainingSessionDtos;
+import dev.gamjaoj.service.learning.TrainingSessions;
 
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -71,7 +81,7 @@ class SharedCatalogIntegrationTest {
         jdbc.sql("INSERT INTO problem_version(id,package_json,package_sha256,runtime_image,runner_policy,ready,owner_id) SELECT ?,package_json,package_sha256,runtime_image,runner_policy,true,? FROM problem_version WHERE id='total-v1'").param(version).param(owner).update();
         String endpoint="/api/problems/"+version+"/catalog-settings";
         assertThat(submissions.problems(bob)).noneMatch(p->p.version().equals(version));
-        var request=new SubmissionController.Request(version,"class Main {}");
+        var request=new SubmissionDtos.Request(version,"class Main {}");
         assertThatThrownBy(()->submissions.submit(bob,UUID.randomUUID(),request)).isInstanceOf(AccountException.class);
         mvc.perform(put(endpoint).with(user(bob)).with(csrf()).contentType("application/json").content(settings(true))).andExpect(status().isNotFound());
         mvc.perform(put(endpoint).with(user(alice)).contentType("application/json").content(settings(true))).andExpect(status().isForbidden());
@@ -81,8 +91,8 @@ class SharedCatalogIntegrationTest {
         mvc.perform(get("/api/problems").with(user(bob))).andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("package_json"))));
         mvc.perform(get("/api/problems/"+version+"/teaching").with(user(bob))).andExpect(status().isOk());
         UUID key=UUID.randomUUID();var saved=submissions.submit(bob,key,request);
-        submissions.run(bob,UUID.randomUUID(),new RunController.Request(version,"class Main {}","1\n",null));
-        training.start(bob,UUID.randomUUID(),new TrainingSessionController.Start(version,"공개 문제 연습"));
+        submissions.run(bob,UUID.randomUUID(),new RunDtos.Request(version,"class Main {}","1\n",null));
+        training.start(bob,UUID.randomUUID(),new TrainingSessionDtos.Start(version,"공개 문제 연습"));
         assertThat(submissions.history(alice)).noneMatch(v->v.id().equals(saved.id()));
         mvc.perform(get("/api/submissions/"+saved.id()).with(user(alice))).andExpect(status().isNotFound());
         mvc.perform(put(endpoint).with(user(alice)).with(csrf()).contentType("application/json").content(settings(false))).andExpect(status().isOk());
@@ -141,7 +151,7 @@ class SharedCatalogIntegrationTest {
         assertThat(progress(alice,"sum-v1").solveStatus()).isEqualTo("SOLVED");
         assertThat(progress(alice,"total-v1").solveStatus()).isEqualTo("ATTEMPTED");
         assertThat(progress(bob,"sum-v1").solveStatus()).isEqualTo("UNATTEMPTED");
-        var run=submissions.run(alice,UUID.randomUUID(),new RunController.Request("valid-parentheses-v1","class Main {}","()"));
+        var run=submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("valid-parentheses-v1","class Main {}","()"));
         jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='AC' WHERE submission_id=?").param(run.id()).update();
         UUID generated=UUID.randomUUID(),draft=UUID.randomUUID();
         jdbc.sql("INSERT INTO generation_job(id,owner_id,template_id,status,model,effort) VALUES (?,?,'parentheses-v1','FAILED','fixture','low')").param(generated).param(owner).update();
