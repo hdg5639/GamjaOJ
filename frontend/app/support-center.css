@@ -1,0 +1,99 @@
+.support-trigger {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  white-space: nowrap;
+  min-height: 34px;
+  font-size: 0.8rem;
+  padding: 6px 10px;
+}
+.support-dialog {
+  width: min(640px, calc(100vw - 32px));
+}
+.support-tabs,
+.support-pagination {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+}
+.support-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+.support-form label {
+  display: grid;
+  gap: 7px;
+  font-size: 0.9rem;
+}
+.support-form input,
+.support-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.support-form textarea {
+  resize: vertical;
+  min-height: 140px;
+}
+.support-form .muted {
+  font-size: 0.8rem;
+  margin: 0;
+}
+.support-list details {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.support-list summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.support-list summary span {
+  display: block;
+  font-size: 0.8rem;
+  opacity: 0.7;
+  margin-top: 5px;
+}
+.support-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+.support-reply {
+  padding: 12px 16px;
+  background: var(--surface);
+  border-radius: 12px;
+}
+.support-pagination {
+  justify-content: flex-end;
+  font-size: 0.85rem;
+}
+@media (max-width: 480px) {
+  .support-dialog {
+    width: calc(100vw - 24px);
+  }
+  .support-trigger {
+    font-size: 0.75rem;
+    padding: 6px 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .support-trigger {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 8px;
+  }
+}
+@media (max-width: 480px) {
+  :root .signed-in #global-header {
+    padding-inline: 8px;
+    gap: 8px;
+  }
+}

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Modal from "./modal";
+import SupportCenter from "./support-center";
 
 const filters = ["전체", "공지", "새 기능", "업데이트"];
 function loadRead(key) {
@@ -107,6 +108,7 @@ export default function AnnouncementCenter({ accountId = "anonymous" }) {
           <span className="notice-unread-dot" aria-hidden="true" />
         )}
       </button>
+      <SupportCenter key={accountId} accountId={accountId} />
       <Modal
         open={open}
         title="공지·업데이트"
@@ -202,6 +204,16 @@ export default function AnnouncementCenter({ accountId = "anonymous" }) {
             );
           })}
         </ul>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => {
+            setOpen(false);
+            window.dispatchEvent(new Event("gamjaoj-support"));
+          }}
+        >
+          운영자에게 문의·오류 제보하기
+        </button>
         <p className="announcement-footnote">
           읽음 상태는 이 브라우저에 저장돼요.
         </p>

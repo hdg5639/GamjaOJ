@@ -71,6 +71,7 @@ class BackendArchitectureTest {
       if (!Set.of(
               "admin",
               "announcement",
+              "support",
               "account",
               "judge",
               "problem",
