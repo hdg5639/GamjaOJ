@@ -1,4 +1,5 @@
 package dev.gamjaoj;
+import dev.gamjaoj.config.AuthRateLimit;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;

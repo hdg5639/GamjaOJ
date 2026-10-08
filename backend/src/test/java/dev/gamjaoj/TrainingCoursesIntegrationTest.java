@@ -1,4 +1,9 @@
 package dev.gamjaoj;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.learning.TrainingCourses;
+import dev.gamjaoj.dto.TrainingSessionDtos;
+import dev.gamjaoj.service.learning.TrainingSessions;
 
 import java.util.*;
 import java.nio.file.*;
@@ -66,7 +71,7 @@ class TrainingCoursesIntegrationTest {
   assertThatThrownBy(()->courses.start("bob",UUID.randomUUID(),saved.enrollmentId(),0,null,"")).isInstanceOf(AccountException.class);
  }
  @Test void staleOrHeldTargetsAndRequestKeyCollisionsLeaveCurrentTrainingUnchanged(){
-  var saved=enroll();var current=training.start("alice",UUID.randomUUID(),new TrainingSessionController.Start("sum-v1","수동 목표"));
+  var saved=enroll();var current=training.start("alice",UUID.randomUUID(),new TrainingSessionDtos.Start("sum-v1","수동 목표"));
   assertThatThrownBy(()->courses.start("alice",UUID.randomUUID(),saved.enrollmentId(),0,null,"")).isInstanceOf(AccountException.class);
   jdbc.sql("UPDATE problem_version SET review_hold=true WHERE id=?").param(saved.steps().getFirst().version()).update();
   assertThatThrownBy(()->courses.start("alice",UUID.randomUUID(),saved.enrollmentId(),0,current.id(),"전환")).isInstanceOf(AccountException.class);

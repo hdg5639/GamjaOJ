@@ -1,11 +1,18 @@
 package dev.gamjaoj;
+import dev.gamjaoj.domain.ArtifactValidation;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.config.AiSettings;
+import dev.gamjaoj.service.generation.HybridArtifacts;
+import dev.gamjaoj.service.generation.HybridGeneration;
+import dev.gamjaoj.service.generation.HybridModels;
+import dev.gamjaoj.support.JudgeJson;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.OffsetDateTime;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
-import static dev.gamjaoj.HybridGeneration.Role.*;
+import static dev.gamjaoj.service.generation.HybridGeneration.Role.*;
 import static org.assertj.core.api.Assertions.*;
 
 class HybridModelsTest {
@@ -45,10 +52,10 @@ class HybridModelsTest {
         assertThat(reader.input()).doesNotContain("PRIVATE_","editorial","hints","obligations","oracleStrategy");
         assertThat(reader.schema().path("properties").path("adversarialInputs").path("items").path("properties").has("output")).isFalse();
         var contaminated=HybridArtifacts.publicSnapshot(fixtures.presentation()).put("reference","PRIVATE_SOURCE");
-        assertThatThrownBy(()->HybridModels.api(assignment(READER,contaminated),config)).isInstanceOf(HybridArtifacts.Invalid.class);
+        assertThatThrownBy(()->HybridModels.api(assignment(READER,contaminated),config)).isInstanceOf(ArtifactValidation.Invalid.class);
         var changed=assignment(READER,HybridArtifacts.publicSnapshot(fixtures.presentation()));
         ((com.fasterxml.jackson.databind.node.ObjectNode)changed.input()).put("title","changed after assignment");
-        assertThatThrownBy(()->HybridModels.api(changed,config)).isInstanceOf(HybridArtifacts.Invalid.class);
+        assertThatThrownBy(()->HybridModels.api(changed,config)).isInstanceOf(ArtifactValidation.Invalid.class);
         assertThatThrownBy(()->HybridModels.api(assignment(CORE,fixtures.core()),config)).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void codexRequestsAreSeparateCompleteCallsBoundToFrozenContract() {
@@ -65,7 +72,7 @@ class HybridModelsTest {
         assertThat(design.spec().path("assignment").path("branchId")).isNotEqualTo(core.spec().path("assignment").path("branchId"));
         var bad=assignment(CORE,JudgeJson.JSON.createObjectNode().set("contract",fixtures.contract().deepCopy()));
         ((com.fasterxml.jackson.databind.node.ObjectNode)bad.input().path("contract")).put("termination","changed");
-        assertThatThrownBy(()->HybridModels.codex(bad,config,deadline)).isInstanceOf(HybridArtifacts.Invalid.class);
+        assertThatThrownBy(()->HybridModels.codex(bad,config,deadline)).isInstanceOf(ArtifactValidation.Invalid.class);
     }
     @Test void outputSchemasMatchAcceptedFixturesAndCloseEveryObject() {
         Map<HybridGeneration.Role,JsonNode> values=Map.of(CONTRACT,fixtures.contract(),CORE,fixtures.core(),PRESENTATION,fixtures.presentation(),READER,fixtures.reader());
