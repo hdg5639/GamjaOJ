@@ -48,6 +48,11 @@ def main():
         public=(root/'frontend/out/index.html').read_bytes(); private=(root/'frontend/out/admin-console.html').read_bytes()
         assert request()[1]==public
         assert request(host=control)[1]==private
+        for protected_path,protected_host in [('/',control),('/', 'gamjaoj.test'),('/admin-console.html',control)]:
+            protected_headers=request(protected_path,host=protected_host)[2]
+            assert protected_headers['X-Frame-Options']=='DENY'
+            assert protected_headers['X-Content-Type-Options']=='nosniff'
+            assert "frame-ancestors 'none'" in protected_headers['Content-Security-Policy']
         assert request(host=control+':443')[1]==private
         assert request(headers={'X-Forwarded-Host':control})[1]==public
         for path in ['/admin-console','/admin-console.html','/admin-console.txt','/api/admin/me']:

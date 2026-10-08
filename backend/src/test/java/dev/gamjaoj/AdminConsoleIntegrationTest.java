@@ -26,6 +26,21 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 class AdminConsoleIntegrationTest {
   @Autowired MockMvc mvc;
+  @Autowired org.springframework.jdbc.core.simple.JdbcClient jdbc;
+
+  @org.junit.jupiter.api.BeforeEach
+  void fixture() {
+    if (jdbc.sql("SELECT COUNT(*) FROM app_user WHERE username='operator'")
+            .query(Integer.class)
+            .single()
+        == 0)
+      jdbc.sql("INSERT INTO app_user(id,username,password_hash,nickname) VALUES(?,?,?,?)")
+          .param(java.util.UUID.randomUUID())
+          .param("operator")
+          .param("unused")
+          .param("운영자")
+          .update();
+  }
 
   private MockHttpServletRequestBuilder request(String path, String host) {
     return get(path)
@@ -61,11 +76,8 @@ class AdminConsoleIntegrationTest {
     mvc.perform(
             request("/api/admin/overview", "admin-console.localhost")
                 .with(user("operator").roles("MEMBER")))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.members").isNumber())
-        .andExpect(jsonPath("$.problems").isNumber())
-        .andExpect(jsonPath("$.judgeQueue").isMap())
-        .andExpect(jsonPath("$.measuredAt").exists());
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("ADMIN_REAUTH_REQUIRED"));
   }
 
   @Test

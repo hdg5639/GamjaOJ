@@ -16,10 +16,18 @@ public class AccountsRepository {
   }
 
   public <T> Optional<T> loadUserByUsernameAppUser(String username, RowMapper<T> mapper) {
-    return jdbc.sql("SELECT username, password_hash FROM app_user WHERE username = :username")
+    return jdbc.sql(
+            "SELECT username, password_hash, blocked FROM app_user WHERE username = :username")
         .param("username", username)
         .query(mapper)
         .optional();
+  }
+
+  public int accessEpoch(String username) {
+    return jdbc.sql("SELECT access_epoch FROM app_user WHERE username=?")
+        .param(username)
+        .query(Integer.class)
+        .single();
   }
 
   public int registerAppUser(UUID id, String username, String passwordHash, String nickname) {

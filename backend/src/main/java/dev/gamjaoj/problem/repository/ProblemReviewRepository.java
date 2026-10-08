@@ -15,6 +15,29 @@ public class ProblemReviewRepository {
     this.jdbc = jdbc;
   }
 
+  public Optional<UUID> administratorOwner(String version) {
+    return jdbc.sql("SELECT owner_id FROM problem_version WHERE id=? AND owner_id IS NOT NULL")
+        .param(version)
+        .query(UUID.class)
+        .optional();
+  }
+
+  public Optional<String> administratorUsername(UUID owner) {
+    return jdbc.sql("SELECT username FROM app_user WHERE id=?")
+        .param(owner)
+        .query(String.class)
+        .optional();
+  }
+
+  public <T> Optional<T> administratorProblem(String version, RowMapper<T> mapper) {
+    return jdbc.sql(
+            "SELECT review_hold,review_reason FROM problem_version WHERE id=? AND ready=true FOR"
+                + " UPDATE")
+        .param(version)
+        .query(mapper)
+        .optional();
+  }
+
   public Integer holdAiBudgetLock() {
     return jdbc.sql("SELECT id FROM ai_budget_lock WHERE id=1 FOR UPDATE")
         .query(Integer.class)

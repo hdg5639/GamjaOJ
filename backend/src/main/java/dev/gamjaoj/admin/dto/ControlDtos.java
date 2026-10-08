@@ -6,7 +6,12 @@ import java.util.Map;
 public final class ControlDtos {
   private ControlDtos() {}
 
-  public record Identity(String username) {}
+  public record Identity(
+      String username, boolean verified, long verifiedUntil, boolean bootstrap) {}
+
+  public record Verify(
+      @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 100)
+          String password) {}
 
   public record Overview(
       Instant measuredAt,

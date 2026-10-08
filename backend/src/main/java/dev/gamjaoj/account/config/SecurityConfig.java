@@ -16,10 +16,13 @@ public class SecurityConfig {
     return new BCryptPasswordEncoder(12);
   }
 
-  public @Bean SecurityFilterChain security(HttpSecurity http) throws Exception {
+  public @Bean SecurityFilterChain security(
+      HttpSecurity http, dev.gamjaoj.account.service.Accounts accounts) throws Exception {
     return http.authorizeHttpRequests(
             auth ->
                 auth.requestMatchers("/api/auth/csrf", "/api/auth/signup", "/api/auth/login")
+                    .permitAll()
+                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/announcements")
                     .permitAll()
                     .requestMatchers("/api/**")
                     .authenticated()
@@ -28,6 +31,8 @@ public class SecurityConfig {
                     .anyRequest()
                     .permitAll())
         .requestCache(cache -> cache.disable())
+        .sessionManagement(
+            session -> session.sessionFixation(fixation -> fixation.changeSessionId()))
         .exceptionHandling(
             errors ->
                 errors
@@ -38,7 +43,13 @@ public class SecurityConfig {
             login ->
                 login
                     .loginProcessingUrl("/api/auth/login")
-                    .successHandler((req, res, auth) -> res.setStatus(204))
+                    .successHandler(
+                        (req, res, auth) -> {
+                          req.getSession()
+                              .setAttribute(
+                                  "ACCOUNT_ACCESS_EPOCH", accounts.accessEpoch(auth.getName()));
+                          res.setStatus(204);
+                        })
                     .failureHandler((req, res, ex) -> error(res, 401, "아이디 또는 비밀번호를 확인해 주세요.")))
         .logout(
             logout ->

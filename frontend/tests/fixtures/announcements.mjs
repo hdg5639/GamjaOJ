@@ -1,4 +1,4 @@
-// Public service copy only. Keep IDs stable; add a new ID for a new publication.
+// Browser fixture matching V79 migration seeds. Production reads /api/announcements.
 // newest first within each group; pinned operating guidance stays above releases.
 export const announcements = [
  {id:'queue-guide-20261007',kind:'공지',date:'2026-10-07',pinned:true,title:'제출·실행이 몰리면 잠시 대기할 수 있어요',summary:'작업은 대기열에 들어간 뒤 러너 슬롯이 비면 처리됩니다.',paragraphs:[

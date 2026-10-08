@@ -210,7 +210,9 @@ public class Submissions {
           // Explicit public fields only: never serialize a private problem package.
           return new Problem(
               row.getString("id"),
-              data.title(),
+              row.getString("catalog_title") == null
+                  ? data.title()
+                  : row.getString("catalog_title"),
               data.statement(),
               data.sampleInput(),
               data.sampleOutput(),
