@@ -19,6 +19,8 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/gamjaoj
       DB_USER: gamjaoj
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      CONTROL_OJ_HOST: ${CONTROL_OJ_HOST:-}
+      CONTROL_OJ_ADMIN_USERS: ${CONTROL_OJ_ADMIN_USERS:-}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       EXPORTS_ENABLED: ${EXPORTS_ENABLED:-false}
       EXPORT_TOKEN_KEY: ${EXPORT_TOKEN_KEY:-}
