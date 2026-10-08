@@ -35,8 +35,24 @@ public class Accounts implements UserDetailsService {
                 User.withUsername(row.getString("username"))
                     .password(row.getString("password_hash"))
                     .roles("MEMBER")
+                    .disabled(row.getBoolean("blocked"))
                     .build())
         .orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
+  }
+
+  public int accessEpoch(String username) {
+    return repository.accessEpoch(username);
+  }
+
+  public boolean verifyPassword(String username, String password) {
+    if (password.getBytes(StandardCharsets.UTF_8).length > 72) return false;
+    return repository
+        .loadUserByUsernameAppUser(
+            username,
+            (row, index) ->
+                !row.getBoolean("blocked")
+                    && passwords.matches(password, row.getString("password_hash")))
+        .orElse(false);
   }
 
   @Transactional

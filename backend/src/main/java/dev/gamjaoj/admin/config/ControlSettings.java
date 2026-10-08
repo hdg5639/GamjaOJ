@@ -11,12 +11,20 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class ControlSettings {
+  private final dev.gamjaoj.admin.repository.AdminSecurityRepository repository;
   private final String host;
   private final Set<String> users;
 
+  public ControlSettings(String host, String users) {
+    this(host, users, null);
+  }
+
+  @org.springframework.beans.factory.annotation.Autowired
   public ControlSettings(
       @Value("${CONTROL_OJ_HOST:}") String host,
-      @Value("${CONTROL_OJ_ADMIN_USERS:}") String users) {
+      @Value("${CONTROL_OJ_ADMIN_USERS:}") String users,
+      dev.gamjaoj.admin.repository.AdminSecurityRepository repository) {
+    this.repository = repository;
     this.host = host.strip().toLowerCase(Locale.ROOT);
     if (!this.host.isEmpty() && !this.host.matches("[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?"))
       throw new IllegalArgumentException(
@@ -32,10 +40,22 @@ public class ControlSettings {
     return !host.isEmpty() && host.equalsIgnoreCase(request.getServerName());
   }
 
+  public boolean bootstrap(String username) {
+    return users.contains(username);
+  }
+
+  private boolean allowed(String username) {
+    if (repository == null) return bootstrap(username);
+    return repository
+        .access(username)
+        .filter(a -> !a.blocked() && (bootstrap(username) || a.role().equals("ADMIN")))
+        .isPresent();
+  }
+
   public boolean administrator(Authentication authentication) {
     return authentication != null
         && authentication.isAuthenticated()
-        && users.contains(authentication.getName())
+        && allowed(authentication.getName())
         && authentication.getAuthorities().stream()
             .anyMatch(a -> a.getAuthority().equals("ROLE_MEMBER"));
   }
