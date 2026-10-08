@@ -1,4 +1,7 @@
 package dev.gamjaoj;
+import dev.gamjaoj.dto.LearningProgressDtos;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.learning.LearningProgress;
 
 import java.time.*;
 import java.util.*;
@@ -49,7 +52,7 @@ class LearningProgressIntegrationTest {
         var result=learning.dashboard("alice",today);assertThat(result.days()).hasSize(365);
         assertThat(result.days().getLast().solved()).isEqualTo(1);assertThat(result.days().get(363).solved()).isEqualTo(1);
         assertThat(result.activeDays()).isEqualTo(2);assertThat(result.currentStreak()).isEqualTo(2);assertThat(result.longestStreak()).isEqualTo(2);
-        assertThat(result.categories()).extracting(LearningProgress.Category::category).doesNotContain("진단","보류","비공개");
+        assertThat(result.categories()).extracting(LearningProgressDtos.Category::category).doesNotContain("진단","보류","비공개");
     }
     @Test void yesterdayStreakSurvivesUntilTodayIsOverAndMissingDaysReset(){
         submit(alice,"lp-arrays","AC",at(today.minusDays(1)),false);submit(alice,"lp-arrays","AC",at(today.minusDays(2)),false);
@@ -63,9 +66,9 @@ class LearningProgressIntegrationTest {
         submit(alice,"lp-arrays","AC",at(today.minusDays(100)),false);
         var result=learning.dashboard("alice",today);assertThat(result.practicedProblems()).isEqualTo(6);assertThat(result.dominantCategory()).isEqualTo("배열·문자열");
         assertThat(result.categories().stream().filter(c->c.category().equals("배열·문자열")).findFirst().orElseThrow().attempted()).isEqualTo(6);
-        assertThat(result.explore()).extracting(LearningProgress.Suggestion::version).doesNotContain("lp-arrays","lp-hidden","lp-held","lp-diagnostic");
+        assertThat(result.explore()).extracting(LearningProgressDtos.Suggestion::version).doesNotContain("lp-arrays","lp-hidden","lp-held","lp-diagnostic");
         assertThat(result.explore().getFirst().category()).isNotEqualTo("배열·문자열");
-        assertThat(result.explore()).extracting(LearningProgress.Suggestion::category).doesNotHaveDuplicates();
+        assertThat(result.explore()).extracting(LearningProgressDtos.Suggestion::category).doesNotHaveDuplicates();
     }
     @Test void reflectionsAreOwnedAcceptedOnlyPersistAndFeedReviewQueue()throws Exception{
         UUID ac=submit(alice,"lp-arrays","AC",at(today),false);UUID foreign=submit(bob,"lp-bfs","AC",at(today),false);
@@ -75,9 +78,9 @@ class LearningProgressIntegrationTest {
         mvc.perform(put("/api/my/reflections").with(user("alice")).with(csrf()).contentType("application/json").content(body(ac,"REVISIT","경계 조건"))).andExpect(status().isOk()).andExpect(jsonPath("$.confidence").value("REVISIT"));
         mvc.perform(get("/api/my/reflections?problemVersion=lp-arrays").with(user("bob"))).andExpect(status().isNotFound());
         mvc.perform(get("/api/my/problems").with(user("alice"))).andExpect(jsonPath("$.items[?(@.version=='lp-arrays')].confidence").value(org.hamcrest.Matchers.hasItem("REVISIT")));
-        assertThat(learning.dashboard("alice",today).revisit()).extracting(LearningProgress.Suggestion::version).containsExactly("lp-arrays");
+        assertThat(learning.dashboard("alice",today).revisit()).extracting(LearningProgressDtos.Suggestion::version).containsExactly("lp-arrays");
         UUID newer=submit(alice,"lp-arrays","AC",at(today).plusMinutes(1),false);
-        var saved=learning.reflection(()->"alice","lp-arrays");assertThat(saved.submissionId()).isEqualTo(ac);assertThat(saved.latestAcceptedSubmissionId()).isEqualTo(newer);
+        var saved=learning.reflection("alice","lp-arrays");assertThat(saved.submissionId()).isEqualTo(ac);assertThat(saved.latestAcceptedSubmissionId()).isEqualTo(newer);
         mvc.perform(put("/api/my/reflections").with(user("alice")).with(csrf()).contentType("application/json").content(body(newer,"SOLID","정리했음"))).andExpect(status().isOk());
         assertThat(learning.dashboard("alice",today).revisit()).isEmpty();
         mvc.perform(put("/api/my/reflections").with(user("alice")).with(csrf()).contentType("application/json").content("{\"submissionId\":\""+ac+"\",\"confidence\":null,\"note\":\"\"}")).andExpect(status().isOk()).andExpect(jsonPath("$.confidence").isEmpty());

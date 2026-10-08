@@ -1,4 +1,14 @@
 package dev.gamjaoj;
+import dev.gamjaoj.repository.export.NotionTableRegistryRepository;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.infrastructure.export.ExportRemote;
+import dev.gamjaoj.infrastructure.export.ExportVault;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.JudgeQueue;
+import dev.gamjaoj.service.export.NotionTableRegistry;
+import dev.gamjaoj.service.export.SolutionExports;
+import dev.gamjaoj.dto.SubmissionDtos;
+import dev.gamjaoj.service.judge.Submissions;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.net.*;
@@ -33,7 +43,7 @@ class SolutionExportsIntegrationTest {
  }
  ObjectNode target(){return ExportRemote.obj().put("id","123").put("repo","owner/repo").put("branch","main").put("prefix","GamjaOJ").put("label","owner/repo");}
  void connect(String provider,boolean auto){jdbc.sql("INSERT INTO export_connection(id,user_id,provider,credentials,account_label,target_json,auto_enabled) VALUES (?,?,?,?,?,?,?)").param(UUID.randomUUID()).param(user).param(provider).param(vault.seal(user+":"+provider,ExportRemote.obj().put("access_token","test-token"))).param("fixture").param(target().toString()).param(auto).update();}
- UUID accepted(){var s=submissions.submit(name,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE));var a=queue.claim(UUID.randomUUID()).orElseThrow();var r=new SubmissionIntegrationTest().report(a);for(var t:r.path("tests"))((ObjectNode)t).put("memory_peak_bytes",33554432).put("memory_measurement","cgroup-peak-observed");queue.complete(s.id(),a.token(),r);queue.complete(s.id(),a.token(),r);return s.id();}
+ UUID accepted(){var s=submissions.submit(name,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE));var a=queue.claim(UUID.randomUUID()).orElseThrow();var r=new SubmissionIntegrationTest().report(a);for(var t:r.path("tests"))((ObjectNode)t).put("memory_peak_bytes",33554432).put("memory_measurement","cgroup-peak-observed");queue.complete(s.id(),a.token(),r);queue.complete(s.id(),a.token(),r);return s.id();}
  int count(){return jdbc.sql("SELECT count(*) FROM solution_export").query(Integer.class).single();}
  @Test void realJudgeCompletionAtomicallyEnqueuesOnceAndExternalIoHoldsNoTransaction(){
   UUID submission=accepted();assertThat(count()).isEqualTo(1);verifyNoInteractions(remote);
@@ -49,7 +59,7 @@ class SolutionExportsIntegrationTest {
  @Test void wrongOwnerUnacceptedCustomAndDiagnosticOnlyAreExcluded(){
   UUID first=accepted();UUID stranger=UUID.randomUUID();jdbc.sql("INSERT INTO app_user(id,username,password_hash,nickname) VALUES (?,'stranger','unused','stranger')").param(stranger).update();
   assertThatThrownBy(()->exports.request("stranger","GITHUB",first)).isInstanceOf(AccountException.class);
-  var queued=submissions.submit(name,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE));assertThatThrownBy(()->exports.request(name,"GITHUB",queued.id())).isInstanceOf(AccountException.class);
+  var queued=submissions.submit(name,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE));assertThatThrownBy(()->exports.request(name,"GITHUB",queued.id())).isInstanceOf(AccountException.class);
   jdbc.sql("UPDATE submission SET run_input='custom',run_package='{}',run_package_sha256='0000000000000000000000000000000000000000000000000000000000000000' WHERE id=?").param(first).update();assertThatThrownBy(()->exports.request(name,"GITHUB",first)).isInstanceOf(AccountException.class);
   jdbc.sql("UPDATE submission SET run_input=NULL,run_package=NULL,run_package_sha256=NULL,example_check=true WHERE id=?").param(first).update();assertThatThrownBy(()->exports.request(name,"GITHUB",first)).isInstanceOf(AccountException.class);
   jdbc.sql("UPDATE submission SET example_check=false WHERE id=?").param(first).update();jdbc.sql("UPDATE problem_version SET diagnostic_only=true WHERE id='sum-v1'").update();
@@ -130,7 +140,7 @@ class SolutionExportsIntegrationTest {
  }
 
  @Test void notionTableSetupStateIsSharedAcrossDeliveriesAndSurvivesUncertainCreation(){
-  var tables=new NotionTableRegistry(jdbc,mvc.getDispatcherServlet().getWebApplicationContext().getBean(org.springframework.transaction.PlatformTransactionManager.class));
+  var tables=new NotionTableRegistry(new NotionTableRegistryRepository(jdbc),mvc.getDispatcherServlet().getWebApplicationContext().getBean(org.springframework.transaction.PlatformTransactionManager.class));
   var parent=ExportRemote.obj().put("id","parent").put("kind","notion_table_parent");
   when(remote.notionTableSource(anyString(),any(),any(),any(),any())).thenAnswer(call->{
    assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
@@ -146,7 +156,7 @@ class SolutionExportsIntegrationTest {
   assertThat(tables.resolve(user,"token",parent,remote,()->{}).path("dataSourceId").asText()).isEqualTo("source");
   assertThat(jdbc.sql("SELECT count(*) FROM notion_export_table WHERE user_id=?").param(user).query(Integer.class).single()).isEqualTo(1);
   assertThat(jdbc.sql("SELECT count(*) FROM notion_export_table WHERE user_id=? AND lease_token IS NULL").param(user).query(Integer.class).single()).isEqualTo(1);
-  var secondProcess=new NotionTableRegistry(jdbc,mvc.getDispatcherServlet().getWebApplicationContext().getBean(org.springframework.transaction.PlatformTransactionManager.class));
+  var secondProcess=new NotionTableRegistry(new NotionTableRegistryRepository(jdbc),mvc.getDispatcherServlet().getWebApplicationContext().getBean(org.springframework.transaction.PlatformTransactionManager.class));
   assertThat(secondProcess.resolve(user,"token",parent,remote,()->{}).path("dataSourceId").asText()).isEqualTo("source");
   assertThat(SolutionExports.targetHash(parent)).isNotEqualTo(SolutionExports.targetHash(ExportRemote.obj().put("id","parent")));
  }

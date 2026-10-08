@@ -1,4 +1,7 @@
 package dev.gamjaoj;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.service.generation.GenerationType;
+import dev.gamjaoj.service.generation.ParenthesesTemplate;
 
 import org.junit.jupiter.api.Test;
 import java.util.ArrayDeque;
