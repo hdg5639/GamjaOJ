@@ -1,4 +1,6 @@
 package dev.gamjaoj;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.JudgeQueue;
 
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

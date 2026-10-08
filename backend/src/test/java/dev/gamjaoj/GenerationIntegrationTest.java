@@ -1,4 +1,36 @@
 package dev.gamjaoj;
+import dev.gamjaoj.service.problem.ThinkingAssessmentPublication;
+import dev.gamjaoj.repository.generation.ExperimentalReviewRepository;
+import dev.gamjaoj.repository.generation.ExperimentalPublicationRepository;
+import dev.gamjaoj.repository.generation.ExperimentalChecksRepository;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.config.AiSettings;
+import dev.gamjaoj.service.ai.AiTasks;
+import dev.gamjaoj.service.generation.ExperimentalChecks;
+import dev.gamjaoj.service.generation.ExperimentalPublication;
+import dev.gamjaoj.service.generation.ExperimentalReview;
+import dev.gamjaoj.service.generation.GenerationChoices;
+import dev.gamjaoj.service.generation.GenerationEvidence;
+import dev.gamjaoj.service.generation.GenerationJobs;
+import dev.gamjaoj.service.generation.GenerationRecommendations;
+import dev.gamjaoj.service.generation.GenerationResources;
+import dev.gamjaoj.service.generation.GenerationSpecDrafts;
+import dev.gamjaoj.service.generation.GenerationTemplate;
+import dev.gamjaoj.service.generation.GenerationType;
+import dev.gamjaoj.service.generation.GenerationValidationPolicy;
+import dev.gamjaoj.service.generation.InputLayout;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.JudgeQueue;
+import dev.gamjaoj.domain.LanguageProfiles;
+import dev.gamjaoj.service.generation.ParenthesesTemplate;
+import dev.gamjaoj.service.problem.ProblemReview;
+import dev.gamjaoj.dto.RunDtos;
+import dev.gamjaoj.dto.SubmissionDtos;
+import dev.gamjaoj.service.judge.Submissions;
+import dev.gamjaoj.service.problem.ThinkingDifficulty;
+import dev.gamjaoj.dto.TrainingSessionDtos;
+import dev.gamjaoj.service.learning.TrainingSessions;
+import dev.gamjaoj.service.generation.VerificationLedger;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -21,6 +53,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "gamjaoj.worker-token=judge-test-token-32-characters-long","GENERATION_WORKER_TOKEN=generation-test-token-32-characters-long"})
 @AutoConfigureMockMvc
 class GenerationIntegrationTest {
+ @Autowired ThinkingAssessmentPublication thinkingAssessmentPublication;
+ @org.springframework.beans.factory.annotation.Autowired GenerationResources generationResources;
+
     @Autowired GenerationJobs generation; @Autowired JudgeQueue queue; @Autowired Submissions submissions;
     @Autowired JdbcClient jdbc; @Autowired MockMvc mvc;
     @Autowired AiTasks ai; @Autowired GenerationSpecDrafts drafts;
@@ -48,8 +83,8 @@ class GenerationIntegrationTest {
     }
     @Test void reviewHoldIsOwnerOnlyIdempotentAndPreservesRecordsWhileBlockingNewWork() throws Exception {
         String version=publishedReviewFixture();UUID key=UUID.randomUUID(),sessionId=UUID.randomUUID();
-        training.start("operator",sessionId,new TrainingSessionController.Start(version,"경계값"));
-        var request=new SubmissionController.Request(version,"class Main {}",sessionId);
+        training.start("operator",sessionId,new TrainingSessionDtos.Start(version,"경계값"));
+        var request=new SubmissionDtos.Request(version,"class Main {}",sessionId);
         var saved=submissions.submit("operator",key,request);
         jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='WA',result_sha256=?,result_json='{}' WHERE submission_id=?").param(JudgeJson.hash("{}")).param(saved.id()).update();
         var analysis=ai.request("operator",saved.id(),"ANALYSIS","",false);
@@ -67,11 +102,11 @@ class GenerationIntegrationTest {
         assertThat(submissions.detail("operator",saved.id()).problemHeld()).isTrue();
         assertThat(submissions.detail("operator",saved.id()).verdict()).isEqualTo("WA");
         assertThatThrownBy(()->submissions.submit("operator",UUID.randomUUID(),request)).isInstanceOf(AccountException.class);
-        assertThatThrownBy(()->submissions.run("operator",UUID.randomUUID(),new RunController.Request(version,"class Main {}","",null))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.run("operator",UUID.randomUUID(),new RunDtos.Request(version,"class Main {}","",null))).isInstanceOf(AccountException.class);
         assertThatThrownBy(()->ai.request("operator",saved.id(),"ANALYSIS","",false)).isInstanceOf(AccountException.class);
         training.end("operator",sessionId,"문제 검토 요청");ai.enqueueEndedSessions();
         assertThat(training.detail("operator",sessionId).session().problemHeld()).isTrue();
-        assertThatThrownBy(()->training.start("operator",UUID.randomUUID(),new TrainingSessionController.Start(version,""))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->training.start("operator",UUID.randomUUID(),new TrainingSessionDtos.Start(version,""))).isInstanceOf(AccountException.class);
         org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=true").applyTo(environment);
         assertThat(ai.claim()).isNull();
         assertThat(ai.detail("operator",analysis.id()).problemHeld()).isTrue();
@@ -81,13 +116,13 @@ class GenerationIntegrationTest {
     }
     @Test void alreadyClaimedAnalysisSettlesUsageButIsNotLearningEvidenceAfterHold() {
         String version=publishedReviewFixture();
-        var saved=submissions.submit("operator",UUID.randomUUID(),new SubmissionController.Request(version,"class Main {}"));
+        var saved=submissions.submit("operator",UUID.randomUUID(),new SubmissionDtos.Request(version,"class Main {}"));
         jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='AC',result_sha256=?,result_json='{}' WHERE submission_id=?").param(JudgeJson.hash("{}")).param(saved.id()).update();
         var task=ai.request("operator",saved.id(),"ANALYSIS","",false);
         org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=true").applyTo(environment);
         var work=ai.claim();assertThat(work).isNotNull();
         problemReview.hold("operator",version,"정답 검토");
-        ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(AiIntegrationTest.feedback(),JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":50}"),"r","q","test"),null);
+        ai.finish(work,new dev.gamjaoj.infrastructure.ai.OpenAiResponses.Result(AiIntegrationTest.feedback(),JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":50}"),"r","q","test"),null);
         assertThat(ai.detail("operator",task.id()).status()).isEqualTo("COMPLETED");
         assertThat(ai.detail("operator",task.id()).problemHeld()).isTrue();
         assertThat(ai.budget("operator").spentUsd()).isPositive();
@@ -245,7 +280,7 @@ class GenerationIntegrationTest {
     @Autowired AiSettings aiSettings;
     UUID resourceFixture(){
         var id=reviewableDraft();jdbc.sql("UPDATE generation_spec_draft SET resource_validation=true WHERE id=?").param(id).update();
-        assertThat(GenerationResources.ensure(jdbc,"DIRECT",id,"experimental-check-"+id,draftSpec(),artifacts().path("reference").asText(),artifacts().path("inputValidator").asText(),null)).isNull();
+        assertThat(generationResources.ensure("DIRECT",id,"experimental-check-"+id,draftSpec(),artifacts().path("reference").asText(),artifacts().path("inputValidator").asText(),null)).isNull();
         return id;
     }
     ObjectNode resourceSources(){var value=JudgeJson.JSON.createObjectNode().put("cpp","int main(){}").put("python","print(1)").put("ordinaryJava","public class Main { /* ordinary */ }").put("maximumGenerator","public class Main { /* maximum */ }");var coverage=value.putArray("coverage");var policy=GenerationValidationPolicy.forProblem(draftSpec());for(int i=0;i<4;i++){var item=coverage.addObject().put("seed",i).put("reason","full bounds, reset, depth and overflow");var checks=item.putArray("checks");for(var check:policy.path("commonChecks"))checks.add(check);for(var profile:policy.path("profiles"))for(var check:profile.path("checks"))checks.add(check);}return value;}
@@ -254,13 +289,13 @@ class GenerationIntegrationTest {
             for(var test:value.path("tests"))if(memory)((ObjectNode)test).put("memory_peak_bytes",32*1048576L).put("memory_measurement","cgroup-peak-observed");
             queue.complete(work.submissionId(),work.token(),value);
         }
-        GenerationResources.advance(jdbc);
+        generationResources.advance();
     }
     @Test void resourceGateRequiresThreeActualLanguageReportsAndOrdinaryReplayBeforeItReturnsLimits(){
-        var id=resourceFixture();var work=GenerationResources.claim(jdbc,aiSettings);assertThat(work.spec().path("phase").asText()).isEqualTo("RESOURCE_QUALIFICATION");
+        var id=resourceFixture();var work=generationResources.claim(aiSettings);assertThat(work.spec().path("phase").asText()).isEqualTo("RESOURCE_QUALIFICATION");
         var sources=resourceSources();var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");
-        GenerationResources.complete(jdbc,work.id(),work.token(),sources,review,null,null);
-        GenerationResources.complete(jdbc,work.id(),work.token(),sources,review,null,null);
+        generationResources.complete(work.id(),work.token(),sources,review,null,null);
+        generationResources.complete(work.id(),work.token(),sources,review,null,null);
         assertThat(jdbc.sql("SELECT count(*) FROM generation_resource_execution").query(Integer.class).single()).isEqualTo(9);
         assertThat(submissions.runs("other")).isEmpty();
         for(var row:jdbc.sql("SELECT runtime_image,runner_policy,execution_profile_json FROM submission WHERE id IN (SELECT submission_id FROM generation_resource_execution)").query((r,n)->new String[]{r.getString(1),r.getString(2),r.getString(3)}).list()) {
@@ -268,19 +303,19 @@ class GenerationIntegrationTest {
         }
         finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("REPLAYING");
         finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("PASSED");
-        var limits=JudgeJson.parse(GenerationResources.ensure(jdbc,"DIRECT",id,"experimental-check-"+id,draftSpec(),artifacts().path("reference").asText(),artifacts().path("inputValidator").asText(),null));
+        var limits=JudgeJson.parse(generationResources.ensure("DIRECT",id,"experimental-check-"+id,draftSpec(),artifacts().path("reference").asText(),artifacts().path("inputValidator").asText(),null));
         assertThat(limits.path("CPP").asInt()).isEqualTo(3);assertThat(limits.path("JAVA").asInt()).isEqualTo(5);assertThat(limits.path("PYTHON").asInt()).isEqualTo(8);
         assertThat(limits.path("memory").path("JAVA").asInt()).isEqualTo(96);
         assertThat(jdbc.sql("SELECT count(DISTINCT s.language) FROM generation_resource_execution e JOIN submission s ON s.id=e.submission_id").query(Integer.class).single()).isEqualTo(3);
         assertThat(jdbc.sql("SELECT ready FROM problem_version WHERE id=?").param("experimental-check-"+id).query(Boolean.class).single()).isFalse();
     }
     @Test void invalidLanguageImageBindingReexecutesStoredArtifactsAndKeepsSupersededEvidence(){
-        resourceFixture();var work=GenerationResources.claim(jdbc,aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");var sources=resourceSources();
-        GenerationResources.complete(jdbc,work.id(),work.token(),sources,review,null,null);
+        resourceFixture();var work=generationResources.claim(aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");var sources=resourceSources();
+        generationResources.complete(work.id(),work.token(),sources,review,null,null);
         UUID old=jdbc.sql("SELECT submission_id FROM generation_resource_execution WHERE role='measure-CPP-0'").query(UUID.class).single();
         jdbc.sql("UPDATE submission SET runtime_image=?,runner_policy='java8-judge-v1' WHERE id=?").param(LanguageProfiles.profile("JAVA").path("image").asText()).param(old).update();
-        GenerationResources.advance(jdbc);assertThat(jdbc.sql("SELECT verdict FROM judge_job WHERE submission_id=?").param(old).query(String.class).single()).isEqualTo("IE");
-        finishResourceChecks(true);assertThat(GenerationResources.claim(jdbc,aiSettings)).isNull();
+        generationResources.advance();assertThat(jdbc.sql("SELECT verdict FROM judge_job WHERE submission_id=?").param(old).query(String.class).single()).isEqualTo("IE");
+        finishResourceChecks(true);assertThat(generationResources.claim(aiSettings)).isNull();
         var fresh=jdbc.sql("SELECT submission_id FROM generation_resource_execution WHERE role='measure-CPP-0'").query(UUID.class).single();assertThat(fresh).isNotEqualTo(old);
         assertThat(jdbc.sql("SELECT source_sha256 FROM submission WHERE id=?").param(fresh).query(String.class).single()).isEqualTo(jdbc.sql("SELECT source_sha256 FROM submission WHERE id=?").param(old).query(String.class).single());
         assertThat(jdbc.sql("SELECT report_json FROM generation_resource_attempt").query(String.class).single()).contains("RESOURCE_EXECUTION_PROFILE_MISMATCH",old.toString());
@@ -288,26 +323,26 @@ class GenerationIntegrationTest {
         finishResourceChecks(true);finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("PASSED");
     }
     @Test void originalValidatorRuntimeFailureReturnsToImplementationWithoutReauthoringMaximumInputs(){
-        var id=resourceFixture();var work=GenerationResources.claim(jdbc,aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");GenerationResources.complete(jdbc,work.id(),work.token(),resourceSources(),review,null,null);
+        var id=resourceFixture();var work=generationResources.claim(aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");generationResources.complete(work.id(),work.token(),resourceSources(),review,null,null);
         java.util.Optional<JudgeQueue.Assignment> next;while((next=queue.claim(UUID.randomUUID())).isPresent()) {
             var a=next.get();String role=jdbc.sql("SELECT role FROM generation_resource_execution WHERE submission_id=?").param(a.submissionId()).query(String.class).single();var report=report(a,"AC");if(role.equals("validator")){report.put("verdict","RE");var tests=(com.fasterxml.jackson.databind.node.ArrayNode)report.path("tests");int failed=a.problem().path("tests").size();while(tests.size()>failed+1)tests.remove(tests.size()-1);((ObjectNode)tests.get(failed)).put("verdict","RE").put("stderr","StackOverflowError in whole-input regex");}
             for(var test:report.path("tests"))((ObjectNode)test).put("memory_peak_bytes",32*1048576L).put("memory_measurement","cgroup-peak-observed");queue.complete(a.submissionId(),a.token(),report);
         }
-        GenerationResources.advance(jdbc);assertThat(GenerationResources.claim(jdbc,aiSettings)).isNull();
+        generationResources.advance();assertThat(generationResources.claim(aiSettings)).isNull();
         assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("FAILED");
-        assertThatThrownBy(()->GenerationResources.ensure(jdbc,"DIRECT",id,"experimental-check-"+id,draftSpec(),artifacts().path("reference").asText(),artifacts().path("inputValidator").asText(),null)).hasMessage("RESOURCE_REFERENCE_VALIDATOR_RE");
+        assertThatThrownBy(()->generationResources.ensure("DIRECT",id,"experimental-check-"+id,draftSpec(),artifacts().path("reference").asText(),artifacts().path("inputValidator").asText(),null)).hasMessage("RESOURCE_REFERENCE_VALIDATOR_RE");
         jdbc.sql("UPDATE generation_spec_draft SET status='FINAL_FAILED',auto_recovery=true,error_code='RESOURCE_REFERENCE_VALIDATOR_RE' WHERE id=?").param(id).update();generation.advance();
         assertThat(drafts.view("other",id).status()).isEqualTo("BUILD_QUEUED");assertThat(drafts.view("other",id).recovery().path("scope").asText()).isEqualTo("IMPLEMENTATION");
         assertThat(jdbc.sql("SELECT count(*) FROM generation_resource_execution").query(Integer.class).single()).isEqualTo(9);
     }
     @Test void missingCgroupObservationRemeasuresIdenticalArtifactsWithoutAnotherModelCall(){
-        var id=resourceFixture();String hash=drafts.view("other",id).specHash();var work=GenerationResources.claim(jdbc,aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");
-        GenerationResources.complete(jdbc,work.id(),work.token(),resourceSources(),review,null,null);finishResourceChecks(false);
+        var id=resourceFixture();String hash=drafts.view("other",id).specHash();var work=generationResources.claim(aiSettings);var review=JudgeJson.JSON.createObjectNode().put("accepted",true);review.putArray("issues");
+        generationResources.complete(work.id(),work.token(),resourceSources(),review,null,null);finishResourceChecks(false);
         assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("MEASURING");
         assertThat(jdbc.sql("SELECT report_json FROM generation_resource_attempt").query(String.class).single()).contains("RESOURCE_MEMORY_OBSERVATION_MISSING","submissionId");
         assertThat(drafts.view("other",id).specHash()).isEqualTo(hash);
-        GenerationResources.complete(jdbc,work.id(),work.token(),resourceSources(),review,null,null);
-        assertThat(GenerationResources.claim(jdbc,aiSettings)).isNull();
+        generationResources.complete(work.id(),work.token(),resourceSources(),review,null,null);
+        assertThat(generationResources.claim(aiSettings)).isNull();
         finishResourceChecks(true);finishResourceChecks(true);assertThat(jdbc.sql("SELECT status FROM generation_resource_check").query(String.class).single()).isEqualTo("PASSED");
     }
     UUID implementedDraft() {
@@ -446,13 +481,13 @@ class GenerationIntegrationTest {
         String version="experimental-check-"+id;
         assertThat(jdbc.sql("SELECT ready FROM problem_version WHERE id=?").param(version).query(Boolean.class).single()).isFalse();
         // Simulate another coordinator instance resuming from the persisted stage/queues.
-        new ExperimentalPublication(jdbc,new ExperimentalChecks(jdbc),new ExperimentalReview(jdbc,new ExperimentalChecks(jdbc))).advance();
+        new ExperimentalPublication(new ExperimentalPublicationRepository(jdbc),new ExperimentalChecks(new ExperimentalChecksRepository(jdbc)),new ExperimentalReview(new ExperimentalReviewRepository(jdbc),new ExperimentalChecks(new ExperimentalChecksRepository(jdbc))),generationResources,thinkingAssessmentPublication).advance();
         finishFinal("");var saved=drafts.view("other",id);assertThat(saved.status()).isEqualTo("PUBLISHED");assertThat(saved.publication().path("domainCases").asInt()).isEqualTo(4);assertThat(saved.publication().path("executions").asInt()).isEqualTo(24);
         assertThat(drafts.publish("other",id,hash).status()).isEqualTo("PUBLISHED");generation.advance();assertThat(queue.claim(UUID.randomUUID())).isEmpty();
         assertThat(submissions.problems("other").stream().anyMatch(p->p.version().equals(version)&&p.title().startsWith("[실험]"))).isTrue();assertThat(submissions.problems("operator").stream().anyMatch(p->p.version().equals(version))).isFalse();
         mvc.perform(get("/api/problems/"+version+"/teaching").with(user("operator"))).andExpect(status().isNotFound());mvc.perform(get("/api/problems/"+version+"/teaching").with(user("other"))).andExpect(status().isOk());
-        assertThat(submissions.history("other")).isEmpty();assertThatThrownBy(()->submissions.submit("operator",UUID.randomUUID(),new SubmissionController.Request(version,"public class Main {}"))).isInstanceOf(AccountException.class);
-        var submission=submissions.submit("other",UUID.randomUUID(),new SubmissionController.Request(version,"public class Main {}"));assertThat(submission.problemVersion()).isEqualTo(version);
+        assertThat(submissions.history("other")).isEmpty();assertThatThrownBy(()->submissions.submit("operator",UUID.randomUUID(),new SubmissionDtos.Request(version,"public class Main {}"))).isInstanceOf(AccountException.class);
+        var submission=submissions.submit("other",UUID.randomUUID(),new SubmissionDtos.Request(version,"public class Main {}"));assertThat(submission.problemVersion()).isEqualTo(version);
     }
     @Test void explicitlySharedFreeformAppearsOnlyAfterFinalGates() {
         var id=finalChecking();
@@ -462,7 +497,7 @@ class GenerationIntegrationTest {
         finishFinal("");finishFinal("");finishFinal("");
         assertThat(drafts.view("other",id).status()).isEqualTo("PUBLISHED");
         assertThat(submissions.problems("operator")).anyMatch(p->p.version().equals(version)&&p.shared()&&!p.mine());
-        assertThat(submissions.submit("operator",UUID.randomUUID(),new SubmissionController.Request(version,"class Main {}"))).isNotNull();
+        assertThat(submissions.submit("operator",UUID.randomUUID(),new SubmissionDtos.Request(version,"class Main {}"))).isNotNull();
     }
     @Test void explicitlySharedTagProblemAppearsOnlyAfterRunnerGates() {
         var job=authored();
@@ -583,7 +618,7 @@ class GenerationIntegrationTest {
         assertThat(JudgeJson.parse(task.input()).path("kind").asText()).isEqualTo("THEME");
         var theme=JudgeJson.parse("{\"setting\":\"유성 관측 기록\",\"scenario\":\"관측 신호의 증가와 감소를 기록한다.\"}");
         var usage=JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":50}");
-        ai.finish(task,new dev.gamjaoj.ai.OpenAiResponses.Result(theme,usage,"theme-response","request","gpt-6-luna"),null);
+        ai.finish(task,new dev.gamjaoj.infrastructure.ai.OpenAiResponses.Result(theme,usage,"theme-response","request","gpt-6-luna"),null);
         assertThat(ai.budget().reservedUsd()).isZero();assertThat(ai.budget().spentUsd()).isPositive();
         assertThat(generation.claim().spec().path("theme")).isEqualTo(theme);
     }
@@ -608,7 +643,7 @@ class GenerationIntegrationTest {
     @Test void unknownThemeCallRetainsReservationAndRequiresExplicitRetry() {
         var job=generation.create("operator",UUID.randomUUID(),GenerationTemplate.ID);
         org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=true").applyTo(environment);
-        var task=ai.claim();ai.finish(task,null,new dev.gamjaoj.ai.OpenAiResponses.Failure("TIMEOUT_USAGE_UNKNOWN",null,null));
+        var task=ai.claim();ai.finish(task,null,new dev.gamjaoj.infrastructure.ai.OpenAiResponses.Failure("TIMEOUT_USAGE_UNKNOWN",null,null));
         assertThat(ai.budget().reservedUsd()).isPositive();assertThat(ai.claim()).isNull();assertThat(generation.claim()).isNull();
         assertThatThrownBy(()->generation.retryTheme("other",job.id())).isInstanceOf(AccountException.class);
         generation.advance();assertThat(generation.view("operator",job.id()).status()).isEqualTo("THEME_FAILED");
@@ -684,8 +719,8 @@ class GenerationIntegrationTest {
         var ids=new java.util.HashSet<String>();tests.forEach(test->assertThat(ids.add(test.path("id").asText())).isTrue());
         assertThat(ids).contains("singleton-positive","singleton-negative","cancellation","mixed-sign");
         assertThat(submissions.history("operator")).isEmpty();assertThat(submissions.runs("operator")).isEmpty();
-        assertThatThrownBy(()->submissions.submit("other",UUID.randomUUID(),new SubmissionController.Request(ver,"public class Main {}"))).isInstanceOf(AccountException.class);
-        var submitted=submissions.submit("operator",UUID.randomUUID(),new SubmissionController.Request(ver,"public class Main {}"));
+        assertThatThrownBy(()->submissions.submit("other",UUID.randomUUID(),new SubmissionDtos.Request(ver,"public class Main {}"))).isInstanceOf(AccountException.class);
+        var submitted=submissions.submit("operator",UUID.randomUUID(),new SubmissionDtos.Request(ver,"public class Main {}"));
         assertThat(submitted.problemVersion()).isEqualTo(ver);
     }
     @Test void inputLayoutRepairPreservesOldEvidenceAndRerunsAllGatesWithoutModels() throws Exception {
@@ -788,8 +823,8 @@ class GenerationIntegrationTest {
         var child=derived("바닷속 탐사","잠수정 장비의 기록을 정리한다.");
         var grandchild=derived("숲속 관측","나무에 달린 측정 장치의 기록을 확인한다.");
         assertThat(jdbc.sql("SELECT source_job_id FROM generation_dependency WHERE job_id=?").param(grandchild.id()).query(UUID.class).single()).isEqualTo(child.id());
-        UUID session=UUID.randomUUID();training.start("operator",session,new TrainingSessionController.Start(child.problemVersion(),"경계"));
-        UUID key=UUID.randomUUID();var request=new SubmissionController.Request(child.problemVersion(),"class Main {}",session);
+        UUID session=UUID.randomUUID();training.start("operator",session,new TrainingSessionDtos.Start(child.problemVersion(),"경계"));
+        UUID key=UUID.randomUUID();var request=new SubmissionDtos.Request(child.problemVersion(),"class Main {}",session);
         var submission=submissions.submit("operator",key,request);
         var pending=generation.create("operator",UUID.randomUUID(),GenerationTemplate.ID);readyThemes();var work=generation.claim();
         generation.complete(pending.id(),work.token(),artifacts().put("title","궤도 변화").put("context","인공위성 장치의 기록을 확인한다."),work.reuse().path("oracle"),null,null);
@@ -807,7 +842,7 @@ class GenerationIntegrationTest {
         assertThat(submissions.detail("operator",submission.id()).problemHeld()).isTrue();
         assertThat(training.detail("operator",session).session().problemHeld()).isTrue();
         assertThatThrownBy(()->submissions.submit("operator",UUID.randomUUID(),request)).isInstanceOf(AccountException.class);
-        assertThatThrownBy(()->training.start("operator",UUID.randomUUID(),new TrainingSessionController.Start(child.problemVersion(),""))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->training.start("operator",UUID.randomUUID(),new TrainingSessionDtos.Start(child.problemVersion(),""))).isInstanceOf(AccountException.class);
         var fresh=generation.create("operator",UUID.randomUUID(),GenerationTemplate.ID);
         assertThat(fresh.preview().path("structure").path("reused").asBoolean()).isFalse();
     }
@@ -996,7 +1031,7 @@ class GenerationIntegrationTest {
     }
     @Test void userSubmissionsTakePriorityOverGenerationValidation() {
         var job=authored();generation.review("operator",job.id(),job.artifactHash(),true);
-        var real=submissions.submit("other",UUID.randomUUID(),new SubmissionController.Request("total-v1","public class Main {}"));
+        var real=submissions.submit("other",UUID.randomUUID(),new SubmissionDtos.Request("total-v1","public class Main {}"));
         assertThat(queue.claim(UUID.randomUUID()).orElseThrow().submissionId()).isEqualTo(real.id());
     }
     @Test void personalGenerationSeparatesOwnersAndQueuesUsersWithoutOperatorPermission() throws Exception {
@@ -1019,7 +1054,7 @@ class GenerationIntegrationTest {
         mvc.perform(get("/api/problems/"+version+"/teaching").with(user("operator"))).andExpect(status().isNotFound());
     }
     @Test void completedFeedbackIsOwnedCompatibleAndSnapshottedBeforeGeneration() {
-        UUID submission=submissions.submit("other",UUID.randomUUID(),new SubmissionController.Request("total-v1","public class Main {}")).id();
+        UUID submission=submissions.submit("other",UUID.randomUUID(),new SubmissionDtos.Request("total-v1","public class Main {}")).id();
         UUID analysis=UUID.randomUUID();
         jdbc.sql("INSERT INTO ai_task (id,user_id,submission_id,kind,cache_key,settings_json,input_json,status,result_json) VALUES (?,?,?,'ANALYSIS',?,'{}','{}','COMPLETED',?)")
                 .param(analysis).param(submissions.owner("other",false)).param(submission).param(JudgeJson.hash(analysis.toString())).param(AiIntegrationTest.feedback().toString()).update();

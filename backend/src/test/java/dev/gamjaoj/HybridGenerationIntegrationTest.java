@@ -1,4 +1,15 @@
 package dev.gamjaoj;
+import dev.gamjaoj.domain.ArtifactValidation;
+import dev.gamjaoj.service.generation.GenerationResources;
+import dev.gamjaoj.service.generation.GenerationDraftRecovery;
+import dev.gamjaoj.repository.generation.HybridGenerationRepository;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.config.AiSettings;
+import dev.gamjaoj.service.generation.GenerationJobs;
+import dev.gamjaoj.service.generation.HybridArtifacts;
+import dev.gamjaoj.service.generation.HybridGeneration;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.Submissions;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,7 +23,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
-import static dev.gamjaoj.HybridGeneration.Role.*;
+import static dev.gamjaoj.service.generation.HybridGeneration.Role.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -23,6 +34,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "AI_API_ENABLED=false","AI_POLL_MS=3600000"})
 @AutoConfigureMockMvc
 class HybridGenerationIntegrationTest {
+ @Autowired GenerationResources generationResources;
+ @Autowired GenerationDraftRecovery generationDraftRecovery;
     @Autowired HybridGeneration hybrid;@Autowired JdbcClient jdbc;@Autowired MockMvc mvc;
     @Autowired AiSettings aiSettings;
     @Autowired Submissions submissions;@Autowired GenerationJobs legacy;
@@ -205,7 +218,7 @@ class HybridGenerationIntegrationTest {
         UUID id=designed();finish(id,CORE,core());finish(id,PRESENTATION,presentation());var r=reader();r.withArray("ambiguities").add("item reuse is unclear");
         assertThat(hybrid.complete(result(hybrid.claim(id,READER),r))).isFalse();assertThat(hybrid.view("owner",id).error()).isEqualTo("READER_AMBIGUITY");
         assertThat(hybrid.view("owner",id).branches()).containsEntry(VALIDATION,"NOT_STARTED");
-        assertThatThrownBy(()->HybridArtifacts.reader(reader().put("oracleSource",""))).isInstanceOf(HybridArtifacts.Invalid.class);
+        assertThatThrownBy(()->HybridArtifacts.reader(reader().put("oracleSource",""))).isInstanceOf(ArtifactValidation.Invalid.class);
     }
     @Test void cancellationAndCompletionRaceNeverPublishesAndNeverErasesUsage() throws Exception {
         UUID id=designed();var core=hybrid.claim(id,CORE);
@@ -245,7 +258,7 @@ class HybridGenerationIntegrationTest {
         assertThat(count("hybrid_generation")).isEqualTo(1);
     }
     @Test void durableAssignmentsCanBeReadAfterServiceRecreationWithoutNewDispatch() {
-        UUID id=designed();var core=hybrid.claim(id,CORE);var recreated=new HybridGeneration(jdbc,submissions,aiSettings);
+        UUID id=designed();var core=hybrid.claim(id,CORE);var recreated=new HybridGeneration(new HybridGenerationRepository(jdbc),submissions,aiSettings,generationDraftRecovery,generationResources);
         assertThat(recreated.view("owner",id).branches()).containsEntry(CORE,"RUNNING").containsEntry(PRESENTATION,"QUEUED");
         assertThat(recreated.claim(id,CORE)).isNull();assertThat(count("hybrid_branch")).isEqualTo(3);
         assertThat(hybrid.complete(result(core,core()))).isTrue();
@@ -261,6 +274,6 @@ class HybridGenerationIntegrationTest {
         assertThat(hybrid.complete(result(hybrid.claim(id,CORE),code))).isFalse();
         assertThat(hybrid.view("owner",id).error()).isEqualTo("SOURCE_TOO_LARGE");
         assertThatThrownBy(()->HybridArtifacts.reader(reader().put("oracleSource","한".repeat(22000))))
-                .isInstanceOf(HybridArtifacts.Invalid.class).hasMessage("SOURCE_TOO_LARGE");
+                .isInstanceOf(ArtifactValidation.Invalid.class).hasMessage("SOURCE_TOO_LARGE");
     }
 }

@@ -1,4 +1,31 @@
 package dev.gamjaoj;
+import dev.gamjaoj.service.generation.GenerationResources;
+import dev.gamjaoj.repository.diagnostic.DiagnosticsRepository;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.infrastructure.ai.AiProvider;
+import dev.gamjaoj.service.ai.AiTasks;
+import dev.gamjaoj.service.generation.CallablePrograms;
+import dev.gamjaoj.service.account.ContentDeletion;
+import dev.gamjaoj.service.diagnostic.DiagnosticEvaluationContract;
+import dev.gamjaoj.service.diagnostic.DiagnosticEvaluations;
+import dev.gamjaoj.service.diagnostic.DiagnosticPlans;
+import dev.gamjaoj.service.diagnostic.DiagnosticProfiles;
+import dev.gamjaoj.service.diagnostic.Diagnostics;
+import dev.gamjaoj.service.generation.GenerationJobs;
+import dev.gamjaoj.service.generation.GenerationSpecDrafts;
+import dev.gamjaoj.service.generation.HybridAdmission;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.JudgeQueue;
+import dev.gamjaoj.domain.LanguageProfiles;
+import dev.gamjaoj.service.learning.LearningCurricula;
+import dev.gamjaoj.infrastructure.worker.LearningPreparationWorker;
+import dev.gamjaoj.service.learning.LearningProblemPreparation;
+import dev.gamjaoj.service.learning.LearningProblemSwitch;
+import dev.gamjaoj.dto.RunDtos;
+import dev.gamjaoj.dto.SubmissionDtos;
+import dev.gamjaoj.service.judge.Submissions;
+import dev.gamjaoj.dto.TrainingSessionDtos;
+import dev.gamjaoj.service.learning.TrainingSessions;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
@@ -21,6 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "gamjaoj.submissions-enabled=true","AI_POLL_MS=3600000","LEARNING_PREPARATION_POLL_MS=3600000","gamjaoj.worker-token=worker-test-credential-32-characters"})
 @AutoConfigureMockMvc
 class DiagnosticIntegrationTest {
+ @Autowired GenerationResources generationResources;
     // Optional isolated PostgreSQL run exercises production row locks and migration syntax.
     @org.springframework.test.context.DynamicPropertySource
     static void database(org.springframework.test.context.DynamicPropertyRegistry registry) {
@@ -99,7 +127,7 @@ class DiagnosticIntegrationTest {
             for(int n=0;n<4;n++) {
                 UUID key=UUID.randomUUID();var next=diagnostics.start(user,key,family);assertThat(next.items()).hasSize(8);assertThat(next.repeatAttempt()).isFalse();assertThat(assigned.add(next.bankId())).isTrue();
                 assertThat(diagnostics.start(user,key,family)).isEqualTo(next);
-                var restarted=new Diagnostics(jdbc).detail(user,next.id());assertThat(restarted).isEqualTo(next);
+                var restarted=new Diagnostics(new DiagnosticsRepository(jdbc)).detail(user,next.id());assertThat(restarted).isEqualTo(next);
                 assertThatThrownBy(()->diagnostics.detail(other,next.id())).isInstanceOf(AccountException.class);
                 diagnostics.finish(user,next.id());
             }
@@ -116,16 +144,16 @@ class DiagnosticIntegrationTest {
         jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id=?").param(raw).param(hash).param(version).update();jdbc.sql("UPDATE diagnostic_item SET package_json=?,package_sha256=? WHERE problem_version=?").param(raw).param(hash).param(version).update();
         var q=diagnostics.detail(user,d.id()).current();assertThat(q.languages()).extracting(LanguageProfiles.Option::id).containsExactly("JAVA","CPP","PYTHON");assertThat(q.api().path("template").asText()).contains("class UserSolution");
         String source="public class UserSolution { public void init(){} public int answer(){return 3;} }";
-        var submission=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(version,source,null,d.current().itemId(),"JAVA"));
+        var submission=submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request(version,source,null,d.current().itemId(),"JAVA"));
         var plan=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(submission.id()).query(String.class).single());assertThat(plan.path("callable")).isEqualTo(p.path("api"));assertThat(plan.path("tests")).isEqualTo(p.path("tests"));
         jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='WA' WHERE submission_id=?").param(submission.id()).update();
         for(String lang:java.util.List.of("CPP","PYTHON")) {
-            var run=submissions.run(user,UUID.randomUUID(),new RunController.Request(version,"class UserSolution {}", "[[[\"init\"],[\"answer\"]]]",null,d.current().itemId(),lang));
+            var run=submissions.run(user,UUID.randomUUID(),new RunDtos.Request(version,"class UserSolution {}", "[[[\"init\"],[\"answer\"]]]",null,d.current().itemId(),lang));
             var runPlan=JudgeJson.parse(jdbc.sql("SELECT run_package FROM submission WHERE id=?").param(run.id()).query(String.class).single());
             assertThat(runPlan.path("callable").path("format").asText()).isEqualTo(lang+"_CALLABLE_V1");
             assertThat(runPlan.path("tests").get(0).path("input").asText()).isEqualTo("[[[\"init\"],[\"answer\"]]]");
             jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='OK' WHERE submission_id=?").param(run.id()).update();
-            var formal=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(version,"class UserSolution {}",null,d.current().itemId(),lang));
+            var formal=submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request(version,"class UserSolution {}",null,d.current().itemId(),lang));
             var formalPlan=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(formal.id()).query(String.class).single());
             assertThat(formalPlan.path("callable").path("format").asText()).isEqualTo(lang+"_CALLABLE_V1");
             assertThat(formalPlan.path("tests")).isEqualTo(p.path("tests"));
@@ -148,7 +176,7 @@ class DiagnosticIntegrationTest {
                 .andExpect(status().isNotFound());
         mvc.perform(post(path).with(user(user)).with(csrf()).contentType("application/json").content("{\"reason\":\"NOT_SURE\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].skipReason").value("NOT_SURE"));
-        var saved=new Diagnostics(jdbc).detail(user,d.id());
+        var saved=new Diagnostics(new DiagnosticsRepository(jdbc)).detail(user,d.id());
         assertThat(saved.current().itemId()).isNotEqualTo(first);
         assertThat(diagnostics.skip(user,d.id(),first,"NOT_SURE")).isEqualTo(saved);
         assertThatThrownBy(()->diagnostics.skip(user,d.id(),first,"NO_TIME")).isInstanceOf(AccountException.class);
@@ -187,7 +215,7 @@ class DiagnosticIntegrationTest {
             assertThat(jdbc.sql("SELECT count(*) FROM generation_spec_draft").query(Integer.class).single()).isZero();
             var active=plans.start(user,plan.id(),step.candidate().version());
             assertThat(plans.start(user,plan.id(),"sum-v1").sessionId()).isEqualTo(active.sessionId());
-            submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,active.sessionId()));
+            submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,active.sessionId()));
             var pending=curricula.overview(user).get(0).steps().get(0);
             assertThat(pending.progress().pending()).isEqualTo(1);assertThat(pending.plan().status()).isEqualTo("ACTIVE");
             finish("AC");training.end(user,active.sessionId(),"범위를 확인했어요.");
@@ -223,7 +251,7 @@ class DiagnosticIntegrationTest {
     @Test void endingAnUnstartedFailedPlanPreservesIndependentTrainingAndBlocksPreparation() throws Exception {
         var plan=basicPlan("dp");
         jdbc.sql("UPDATE learning_problem_preparation SET status='FAILED',message='검증 실패' WHERE plan_id=?").param(plan.id()).update();
-        var independent=training.start(user,UUID.randomUUID(),new TrainingSessionController.Start("sum-v1","독립 코스 훈련"));
+        var independent=training.start(user,UUID.randomUUID(),new TrainingSessionDtos.Start("sum-v1","독립 코스 훈련"));
         String path="/api/learning-curricula/"+plan.evaluationId()+"/end";
         mvc.perform(post(path).with(user(user)).contentType("application/json").content("{\"note\":\"다른 계획으로 연습\"}")).andExpect(status().isForbidden());
         mvc.perform(post(path).with(user(other)).with(csrf()).contentType("application/json").content("{\"note\":\"다른 계획으로 연습\"}")).andExpect(status().isNotFound());
@@ -243,7 +271,7 @@ class DiagnosticIntegrationTest {
     }
     @Test void endingAPlanEndsOnlyItsActiveSessionWithoutMarkingGoalsSolvedAndPreservesSubmittedCode() {
         var plan=basicPlan("dp");var current=plans.start(user,plan.id(),"sum-v1");
-        var submission=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,current.sessionId()));
+        var submission=submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,current.sessionId()));
         var ended=curricula.end(user,plan.evaluationId(),"중간에 마무리");
         assertThat(training.detail(user,current.sessionId()).session().status()).isEqualTo("ENDED");
         assertThat(training.detail(user,current.sessionId()).session().note()).isEqualTo("중간에 마무리");
@@ -282,7 +310,7 @@ class DiagnosticIntegrationTest {
         var options=plans.options(user,first.evaluationId(),first.observationIndex(),first.sourceKind());
         var second=plans.confirm(user,UUID.randomUUID(),first.evaluationId(),first.observationIndex(),options.reviewHash(),"다른 목표로 연습",first.sourceKind());
         var current=plans.start(user,first.id(),version);
-        var submission=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(version,SOURCE,current.sessionId()));finish("AC");
+        var submission=submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request(version,SOURCE,current.sessionId()));finish("AC");
         UUID key=UUID.randomUUID();
         mvc.perform(post("/api/learning-curricula/switch").with(user(user)).header("Idempotency-Key",key).contentType("application/json").content("{\"planId\":\""+second.id()+"\",\"problemVersion\":\""+version+"\",\"activeSessionId\":\""+current.sessionId()+"\",\"note\":\"다음 문제로 전환\"}"))
             .andExpect(status().isForbidden());
@@ -306,7 +334,7 @@ class DiagnosticIntegrationTest {
         var options=plans.options(user,first.evaluationId(),first.observationIndex(),first.sourceKind());
         var second=plans.confirm(user,UUID.randomUUID(),first.evaluationId(),first.observationIndex(),options.reviewHash(),"돌아갈 목표",first.sourceKind());
         var prior=plans.start(user,second.id(),version);
-        submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(version,SOURCE,prior.sessionId()));
+        submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request(version,SOURCE,prior.sessionId()));
         training.end(user,prior.sessionId(),"채점 중 종료");
         var current=plans.start(user,first.id(),version);
         assertThatThrownBy(()->switching.switchProblem(user,UUID.randomUUID(),second.id(),version,current.sessionId(),"전환 실패")).isInstanceOf(AccountException.class);
@@ -323,7 +351,7 @@ class DiagnosticIntegrationTest {
         output.putArray("observations").addObject().put("submissionId",submitted.id().toString()).put("quote","System.out.println(3)")
             .put("pattern","누적 합의 경계를 확인하기").put("risk","경계 처리 누락").put("tone","RISK").put("interpretation","경계값을 확인해 보세요.")
             .put("confidence","SUPPORTED").put("nextAction","PRACTICE").put("recommendation","누적 합의 경계를 확인하기").putArray("alsoSeenIn");
-        ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
+        ai.finish(work,new dev.gamjaoj.infrastructure.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
         var plan=curricula.create(user,UUID.randomUUID(),evaluation.id()).plans().getFirst();
         String unrelated=catalogProblem("00-unrelated-",user,false,false,false,"문자열","EASY");
         String relevant=catalogProblem("01-focused-",other,true,false,false,"누적 합","MEDIUM");
@@ -335,7 +363,7 @@ class DiagnosticIntegrationTest {
         var plan=basicPlan("dp");UUID id=plan.id();
         preparationWorker.advance();assertThat(preparation.state(id).status()).isEqualTo("GENERATING");
         preparationWorker.advance();assertThat(preparation.state(id).status()).isEqualTo("GENERATING");
-        var fixture=new GenerationIntegrationTest();fixture.jdbc=jdbc;fixture.queue=queue;fixture.generation=generation;
+        var fixture=new GenerationIntegrationTest();fixture.jdbc=jdbc;fixture.queue=queue;fixture.generation=generation;fixture.generationResources=generationResources;
         var work=generation.claim();assertThat(work.id()).isEqualTo(id);
         generation.complete(id,work.token(),fixture.draftSpec(),null,null,null);
         assertThat(drafts.view(user,id).status()).isEqualTo("DRAFT_READY");
@@ -397,7 +425,7 @@ class DiagnosticIntegrationTest {
         for(int i=0;i<4;i++)habit(observations.addObject().put("submissionId",submitted.id().toString()).put("quote","System.out.println(3)")
                 .put("interpretation","입력 처리를 확인해 주세요.").put("confidence",i==3?"UNCERTAIN":"SUPPORTED").put("nextAction","PRACTICE").put("recommendation","입력 범위를 확인하기"))
                 .put("tone",i==1?"WATCH":i==2?"STRENGTH":"RISK");
-        ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
+        ai.finish(work,new dev.gamjaoj.infrastructure.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
         var options=plans.options(user,evaluation.id(),0);
         var manual=plans.confirm(user,UUID.randomUUID(),evaluation.id(),0,options.reviewHash(),"내가 직접 정한 목표");
         evaluations.correct(user,d.id(),evaluation.id(),UUID.randomUUID(),1,"이 관찰은 설명을 다시 확인해야 합니다.");
@@ -456,7 +484,7 @@ class DiagnosticIntegrationTest {
         assertThat(q.languages()).extracting(LanguageProfiles.Option::timeLimitMs).containsExactly(750,350,500);
         assertThat(q.languages()).extracting(LanguageProfiles.Option::memoryMb).containsExactly(192,64,64);
         jdbc.sql("UPDATE problem_version SET time_limits_json=? WHERE id=?").param(ProblemTimeLimitsTest.limits(5,3,8)).param(q.problemVersion()).update();
-        var saved=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(q.problemVersion(),SOURCE,null,q.itemId(),"PYTHON"));
+        var saved=submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request(q.problemVersion(),SOURCE,null,q.itemId(),"PYTHON"));
         assertThat(saved.execution().timeLimitMs()).isEqualTo(500);
         assertThat(saved.execution().memoryMb()).isEqualTo(64);
         var task=queue.claim(UUID.randomUUID()).orElseThrow();
@@ -482,7 +510,7 @@ class DiagnosticIntegrationTest {
         assertThat(task.executionProfile().path("testWallSeconds").asInt()).isEqualTo(2);
         assertThat(jdbc.sql(migration).update()).isZero();
     }
-    SubmissionController.Request request(Diagnostics.Question q) { return new SubmissionController.Request(q.problemVersion(),SOURCE,null,q.itemId()); }
+    SubmissionDtos.Request request(Diagnostics.Question q) { return new SubmissionDtos.Request(q.problemVersion(),SOURCE,null,q.itemId()); }
     Submissions.View submit(Diagnostics.Question q) { return submissions.submit(user,UUID.randomUUID(),request(q)); }
     void finish(String verdict) {
         var a=queue.claim(UUID.randomUUID()).orElseThrow();
@@ -504,7 +532,7 @@ class DiagnosticIntegrationTest {
         assertThat(q.languages()).extracting(LanguageProfiles.Option::id).containsExactly("JAVA","CPP","PYTHON");
         int index=0;
         for(String language:List.of("CPP","PYTHON","JAVA","CPP","PYTHON")) {
-            var saved=submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(q.problemVersion(),SOURCE,null,q.itemId(),language));
+            var saved=submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request(q.problemVersion(),SOURCE,null,q.itemId(),language));
             assertThat(saved.language()).isEqualTo(language);
             finish(++index==5?"AC":"WA");
             assertThat(diagnostics.detail(user,d.id()).items().get(0).attempts()).isEqualTo(index);
@@ -512,7 +540,7 @@ class DiagnosticIntegrationTest {
         var next=diagnostics.detail(user,d.id());
         assertThat(next.items().get(0).status()).isEqualTo("PASSED");
         assertThat(next.current().itemId()).isNotEqualTo(q.itemId());
-        assertThatThrownBy(()->submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(q.problemVersion(),SOURCE,null,q.itemId(),"CPP")))
+        assertThatThrownBy(()->submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request(q.problemVersion(),SOURCE,null,q.itemId(),"CPP")))
                 .isInstanceOf(AccountException.class);
     }
 
@@ -523,7 +551,7 @@ class DiagnosticIntegrationTest {
         assertThatThrownBy(()->submit(q)).isInstanceOf(AccountException.class);
         finish("IE");assertThat(diagnostics.detail(user,d.id()).items().get(0).attempts()).isZero();
         for(int n=0;n<6;n++) {
-            submissions.run(user,UUID.randomUUID(),new RunController.Request(q.problemVersion(),SOURCE,"1 2\n",null,q.itemId()));finish("OK");
+            submissions.run(user,UUID.randomUUID(),new RunDtos.Request(q.problemVersion(),SOURCE,"1 2\n",null,q.itemId()));finish("OK");
         }
         for(String verdict:List.of("CE","WA","RE","TLE","WA")) { submit(q);finish(verdict); }
         var next=diagnostics.detail(user,d.id());
@@ -532,7 +560,7 @@ class DiagnosticIntegrationTest {
         assertThat(next.current().itemId()).isNotEqualTo(q.itemId());
         assertThatThrownBy(()->submit(q)).isInstanceOf(AccountException.class);
         assertThat(submissions.submit(user,key,request(q)).id()).isEqualTo(first.id());
-        assertThatThrownBy(()->submissions.submit(user,key,new SubmissionController.Request(q.problemVersion(),SOURCE))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.submit(user,key,new SubmissionDtos.Request(q.problemVersion(),SOURCE))).isInstanceOf(AccountException.class);
         submit(next.current());finish("AC");
         assertThat(diagnostics.detail(user,d.id()).status()).isEqualTo("COMPLETED");
         assertThat(submissions.detail(user,first.id()).source()).isEqualTo(SOURCE);
@@ -556,10 +584,10 @@ class DiagnosticIntegrationTest {
         diagnostics.state(user,d.id(),"PAUSED");finish("AC");
         var paused=diagnostics.detail(user,d.id());assertThat(paused.status()).isEqualTo("PAUSED");assertThat(paused.items().get(0).status()).isEqualTo("PASSED");
         assertThatThrownBy(()->submit(paused.current())).isInstanceOf(AccountException.class);
-        assertThat(training.start(user,UUID.randomUUID(),new TrainingSessionController.Start("sum-v1","practice")).status()).isEqualTo("ACTIVE");
-        submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE));finish("AC");
+        assertThat(training.start(user,UUID.randomUUID(),new TrainingSessionDtos.Start("sum-v1","practice")).status()).isEqualTo("ACTIVE");
+        submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE));finish("AC");
         // New service instance has no in-memory session state to recover.
-        assertThat(new Diagnostics(jdbc).detail(user,d.id()).items()).isEqualTo(paused.items());
+        assertThat(new Diagnostics(new DiagnosticsRepository(jdbc)).detail(user,d.id()).items()).isEqualTo(paused.items());
         diagnostics.state(user,d.id(),"ACTIVE");
         var done=diagnostics.skip(user,d.id(),paused.current().itemId());assertThat(done.status()).isEqualTo("COMPLETED");
         assertThat(diagnostics.skip(user,d.id(),paused.current().itemId())).isEqualTo(done);
@@ -568,8 +596,8 @@ class DiagnosticIntegrationTest {
         var d=start();var q=d.current();
         assertThatThrownBy(()->diagnostics.detail(other,d.id())).isInstanceOf(AccountException.class);
         assertThatThrownBy(()->submissions.submit(other,UUID.randomUUID(),request(q))).isInstanceOf(AccountException.class);
-        assertThatThrownBy(()->submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(q.problemVersion(),SOURCE))).isInstanceOf(AccountException.class);
-        assertThatThrownBy(()->training.start(user,UUID.randomUUID(),new TrainingSessionController.Start(q.problemVersion(),"bypass"))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request(q.problemVersion(),SOURCE))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->training.start(user,UUID.randomUUID(),new TrainingSessionDtos.Start(q.problemVersion(),"bypass"))).isInstanceOf(AccountException.class);
         assertThat(submissions.problems(user)).noneMatch(p->p.version().startsWith("fixture-"));
         mvc.perform(get("/api/problems/"+q.problemVersion()+"/teaching").with(user(user))).andExpect(status().isNotFound());
         var s=submit(q);
@@ -579,7 +607,7 @@ class DiagnosticIntegrationTest {
         assertThat(json).doesNotContain("privateRubric","package_sha256","runtime_image","tests");
         diagnostics.skip(user,d.id(),q.itemId());
         assertThat(diagnostics.skip(user,d.id(),q.itemId()).current().itemId()).isNotEqualTo(q.itemId());
-        assertThatThrownBy(()->submissions.run(user,UUID.randomUUID(),new RunController.Request(q.problemVersion(),SOURCE,"",null,q.itemId()))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.run(user,UUID.randomUUID(),new RunDtos.Request(q.problemVersion(),SOURCE,"",null,q.itemId()))).isInstanceOf(AccountException.class);
     }
     @Test void simultaneousAdmissionsHaveOnlyOnePendingFormalSubmission() throws Exception {
         var q=start().current();
@@ -685,7 +713,7 @@ class DiagnosticIntegrationTest {
         assertThat(DiagnosticEvaluationContract.valid(output,JudgeJson.parse(work.input()))).isTrue();
         observation.put("quote","not present");assertThat(DiagnosticEvaluationContract.valid(output,JudgeJson.parse(work.input()))).isFalse();observation.put("quote","System.out.println(3)");
         var usage=JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}");
-        ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(output,usage,"fake-response","fake-request","fake-model"),null);
+        ai.finish(work,new dev.gamjaoj.infrastructure.ai.OpenAiResponses.Result(output,usage,"fake-response","fake-request","fake-model"),null);
         assertThat(evaluations.list(user,d.id()).get(0).interpretation()).isEqualTo(output);
         assertThat(ai.detail(user,work.taskId()).result()).isNull(); // Generic AI endpoint cannot bypass diagnostic disclosure.
         assertThat(evaluations.request(user,d.id()).id()).isEqualTo(evaluation.id());
@@ -716,7 +744,7 @@ class DiagnosticIntegrationTest {
             var q=diagnostics.detail(user,d.id()).current();var attempts=new java.util.ArrayList<UUID>();
             for(int n=0;n<5;n++) {
                 String large="public class Main { public static void main(String[] args) { System.out.println(3); } } // attempt "+item+"-"+n+" "+"x".repeat(60000);
-                attempts.add(submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request(q.problemVersion(),large,null,q.itemId())).id());finish("WA");
+                attempts.add(submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request(q.problemVersion(),large,null,q.itemId())).id());finish("WA");
             }
             ids.add(attempts);
         }
@@ -786,7 +814,7 @@ class DiagnosticIntegrationTest {
         var enumIds=new java.util.ArrayList<String>();
         DiagnosticEvaluationContract.schema(input).path("properties").path("observations").path("items").path("properties").path("alsoSeenIn").path("items").path("enum").forEach(v->enumIds.add(v.asText()));
         assertThat(enumIds).hasSize(4).contains(byCategory.get("dp").toString());
-        ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
+        ai.finish(work,new dev.gamjaoj.infrastructure.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
         var profile=profiles.profile(user,d.id(),evaluation.id());
         assertThat(profile.categories()).extracting(DiagnosticProfiles.Category::id).containsExactly("bfs","dp","greedy");
         var bfs=profile.categories().get(0);var dp=profile.categories().get(1);var greedy=profile.categories().get(2);
@@ -816,7 +844,7 @@ class DiagnosticIntegrationTest {
         diagnostics.skip(user,next.id(),next.current().itemId());diagnostics.skip(user,next.id(),diagnostics.detail(user,next.id()).current().itemId());
         org.springframework.boot.test.util.TestPropertyValues.of("AI_API_ENABLED=true","OPENAI_API_KEY=test-only").applyTo(environment);
         evaluations.request(user,next.id());var work=ai.claim();
-        ai.finish(work,null,new dev.gamjaoj.ai.OpenAiResponses.Failure("TRANSPORT_USAGE_UNKNOWN",null,null));
+        ai.finish(work,null,new dev.gamjaoj.infrastructure.ai.OpenAiResponses.Failure("TRANSPORT_USAGE_UNKNOWN",null,null));
         assertThat(evaluations.list(user,next.id()).get(0).status()).isEqualTo("UNKNOWN");
         assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt WHERE actual_usd IS NULL AND reserved_usd>0").query(Integer.class).single()).isEqualTo(1);
         assertThatThrownBy(()->ai.retry(user,work.taskId())).isInstanceOf(AccountException.class);
@@ -829,7 +857,7 @@ class DiagnosticIntegrationTest {
         assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt").query(Integer.class).single()).isZero();
         org.springframework.boot.test.util.TestPropertyValues.of("AI_MONTHLY_BUDGET_USD=10").applyTo(environment);
         var work=ai.claim();assertThat(work).isNotNull();
-        ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(JudgeJson.parse("{}"),JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fake","fake","fake"),null);
+        ai.finish(work,new dev.gamjaoj.infrastructure.ai.OpenAiResponses.Result(JudgeJson.parse("{}"),JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fake","fake","fake"),null);
         var failed=evaluations.list(user,d.id()).get(0);
         assertThat(failed.status()).isEqualTo("FAILED");assertThat(failed.errorCode()).isEqualTo("INVALID_DIAGNOSTIC_EVIDENCE");assertThat(failed.interpretation()).isNull();
         assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt WHERE actual_usd>0").query(Integer.class).single()).isEqualTo(1);
@@ -842,7 +870,7 @@ class DiagnosticIntegrationTest {
         var observations=output.putArray("observations");
         for(String action:List.of("PRACTICE","ASSESS"))habit(observations.addObject().put("submissionId",submitted.id().toString()).put("quote","System.out.println(3)")
                 .put("interpretation","입력 처리를 확인할 필요가 있습니다.").put("confidence","UNCERTAIN").put("nextAction",action).put("recommendation","입력 처리 연습"));
-        ai.finish(work,new dev.gamjaoj.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
+        ai.finish(work,new dev.gamjaoj.infrastructure.ai.OpenAiResponses.Result(output,JudgeJson.parse("{\"input_tokens\":100,\"output_tokens\":100}"),"fixture","fixture","fixture"),null);
         var original=plans.options(user,evaluation.id(),0);
         assertThat(original.problems()).noneMatch(p->p.version().startsWith("fixture-"));
         UUID key=UUID.randomUUID();var plan=plans.confirm(user,key,evaluation.id(),0,original.reviewHash(),"입력 형식 읽기");
@@ -887,8 +915,8 @@ class DiagnosticIntegrationTest {
         assertThat(jdbc.sql("SELECT count(*) FROM training_session").query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("SELECT count(*) FROM ai_attempt").query(Integer.class).single()).isEqualTo(1);
         assertThatThrownBy(()->plans.reflect(user,confirmed.id(),false)).isInstanceOf(AccountException.class);
-        submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,active.sessionId()));finish("AC");
-        submissions.run(user,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2",active.sessionId()));
+        submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,active.sessionId()));finish("AC");
+        submissions.run(user,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"1 2",active.sessionId()));
         training.end(user,active.sessionId(),"입력을 확인했습니다.");
         assertThatThrownBy(()->plans.reflect(user,confirmed.id(),false)).isInstanceOf(AccountException.class);
         assertThatThrownBy(()->plans.nextRound(user,confirmed.id(),revised.reviewHash())).isInstanceOf(AccountException.class);
@@ -911,7 +939,7 @@ class DiagnosticIntegrationTest {
         assertThat(plans.nextRound(user,confirmed.id(),currentReview.reviewHash()).id()).isEqualTo(second.id());
         assertThat(plans.reflect(user,confirmed.id(),false).reviewedSubmissionId()).isEqualTo(reflected.reviewedSubmissionId());
         var secondTraining=plans.start(user,second.id(),"sum-v1");
-        submissions.submit(user,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,secondTraining.sessionId()));finish("WA");
+        submissions.submit(user,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,secondTraining.sessionId()));finish("WA");
         training.end(user,secondTraining.sessionId(),"아직 해결하지 못했습니다.");
         var third=plans.nextRound(user,second.id(),currentReview.reviewHash());
         assertThat(third.roundNumber()).isEqualTo(3);assertThat(third.previousPlanId()).isEqualTo(second.id());
@@ -967,7 +995,7 @@ class DiagnosticIntegrationTest {
         assertThatThrownBy(()->diagnostics.reassess(user,key,original.id(),target,List.of("fixture"))).isInstanceOf(AccountException.class);
         jdbc.sql("UPDATE diagnostic_reassessment_pair SET source_sha256=? WHERE target_version=?").param(originalHash).param(target+"-0").update();
         var second=diagnostics.reassess(user,key,original.id(),target,List.of("fixture"));
-        assertThat(new Diagnostics(jdbc).detail(user,key).sourceSessionId()).isEqualTo(original.id());
+        assertThat(new Diagnostics(new DiagnosticsRepository(jdbc)).detail(user,key).sourceSessionId()).isEqualTo(original.id());
         assertThat(second.sourceSessionId()).isEqualTo(original.id());assertThat(second.items()).hasSize(2);
         assertThat(diagnostics.reassess(user,key,original.id(),target,List.of("fixture")).id()).isEqualTo(key);
         assertThatThrownBy(()->diagnostics.start(user,key,target,List.of("fixture"))).isInstanceOf(AccountException.class);
