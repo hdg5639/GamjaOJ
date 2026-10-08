@@ -1,49 +1,81 @@
 package dev.gamjaoj;
-import dev.gamjaoj.domain.ArtifactValidation;
-import dev.gamjaoj.service.generation.GenerationRequirements;
-import dev.gamjaoj.service.generation.HybridModels;
-import dev.gamjaoj.service.generation.HybridRuleOnboarding;
-import dev.gamjaoj.support.JudgeJson;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import dev.gamjaoj.generation.service.GenerationRequirements;
+import dev.gamjaoj.generation.service.HybridModels;
+import dev.gamjaoj.generation.service.HybridRuleOnboarding;
+import dev.gamjaoj.shared.domain.ArtifactValidation;
+import dev.gamjaoj.shared.support.JudgeJson;
+import org.junit.jupiter.api.Test;
+
 class GenerationRequirementsTest {
-    /** Explicit model fixture, not evidence that a real provider honors a complex request. */
-    static ObjectNode accepted() {
-        var r=JudgeJson.JSON.createObjectNode().put("satisfied",true)
-                .put("complexity","Fixture O(NW) time, O(W) memory at the fixed bounds; not measured.")
-                .put("shortcuts","Fixture full enumeration grows as 2^N; no claim of a calibrated tier.");
-        r.putArray("coverage").addObject().put("requirement","Each item at most once")
-                .put("evidence","Contract choose action and single-use mutant witness.");
-        r.putObject("timeLimits").put("JAVA",5).put("CPP",3).put("PYTHON",8).put("analysis","Fixture resource estimates, not real measurements.");
-        r.putArray("issues");return r;
-    }
-    @Test void ruleAuthorScopeSeparatesDesignFromPendingExecutionAndPresentation() {
-        var input=JudgeJson.parse(HybridRuleOnboarding.authorInput("{\"request\":\"K개 장치 방문\",\"publish\":true,\"shared\":true}"));
-        assertThat(input.path("request").asText()).isEqualTo("K개 장치 방문");
-        assertThat(input.has("publish")||input.has("shared")).isFalse();
-        assertThat(input.path("authoringStage").path("kind").asText()).isEqualTo("REUSABLE_RULE_CANDIDATE");
-        assertThat(input.path("authoringStage").path("candidateHasBeenExecuted").asBoolean(true)).isFalse();
-        assertThat(input.path("authoringStage").path("presentationRequired").asBoolean(true)).isFalse();
-        assertThat(input.path("authoringStage").has("javaDesignTargetSeconds")).isFalse();
-        assertThat(input.path("authoringStage").path("profilingWallSeconds").asInt()).isEqualTo(20);
-        assertThat(GenerationRequirements.requiresAuthorReview("rule-author-requirements-v2")).isTrue();
-        assertThat(HybridRuleOnboarding.AUTHOR_TARGETING).doesNotContain(HybridModels.ORIGINALITY)
-                .contains(GenerationRequirements.RULE_AUTHOR);
-        assertThat(GenerationRequirements.requiresAuthorReview("rule-author-requirements-v1")).isTrue();
-        assertThat(GenerationRequirements.requiresAuthorReview(GenerationRequirements.AUTHOR_VERSION)).isTrue();
-        GenerationRequirements.validate(accepted(),true); // Honest estimates are allowed before Runner evidence exists.
-    }
-    @Test void missingContradictoryAndRejectedAssessmentsCannotPass() {
-        assertThatThrownBy(()->GenerationRequirements.validate(JudgeJson.parse("{}"),true)).isInstanceOf(ArtifactValidation.Invalid.class);
-        var r=accepted();r.put("satisfied",false);r.withArray("issues").add("방문 장치를 2개로 축소했습니다.");
-        GenerationRequirements.validate(r,false);
-        assertThatThrownBy(()->GenerationRequirements.validate(r,true)).hasMessage("REQUIREMENTS_NOT_MET");
-        r.put("satisfied",true);
-        assertThatThrownBy(()->GenerationRequirements.validate(r,true)).hasMessage("INVALID_REQUIREMENTS_REVIEW");
-        r.withArray("issues").removeAll();r.withArray("coverage").removeAll();
-        assertThatThrownBy(()->GenerationRequirements.validate(r,true)).hasMessage("INVALID_REQUIREMENTS_REVIEW");
-    }
+  /** Explicit model fixture, not evidence that a real provider honors a complex request. */
+  static ObjectNode accepted() {
+    var r =
+        JudgeJson.JSON
+            .createObjectNode()
+            .put("satisfied", true)
+            .put("complexity", "Fixture O(NW) time, O(W) memory at the fixed bounds; not measured.")
+            .put(
+                "shortcuts",
+                "Fixture full enumeration grows as 2^N; no claim of a calibrated tier.");
+    r.putArray("coverage")
+        .addObject()
+        .put("requirement", "Each item at most once")
+        .put("evidence", "Contract choose action and single-use mutant witness.");
+    r.putObject("timeLimits")
+        .put("JAVA", 5)
+        .put("CPP", 3)
+        .put("PYTHON", 8)
+        .put("analysis", "Fixture resource estimates, not real measurements.");
+    r.putArray("issues");
+    return r;
+  }
+
+  @Test
+  void ruleAuthorScopeSeparatesDesignFromPendingExecutionAndPresentation() {
+    var input =
+        JudgeJson.parse(
+            HybridRuleOnboarding.authorInput(
+                "{\"request\":\"K개 장치 방문\",\"publish\":true,\"shared\":true}"));
+    assertThat(input.path("request").asText()).isEqualTo("K개 장치 방문");
+    assertThat(input.has("publish") || input.has("shared")).isFalse();
+    assertThat(input.path("authoringStage").path("kind").asText())
+        .isEqualTo("REUSABLE_RULE_CANDIDATE");
+    assertThat(input.path("authoringStage").path("candidateHasBeenExecuted").asBoolean(true))
+        .isFalse();
+    assertThat(input.path("authoringStage").path("presentationRequired").asBoolean(true)).isFalse();
+    assertThat(input.path("authoringStage").has("javaDesignTargetSeconds")).isFalse();
+    assertThat(input.path("authoringStage").path("profilingWallSeconds").asInt()).isEqualTo(20);
+    assertThat(GenerationRequirements.requiresAuthorReview("rule-author-requirements-v2")).isTrue();
+    assertThat(HybridRuleOnboarding.AUTHOR_TARGETING)
+        .doesNotContain(HybridModels.ORIGINALITY)
+        .contains(GenerationRequirements.RULE_AUTHOR);
+    assertThat(GenerationRequirements.requiresAuthorReview("rule-author-requirements-v1")).isTrue();
+    assertThat(GenerationRequirements.requiresAuthorReview(GenerationRequirements.AUTHOR_VERSION))
+        .isTrue();
+    GenerationRequirements.validate(
+        accepted(), true); // Honest estimates are allowed before Runner evidence exists.
+  }
+
+  @Test
+  void missingContradictoryAndRejectedAssessmentsCannotPass() {
+    assertThatThrownBy(() -> GenerationRequirements.validate(JudgeJson.parse("{}"), true))
+        .isInstanceOf(ArtifactValidation.Invalid.class);
+    var r = accepted();
+    r.put("satisfied", false);
+    r.withArray("issues").add("방문 장치를 2개로 축소했습니다.");
+    GenerationRequirements.validate(r, false);
+    assertThatThrownBy(() -> GenerationRequirements.validate(r, true))
+        .hasMessage("REQUIREMENTS_NOT_MET");
+    r.put("satisfied", true);
+    assertThatThrownBy(() -> GenerationRequirements.validate(r, true))
+        .hasMessage("INVALID_REQUIREMENTS_REVIEW");
+    r.withArray("issues").removeAll();
+    r.withArray("coverage").removeAll();
+    assertThatThrownBy(() -> GenerationRequirements.validate(r, true))
+        .hasMessage("INVALID_REQUIREMENTS_REVIEW");
+  }
 }
