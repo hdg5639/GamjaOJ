@@ -70,6 +70,7 @@ class BackendArchitectureTest {
     if (!pkg.equals("dev.gamjaoj")) {
       if (!Set.of(
               "admin",
+              "announcement",
               "account",
               "judge",
               "problem",

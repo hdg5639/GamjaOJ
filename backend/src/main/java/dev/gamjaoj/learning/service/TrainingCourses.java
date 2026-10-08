@@ -72,9 +72,20 @@ public class TrainingCourses {
     }
   }
 
+  public List<Course> managedDefinitions() {
+    var merged = new LinkedHashMap<String, Course>();
+    definitions.forEach(c -> merged.put(c.id(), c));
+    repository.overrides().stream().map(this::read).forEach(c -> merged.put(c.id(), c));
+    return List.copyOf(merged.values());
+  }
+
   public List<View> catalog(String username) {
     var problems = problems(username);
-    return definitions.stream().map(c -> view(null, c, problems, Map.of())).toList();
+    var disabled = repository.disabledCourses();
+    return managedDefinitions().stream()
+        .filter(c -> !disabled.contains(c.id()))
+        .map(c -> view(null, c, problems, Map.of()))
+        .toList();
   }
 
   public List<View> enrolled(String username) {
@@ -198,8 +209,12 @@ public class TrainingCourses {
           problems(username),
           links(previous.enrollment(), owner));
     var course =
-        definitions.stream()
-            .filter(c -> c.id().equals(courseId) && c.revision() == revision)
+        managedDefinitions().stream()
+            .filter(
+                c ->
+                    c.id().equals(courseId)
+                        && c.revision() == revision
+                        && !repository.disabledCourses().contains(c.id()))
             .findFirst()
             .orElseThrow(() -> new AccountException(404, "현재 제공하는 훈련 코스를 선택해 주세요."));
     UUID enrollment =
