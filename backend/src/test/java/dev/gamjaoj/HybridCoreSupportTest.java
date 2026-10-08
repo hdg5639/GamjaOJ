@@ -1,4 +1,9 @@
 package dev.gamjaoj;
+import dev.gamjaoj.domain.ArtifactValidation;
+import dev.gamjaoj.service.generation.HybridCoreSupport;
+import dev.gamjaoj.service.generation.HybridFiniteProfile;
+import dev.gamjaoj.service.generation.HybridPackagePlan;
+import dev.gamjaoj.support.JudgeJson;
 
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
@@ -46,9 +51,9 @@ class HybridCoreSupportTest {
         var input=JudgeJson.JSON.createObjectNode();input.set("contract",HybridFiniteProfile.contract());input.set("serverSupport",HybridCoreSupport.bundle());
         var reduced=f.core();reduced.remove(List.of("generator","inputValidator"));
         assertThat(HybridCoreSupport.assemble(input,reduced).path("inputValidator")).isEqualTo(input.path("serverSupport").path("inputValidator"));
-        assertThatThrownBy(()->HybridCoreSupport.assemble(input,f.core())).isInstanceOf(HybridArtifacts.Invalid.class);
+        assertThatThrownBy(()->HybridCoreSupport.assemble(input,f.core())).isInstanceOf(ArtifactValidation.Invalid.class);
         ((com.fasterxml.jackson.databind.node.ObjectNode)input.path("contract")).put("termination","changed");
-        assertThatThrownBy(()->HybridCoreSupport.assemble(input,reduced)).isInstanceOf(HybridArtifacts.Invalid.class);
+        assertThatThrownBy(()->HybridCoreSupport.assemble(input,reduced)).isInstanceOf(ArtifactValidation.Invalid.class);
         assertThat(HybridCoreSupport.assemble(JudgeJson.JSON.createObjectNode().set("contract",f.contract()),f.core())).isEqualTo(f.core());
     }
 }

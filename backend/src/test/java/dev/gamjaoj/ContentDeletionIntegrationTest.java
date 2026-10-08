@@ -1,4 +1,9 @@
 package dev.gamjaoj;
+import dev.gamjaoj.service.account.AccountDeletion;
+import dev.gamjaoj.dto.SubmissionDtos;
+import dev.gamjaoj.service.judge.Submissions;
+import dev.gamjaoj.dto.TrainingSessionDtos;
+import dev.gamjaoj.service.learning.TrainingSessions;
 
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -31,8 +36,8 @@ class ContentDeletionIntegrationTest {
         String alice=name("a"),bob=name("b");UUID owner=addUser(alice);addUser(bob);
         String personal="private-"+UUID.randomUUID(),solvedByBob="used-"+UUID.randomUUID();
         problem(personal,owner,false);problem(solvedByBob,owner,true);
-        var mine=submissions.submit(alice,UUID.randomUUID(),new SubmissionController.Request(personal,"class Main {}"));
-        training.start(alice,UUID.randomUUID(),new TrainingSessionController.Start(personal,"개인 연습"));
+        var mine=submissions.submit(alice,UUID.randomUUID(),new SubmissionDtos.Request(personal,"class Main {}"));
+        training.start(alice,UUID.randomUUID(),new TrainingSessionDtos.Start(personal,"개인 연습"));
         finish(bobSubmission(bob,solvedByBob));
 
         mvc.perform(delete("/api/problems/"+personal).with(user(alice))).andExpect(status().isForbidden()); // CSRF
@@ -52,7 +57,7 @@ class ContentDeletionIntegrationTest {
         assertThat(count("SELECT count(*) FROM submission WHERE problem_version=? AND user_id<>'"+owner+"'",solvedByBob)).isOne();
         mvc.perform(delete("/api/problems/sum-v1").with(user(alice)).with(csrf())).andExpect(status().isNotFound()); // official
     }
-    UUID bobSubmission(String bob,String version){return submissions.submit(bob,UUID.randomUUID(),new SubmissionController.Request(version,"class Main {}")).id();}
+    UUID bobSubmission(String bob,String version){return submissions.submit(bob,UUID.randomUUID(),new SubmissionDtos.Request(version,"class Main {}")).id();}
 
     String rule(UUID owner,boolean shared){
         String family="member-"+UUID.randomUUID().toString().substring(0,8),version=family+"-v1";

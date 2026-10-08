@@ -1,4 +1,20 @@
 package dev.gamjaoj;
+import dev.gamjaoj.repository.judge.JudgeQueueRepository;
+import dev.gamjaoj.repository.judge.SubmissionsRepository;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.service.generation.CallablePrograms;
+import dev.gamjaoj.service.diagnostic.Diagnostics;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.JudgeQueue;
+import dev.gamjaoj.domain.LanguageProfiles;
+import dev.gamjaoj.service.generation.NativeCallablePrograms;
+import dev.gamjaoj.dto.RunDtos;
+import dev.gamjaoj.domain.RunnerEnvironment;
+import dev.gamjaoj.dto.SubmissionDtos;
+import dev.gamjaoj.service.judge.Submissions;
+import dev.gamjaoj.dto.TrainingSessionDtos;
+import dev.gamjaoj.service.learning.TrainingSessions;
+import dev.gamjaoj.service.judge.TransientRuns;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -47,7 +63,7 @@ class SubmissionIntegrationTest {
         }
     }
     Submissions.View submit(String name, UUID key) {
-        return submissions.submit(name, key, new SubmissionController.Request("sum-v1", SOURCE));
+        return submissions.submit(name, key, new SubmissionDtos.Request("sum-v1", SOURCE));
     }
     @Test void callableCatalogAndSubmissionsPinTheDriverWithoutExposingTests() {
         String previous=jdbc.sql("SELECT package_json FROM problem_version WHERE id='sum-v1'").query(String.class).single();
@@ -62,11 +78,11 @@ class SubmissionIntegrationTest {
             var task=queue.claim(UUID.randomUUID()).orElseThrow();assertThat(task.problem().path("callable")).isEqualTo(bundle);
             assertThat(task.problemSha256()).isEqualTo(JudgeJson.hash(JudgeJson.canonical(task.problem())));
             assertThat(submit(alice,key).id()).isEqualTo(saved.id());
-            var run=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"[[[\"init\",0],[\"query\"]]]",null,null,"JAVA"));
+            var run=submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"[[[\"init\",0],[\"query\"]]]",null,null,"JAVA"));
             var runPlan=JudgeJson.parse(jdbc.sql("SELECT run_package FROM submission WHERE id=?").param(run.id()).query(String.class).single());
             assertThat(runPlan.path("callable")).isEqualTo(bundle);assertThat(runPlan.path("output_policy").asText()).isEqualTo("RUN_ONLY");
             for(String language:List.of("CPP","PYTHON")) {
-                var nativeSaved=submissions.submit(bob,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,language));
+                var nativeSaved=submissions.submit(bob,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,null,null,language));
                 var nativePlan=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(nativeSaved.id()).query(String.class).single());
                 assertThat(nativePlan.path("callable")).isEqualTo(NativeCallablePrograms.bundle(bundle.path("api"),language));
                 assertThat(nativeSaved.language()).isEqualTo(language);
@@ -98,24 +114,24 @@ class SubmissionIntegrationTest {
             var keys=new java.util.LinkedHashMap<String,UUID>();var oldIds=new java.util.LinkedHashMap<String,UUID>();
             for(String language:List.of("JAVA","CPP","PYTHON")) {
                 UUID key=UUID.randomUUID();keys.put(language,key);
-                var old=submissions.submit(alice,key,new SubmissionController.Request("sum-v1",SOURCE,null,null,language));oldIds.put(language,old.id());
+                var old=submissions.submit(alice,key,new SubmissionDtos.Request("sum-v1",SOURCE,null,null,language));oldIds.put(language,old.id());
             }
             var generated=plan.putObject("generated").put("generator","public class Main {public static void main(String[] a){System.out.println(1);}}").put("reference","public class Main {public static void main(String[] a){System.out.println(3);}}").put("inputLimit",16777216);
             generated.putArray("tests").addObject().put("id","generated-fixture").put("seed","1").put("expected","REFERENCE");
             jdbc.sql("UPDATE problem_version SET package_json=?,package_sha256=? WHERE id='sum-v1'").param(JudgeJson.canonical(plan)).param(JudgeJson.hash(JudgeJson.canonical(plan))).update();
             for(String language:List.of("JAVA","CPP","PYTHON")) {
-                var replay=submissions.submit(alice,keys.get(language),new SubmissionController.Request("sum-v1",SOURCE,null,null,language));
+                var replay=submissions.submit(alice,keys.get(language),new SubmissionDtos.Request("sum-v1",SOURCE,null,null,language));
                 assertThat(replay.id()).isEqualTo(oldIds.get(language));
                 var oldPlan=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(replay.id()).query(String.class).single());
                 assertThat(oldPlan.path("callable")).isEqualTo(NativeCallablePrograms.bundle(api,language));assertThat(oldPlan.has("generated")).isFalse();
-                var fresh=submissions.submit(bob,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,language));
+                var fresh=submissions.submit(bob,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,null,null,language));
                 var stored=JudgeJson.parse(jdbc.sql("SELECT callable_package FROM submission WHERE id=?").param(fresh.id()).query(String.class).single());
                 assertThat(stored.path("callable")).isEqualTo(NativeCallablePrograms.bundle(api,language,16777216));assertThat(stored.path("generated")).isEqualTo(generated);
                 assertThat(jdbc.sql("SELECT callable_package_sha256 FROM submission WHERE id=?").param(fresh.id()).query(String.class).single()).isEqualTo(JudgeJson.hash(JudgeJson.canonical(stored)));
                 String runUser="r"+UUID.randomUUID().toString().substring(0,8);UUID runOwner=UUID.randomUUID();
                 jdbc.sql("INSERT INTO app_user (id,username,password_hash,nickname) VALUES (?,?,?,?)").param(runOwner).param(runUser).param("test-only").param(runUser).update();
                 jdbc.sql("INSERT INTO execution_grant (user_id,source_sha256) VALUES (?,?)").param(runOwner).param(JudgeJson.hash(SOURCE)).update();
-                var run=submissions.run(runUser,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"[[[\"init\",0],[\"query\"]]]",null,null,language));
+                var run=submissions.run(runUser,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"[[[\"init\",0],[\"query\"]]]",null,null,language));
                 var custom=JudgeJson.parse(jdbc.sql("SELECT run_package FROM submission WHERE id=?").param(run.id()).query(String.class).single());
                 assertThat(custom.path("callable")).isEqualTo(NativeCallablePrograms.bundle(api,language));assertThat(custom.has("generated")).isFalse();
             }
@@ -128,9 +144,9 @@ class SubmissionIntegrationTest {
     @Autowired Diagnostics diagnostics;
     @Autowired org.springframework.context.ApplicationEventPublisher events;
     @Test void configuredSlotsLetLearnerSubmissionsShareTheRunnerButExclusiveWorkStillDrains() {
-        var parallel=new Submissions(jdbc,true,diagnostics,"FUNCTIONAL");var wide=new JudgeQueue(jdbc,events,3);
+        var parallel=new Submissions(new SubmissionsRepository(jdbc),true,diagnostics,"FUNCTIONAL");var wide=new JudgeQueue(new JudgeQueueRepository(jdbc),events,3);
         var jobs=new java.util.ArrayList<Submissions.View>();
-        for(String user:List.of(alice,alice,bob,bob))jobs.add(parallel.submit(user,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE)));
+        for(String user:List.of(alice,alice,bob,bob))jobs.add(parallel.submit(user,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE)));
         for(var job:jobs)assertThat(jdbc.sql("SELECT execution_mode FROM judge_job WHERE submission_id=?").param(job.id()).query(String.class).single()).isEqualTo("FUNCTIONAL");
         var claimed=new java.util.ArrayList<JudgeQueue.Assignment>();
         for(int i=0;i<3;i++)claimed.add(wide.claim(UUID.randomUUID()).orElseThrow());
@@ -197,8 +213,8 @@ class SubmissionIntegrationTest {
         mvc.perform(get("/api/my/problems?page=-1").with(user(alice))).andExpect(status().isBadRequest());
     }
     @Test void customResultsExpireOnlyAfterCompletionRecoveryWindow() {
-        var run=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2"));
-        var pending=submissions.run(bob,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2"));
+        var run=submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"1 2"));
+        var pending=submissions.run(bob,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"1 2"));
         var formal=submit(alice,UUID.randomUUID());
         jdbc.sql("UPDATE judge_job SET status='FINISHED',finished_at=? WHERE submission_id IN (?,?)").param(OffsetDateTime.now().minusHours(25)).param(run.id()).param(formal.id()).update();
         transientRuns.clean();
@@ -257,7 +273,7 @@ class SubmissionIntegrationTest {
     }
 
     @Test void formalSubmissionsJudgeEveryTestAndKeepTheFirstFailureVerdict() {
-        var saved=submissions.submit(alice,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,"JAVA"));
+        var saved=submissions.submit(alice,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,null,null,"JAVA"));
         var assignment=queue.claim(UUID.randomUUID()).orElseThrow();
         assertThat(assignment.judgeAll()).isTrue();
         int count=assignment.problem().path("tests").size();
@@ -270,7 +286,7 @@ class SubmissionIntegrationTest {
         assertThat(detail.verdict()).isEqualTo("WA");
         assertThat(detail.tests()).hasSize(count).extracting(Submissions.TestResult::verdict).first().isEqualTo("WA");
         assertThat(detail.testCount()).isEqualTo(count);
-        var run=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2\n"));
+        var run=submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"1 2\n"));
         var runAssignment=queue.claim(UUID.randomUUID()).orElseThrow();
         assertThat(runAssignment.judgeAll()).isFalse();
         var forged=report(runAssignment).put("judge_all",true).put("verdict","OK");
@@ -282,12 +298,12 @@ class SubmissionIntegrationTest {
                 .containsExactly("JAVA","CPP","PYTHON");
         for(String language:List.of("JAVA","CPP","PYTHON")) {
             UUID key=UUID.randomUUID();
-            var request=new SubmissionController.Request("sum-v1",SOURCE,null,null,language);
+            var request=new SubmissionDtos.Request("sum-v1",SOURCE,null,null,language);
             var saved=submissions.submit(alice,key,request);
             assertThat(saved.language()).isEqualTo(language);
             assertThat(saved.execution()).isEqualTo(LanguageProfiles.option(LanguageProfiles.profile(language)));
             assertThat(submissions.submit(alice,key,request).id()).isEqualTo(saved.id());
-            assertThatThrownBy(()->submissions.submit(alice,key,new SubmissionController.Request("sum-v1",SOURCE,null,null,language.equals("JAVA")?"CPP":"JAVA")))
+            assertThatThrownBy(()->submissions.submit(alice,key,new SubmissionDtos.Request("sum-v1",SOURCE,null,null,language.equals("JAVA")?"CPP":"JAVA")))
                     .isInstanceOf(AccountException.class);
             var assignment=queue.claim(UUID.randomUUID()).orElseThrow();
             assertThat(assignment.language()).isEqualTo(language);
@@ -300,17 +316,17 @@ class SubmissionIntegrationTest {
             assertThat(submissions.detail(alice,saved.id()).language()).isEqualTo(language);
             assertThatThrownBy(()->submissions.detail(bob,saved.id())).isInstanceOf(AccountException.class);
         }
-        assertThatThrownBy(()->submissions.submit(alice,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,null,null,"BASH")))
+        assertThatThrownBy(()->submissions.submit(alice,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,null,null,"BASH")))
                 .isInstanceOf(AccountException.class);
     }
 
     @Test void batchRunsPinEveryInputAndReturnIndependentFailuresWithoutLeakingFormalOutputs() {
         UUID key=UUID.randomUUID();
         var inputs=List.of("first","second","third","fourth");
-        var request=new RunController.Request("sum-v1",SOURCE,null,null,null,"PYTHON",inputs);
+        var request=new RunDtos.Request("sum-v1",SOURCE,null,null,null,"PYTHON",inputs);
         var saved=submissions.run(alice,key,request);
         assertThat(submissions.run(alice,key,request).id()).isEqualTo(saved.id());
-        assertThatThrownBy(()->submissions.run(alice,key,new RunController.Request("sum-v1",SOURCE,null,null,null,"PYTHON",List.of("first","changed")))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.run(alice,key,new RunDtos.Request("sum-v1",SOURCE,null,null,null,"PYTHON",List.of("first","changed")))).isInstanceOf(AccountException.class);
         var assignment=queue.claim(UUID.randomUUID()).orElseThrow();
         assertThat(assignment.judgeAll()).isFalse();
         assertThat(assignment.problem().path("tests")).hasSize(4);
@@ -341,13 +357,13 @@ class SubmissionIntegrationTest {
     }
     @Test void batchRunInputBoundsAndAmbiguousRequestsAreRejected() {
         for(var inputs:List.of(List.<String>of(),java.util.Collections.nCopies(21,""),List.of("가".repeat(6000))))
-            assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,null,null,null,null,inputs))).isInstanceOf(AccountException.class);
-        assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"",null,null,null,List.of("")))).isInstanceOf(AccountException.class);
-        assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,null,null,null,null,null))).isInstanceOf(AccountException.class);
+            assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,null,null,null,null,inputs))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"",null,null,null,List.of("")))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,null,null,null,null,null))).isInstanceOf(AccountException.class);
     }
     @Test void customRunsUseChosenLanguageAndItsOwnRunPolicy() {
         for(String language:List.of("CPP","PYTHON")) {
-            var saved=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2",null,null,language));
+            var saved=submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"1 2",null,null,language));
             assertThat(saved.language()).isEqualTo(language);
             assertThat(saved.runnerPolicy()).isEqualTo(LanguageProfiles.profile(language).path("runPolicy").asText());
             var assignment=queue.claim(UUID.randomUUID()).orElseThrow();
@@ -406,16 +422,16 @@ class SubmissionIntegrationTest {
         String publicJson = mvc.perform(get("/api/problems").with(user(alice))).andReturn().getResponse().getContentAsString();
         assertThat(publicJson).doesNotContain("positive-limit", "early-close", "package_sha256", "runtime_image", "tests");
         var key = UUID.randomUUID();
-        var saved = submissions.submit(alice, key, new SubmissionController.Request("total-v1", SOURCE));
+        var saved = submissions.submit(alice, key, new SubmissionDtos.Request("total-v1", SOURCE));
         var assignment = queue.claim(UUID.randomUUID()).orElseThrow();
         assertThat(assignment.problem().path("version").asText()).isEqualTo("total-v1");
         assertThat(assignment.problemSha256()).isEqualTo(JudgeJson.hash(JudgeJson.canonical(assignment.problem())));
         assertThat(saved.runnerPolicy()).isEqualTo("java8-judge-v1");
         assertThatThrownBy(() -> submissions.submit(alice, key,
-                new SubmissionController.Request("valid-parentheses-v1", SOURCE))).isInstanceOf(AccountException.class);
-        var session = sessions.start(alice, UUID.randomUUID(), new TrainingSessionController.Start("total-v1", "합계"));
+                new SubmissionDtos.Request("valid-parentheses-v1", SOURCE))).isInstanceOf(AccountException.class);
+        var session = sessions.start(alice, UUID.randomUUID(), new TrainingSessionDtos.Start("total-v1", "합계"));
         assertThatThrownBy(() -> submissions.submit(alice, UUID.randomUUID(),
-                new SubmissionController.Request("valid-parentheses-v1", SOURCE, session.id()))).isInstanceOf(AccountException.class);
+                new SubmissionDtos.Request("valid-parentheses-v1", SOURCE, session.id()))).isInstanceOf(AccountException.class);
     }
 
     @Test
@@ -436,7 +452,7 @@ class SubmissionIntegrationTest {
     @Test
     void sessionStartIsConcurrentIdempotentAndOwnerOnly() throws Exception {
         UUID key=UUID.randomUUID();
-        var request=new TrainingSessionController.Start("sum-v1","경계값 확인");
+        var request=new TrainingSessionDtos.Start("sum-v1","경계값 확인");
         try (var executor=Executors.newFixedThreadPool(4)) {
             List<Callable<UUID>> calls=new ArrayList<>();
             for(int i=0;i<4;i++) calls.add(()->sessions.start(alice,key,request).id());
@@ -444,7 +460,7 @@ class SubmissionIntegrationTest {
         }
         assertThat(sessions.history(alice)).hasSize(1);
         assertThatThrownBy(()->sessions.start(alice,UUID.randomUUID(),request)).isInstanceOf(AccountException.class);
-        assertThatThrownBy(()->sessions.start(alice,key,new TrainingSessionController.Start("sum-v1","different"))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->sessions.start(alice,key,new TrainingSessionDtos.Start("sum-v1","different"))).isInstanceOf(AccountException.class);
         mvc.perform(get("/api/training-sessions/"+key).with(user(bob))).andExpect(status().isNotFound());
         mvc.perform(get("/api/training-sessions/"+key)).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/training-sessions/"+key+"/end").with(user(alice)).contentType("application/json").content("{\"note\":\"\"}"))
@@ -455,10 +471,10 @@ class SubmissionIntegrationTest {
     @Test
     void endingSessionPreservesQueuedWorkAndReplayButRejectsNewWork() {
         UUID session=UUID.randomUUID(), key=UUID.randomUUID();
-        sessions.start(alice,session,new TrainingSessionController.Start("sum-v1","target"));
-        var request=new SubmissionController.Request("sum-v1",SOURCE,session);
+        sessions.start(alice,session,new TrainingSessionDtos.Start("sum-v1","target"));
+        var request=new SubmissionDtos.Request("sum-v1",SOURCE,session);
         var saved=submissions.submit(alice,key,request);
-        var custom=submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"1 2",session));
+        var custom=submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"1 2",session));
         var ended=sessions.end(alice,session,"다음에는 경계값부터");
         assertThat(ended.pending()).isEqualTo(2);
         assertThat(ended.submissions()).isEqualTo(1);
@@ -468,8 +484,8 @@ class SubmissionIntegrationTest {
         assertThatThrownBy(()->sessions.end(alice,session,"changed")).isInstanceOf(AccountException.class);
         assertThat(submissions.submit(alice,key,request).id()).isEqualTo(saved.id());
         assertThatThrownBy(()->submissions.submit(alice,UUID.randomUUID(),request)).isInstanceOf(AccountException.class);
-        assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"",session))).isInstanceOf(AccountException.class);
-        assertThatThrownBy(()->submissions.submit(alice,key,new SubmissionController.Request("sum-v1",SOURCE))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"",session))).isInstanceOf(AccountException.class);
+        assertThatThrownBy(()->submissions.submit(alice,key,new SubmissionDtos.Request("sum-v1",SOURCE))).isInstanceOf(AccountException.class);
         // Put the formal job first; exclusive jobs no longer admit a second claim.
         jdbc.sql("UPDATE judge_job SET created_at=? WHERE submission_id=?")
                 .param(OffsetDateTime.now().minusMinutes(1)).param(saved.id()).update();
@@ -479,7 +495,7 @@ class SubmissionIntegrationTest {
         assertThat(sessions.detail(alice,session).session().accepted()).isEqualTo(1);
         assertThat(sessions.detail(alice,session).session().pending()).isEqualTo(1);
         assertThat(sessions.detail(alice,session).entries()).hasSize(1);
-        var next=sessions.start(alice,UUID.randomUUID(),new TrainingSessionController.Start("sum-v1","next"));
+        var next=sessions.start(alice,UUID.randomUUID(),new TrainingSessionDtos.Start("sum-v1","next"));
         assertThat(next.id()).isNotEqualTo(session);
     }
 
@@ -487,8 +503,8 @@ class SubmissionIntegrationTest {
     void sessionAttachmentChecksOwnerAndKeepsLegacyRecordsUnassigned() {
         var old=submit(alice,UUID.randomUUID());
         UUID session=UUID.randomUUID();
-        sessions.start(alice,session,new TrainingSessionController.Start("sum-v1",""));
-        assertThatThrownBy(()->submissions.submit(bob,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,session)))
+        sessions.start(alice,session,new TrainingSessionDtos.Start("sum-v1",""));
+        assertThatThrownBy(()->submissions.submit(bob,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,session)))
                 .isInstanceOf(AccountException.class);
         assertThatThrownBy(()->sessions.end(bob,session,"")).isInstanceOf(AccountException.class);
         assertThat(submissions.detail(alice,old.id()).sessionId()).isNull();
@@ -499,11 +515,11 @@ class SubmissionIntegrationTest {
     @Test
     void concurrentEndAndSubmitCannotAttachAfterClosure() throws Exception {
         UUID session=UUID.randomUUID();
-        sessions.start(alice,session,new TrainingSessionController.Start("sum-v1",""));
+        sessions.start(alice,session,new TrainingSessionDtos.Start("sum-v1",""));
         try (var executor=Executors.newFixedThreadPool(2)) {
             var end=executor.submit(()->sessions.end(alice,session,"done"));
             var submit=executor.submit(()-> {
-                try { return submissions.submit(alice,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,session)).id(); }
+                try { return submissions.submit(alice,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,session)).id(); }
                 catch(AccountException expected) { return null; }
             });
             end.get();
@@ -512,17 +528,17 @@ class SubmissionIntegrationTest {
             assertThat(detail.session().status()).isEqualTo("ENDED");
             assertThat(detail.entries()).hasSize(id==null ? 0 : 1);
         }
-        assertThatThrownBy(()->submissions.submit(alice,UUID.randomUUID(),new SubmissionController.Request("sum-v1",SOURCE,session)))
+        assertThatThrownBy(()->submissions.submit(alice,UUID.randomUUID(),new SubmissionDtos.Request("sum-v1",SOURCE,session)))
                 .isInstanceOf(AccountException.class);
     }
 
     @Test
     void customRunsKeepInputImmutableAndNeverReceiveHiddenTestsOrPolluteJudgments() throws Exception {
         UUID key = UUID.randomUUID();
-        var request = new RunController.Request("sum-v1", SOURCE, "17 25\n");
+        var request = new RunDtos.Request("sum-v1", SOURCE, "17 25\n");
         var saved = submissions.run(alice, key, request);
         assertThat(submissions.run(alice, key, request).id()).isEqualTo(saved.id());
-        assertThatThrownBy(() -> submissions.run(alice,key,new RunController.Request("sum-v1",SOURCE,"")))
+        assertThatThrownBy(() -> submissions.run(alice,key,new RunDtos.Request("sum-v1",SOURCE,"")))
                 .isInstanceOf(AccountException.class);
         assertThatThrownBy(() -> submit(alice,key)).isInstanceOf(AccountException.class);
         assertThat(submissions.history(alice)).isEmpty();
@@ -553,22 +569,22 @@ class SubmissionIntegrationTest {
 
     @Test
     void customInputByteLimitAndCombinedPendingCapAreEnforced() throws Exception {
-        assertThatThrownBy(() -> submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"가".repeat(6000))))
+        assertThatThrownBy(() -> submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"가".repeat(6000))))
                 .isInstanceOf(AccountException.class).hasMessageContaining("16 KiB");
         mvc.perform(post("/api/runs").with(user(alice)).with(csrf()).header("Idempotency-Key",UUID.randomUUID())
                 .contentType("application/json").content("{\"problemVersion\":\"sum-v1\",\"source\":\"unapproved\",\"input\":\"\"}"))
                 .andExpect(status().isServiceUnavailable());
         for (int i=0;i<2;i++) submit(alice,UUID.randomUUID());
-        var saved = submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,""));
+        var saved = submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,""));
         assertThat(submissions.runDetail(alice,saved.id()).input()).isEmpty();
-        assertThatThrownBy(() -> submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"")))
+        assertThatThrownBy(() -> submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"")))
                 .isInstanceOf(AccountException.class).hasMessageContaining("진행 중");
         assertThatThrownBy(() -> submit(alice,UUID.randomUUID())).isInstanceOf(AccountException.class);
     }
 
     @Test
     void resumedCustomPlanKeepsInputAndFencesExpiredResults() {
-        var saved = submissions.run(alice,UUID.randomUUID(),new RunController.Request("sum-v1",SOURCE,"saved input"));
+        var saved = submissions.run(alice,UUID.randomUUID(),new RunDtos.Request("sum-v1",SOURCE,"saved input"));
         UUID worker = UUID.randomUUID();
         var first = queue.claim(worker).orElseThrow();
         assertThat(queue.claim(worker).orElseThrow().problemSha256()).isEqualTo(first.problemSha256());
@@ -601,7 +617,7 @@ class SubmissionIntegrationTest {
         assertThat(jdbc.sql("SELECT count(*) FROM submission").query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("SELECT count(*) FROM judge_job").query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("SELECT source_code FROM submission").query(String.class).single()).isEqualTo(SOURCE);
-        assertThatThrownBy(() -> submissions.submit(alice,key,new SubmissionController.Request("sum-v1",SOURCE+"\n")))
+        assertThatThrownBy(() -> submissions.submit(alice,key,new SubmissionDtos.Request("sum-v1",SOURCE+"\n")))
                 .isInstanceOf(AccountException.class).hasMessageContaining("같은 요청 키");
         assertThat(submit(bob,key).id()).isNotEqualTo(submit(alice,key).id());
     }

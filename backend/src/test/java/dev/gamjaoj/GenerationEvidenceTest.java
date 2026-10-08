@@ -1,4 +1,6 @@
 package dev.gamjaoj;
+import dev.gamjaoj.service.generation.GenerationEvidence;
+import dev.gamjaoj.support.JudgeJson;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;

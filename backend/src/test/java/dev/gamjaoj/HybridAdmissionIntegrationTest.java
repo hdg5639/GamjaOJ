@@ -1,7 +1,32 @@
 package dev.gamjaoj;
+import dev.gamjaoj.domain.ArtifactValidation;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.service.generation.CallablePrograms;
+import dev.gamjaoj.service.generation.GenerationJobs;
+import dev.gamjaoj.service.generation.GenerationSpecDrafts;
+import dev.gamjaoj.service.generation.HybridAdmission;
+import dev.gamjaoj.infrastructure.ai.HybridApiProvider;
+import dev.gamjaoj.infrastructure.worker.HybridApiWorker;
+import dev.gamjaoj.service.generation.HybridArtifacts;
+import dev.gamjaoj.service.generation.HybridBfsProfile;
+import dev.gamjaoj.service.generation.HybridCoreSupport;
+import dev.gamjaoj.service.generation.HybridDijkstraProfile;
+import dev.gamjaoj.service.generation.HybridExecution;
+import dev.gamjaoj.service.generation.HybridFiniteProfile;
+import dev.gamjaoj.service.generation.HybridGeneration;
+import dev.gamjaoj.service.generation.HybridProfiles;
+import dev.gamjaoj.service.generation.HybridPublication;
+import dev.gamjaoj.service.generation.HybridRuleRegistry;
+import dev.gamjaoj.service.generation.HybridRunnerChecks;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.JudgeQueue;
+import dev.gamjaoj.service.learning.PracticeFollowups;
+import dev.gamjaoj.infrastructure.ai.ResponsesHybridProvider;
+import dev.gamjaoj.dto.SubmissionDtos;
+import dev.gamjaoj.service.judge.Submissions;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import dev.gamjaoj.ai.OpenAiResponses;
+import dev.gamjaoj.infrastructure.ai.OpenAiResponses;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -14,7 +39,7 @@ import org.springframework.core.env.MapPropertySource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import static dev.gamjaoj.HybridGeneration.Role.*;
+import static dev.gamjaoj.service.generation.HybridGeneration.Role.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
@@ -248,7 +273,7 @@ class HybridAdmissionIntegrationTest {
         String source=finish(admitAndAuthor(profile.id()),profile);
         overrides.put("HYBRID_REFERENCE_REUSE_ENABLED","true");
         UUID owner=submissions.owner("owner",false);
-        var submitted=submissions.submit("owner",UUID.randomUUID(),new SubmissionController.Request(source,"class Main {}"));
+        var submitted=submissions.submit("owner",UUID.randomUUID(),new SubmissionDtos.Request(source,"class Main {}"));
         jdbc.sql("UPDATE judge_job SET status='FINISHED',verdict='WA',result_json='{}',result_sha256=?,finished_at=CURRENT_TIMESTAMP WHERE submission_id=?").param(JudgeJson.hash("{}")).param(submitted.id()).update();
         UUID analysis=UUID.randomUUID();
         jdbc.sql("INSERT INTO ai_task(id,user_id,submission_id,kind,cache_key,settings_json,input_json,status,result_json) VALUES (?,?,?,'ANALYSIS',?,'{}','{}','COMPLETED',?)")
@@ -344,7 +369,7 @@ class HybridAdmissionIntegrationTest {
         assertThat(profiles).isNotEmpty();
         for(String saved:profiles)assertThat(JudgeJson.parse(saved).path("testWallSeconds").asInt()).isEqualTo(12);
         assertThat(JudgeJson.parse(jdbc.sql("SELECT time_limits_json FROM problem_version WHERE id=?").param(version).query(String.class).single()).path("JAVA").asInt()).isEqualTo(12);
-        var submitted=submissions.submit("owner",UUID.randomUUID(),new SubmissionController.Request(version,"class Main {}"));
+        var submitted=submissions.submit("owner",UUID.randomUUID(),new SubmissionDtos.Request(version,"class Main {}"));
         assertThat(JudgeJson.parse(jdbc.sql("SELECT execution_profile_json FROM submission WHERE id=?").param(submitted.id()).query(String.class).single()).path("testWallSeconds").asInt()).isEqualTo(12);
         HybridProfiles.unregister(profile.id());
     }
@@ -370,14 +395,14 @@ class HybridAdmissionIntegrationTest {
         assertThat(ResponsesHybridProvider.timeout(new HybridExecution.Work(reader.attemptId(),reader.request(),now.plusSeconds(600)),now)).isEqualTo(java.time.Duration.ofSeconds(280));
         assertThat(ResponsesHybridProvider.timeout(new HybridExecution.Work(reader.attemptId(),reader.request(),now.plusSeconds(7)),now)).isEqualTo(java.time.Duration.ofSeconds(7));
         assertThat(ResponsesHybridProvider.timeout(new HybridExecution.Work(writer.attemptId(),writer.request(),now.plusSeconds(600)),now)).isEqualTo(java.time.Duration.ofSeconds(90));
-        assertThatThrownBy(()->ResponsesHybridProvider.timeout(new HybridExecution.Work(reader.attemptId(),reader.request(),now),now)).isInstanceOf(dev.gamjaoj.ai.OpenAiResponses.Failure.class);
+        assertThatThrownBy(()->ResponsesHybridProvider.timeout(new HybridExecution.Work(reader.attemptId(),reader.request(),now),now)).isInstanceOf(dev.gamjaoj.infrastructure.ai.OpenAiResponses.Failure.class);
     }
     @Test void registeredDataPackageRunsWithoutProfileCodeAndStaysPrivateUntilShared() throws Exception {
         overrides.put("HYBRID_FUNCTIONAL_ENABLED","true");overrides.put("HYBRID_PIPELINE_V2_ENABLED","true");overrides.put("HYBRID_ALLOWED_USERS","owner,other");
         UUID owner=submissions.owner("owner",false);var reference=f.core();reference.remove(List.of("generator","inputValidator"));
         var d=registry.activate(owner,onboardingRow(owner),"rule-fixture-v1",fixturePackage(),reference);
         assertThat(d.pkg()).isNotNull();assertThat(HybridProfiles.byPolicy(d.policy())).isEqualTo(d);
-        assertThatThrownBy(()->registry.activate(owner,onboardingRow(owner),"rule-fixture-v2",fixturePackage(),reference)).isInstanceOf(HybridArtifacts.Invalid.class);
+        assertThatThrownBy(()->registry.activate(owner,onboardingRow(owner),"rule-fixture-v2",fixturePackage(),reference)).isInstanceOf(ArtifactValidation.Invalid.class);
         mvc.perform(get("/api/generation/hybrid/options").with(user("owner"))).andExpect(jsonPath("$.profiles[3].id").value("rule-fixture-v1"))
                 .andExpect(jsonPath("$.profiles[3].label").value("등록 규칙 · 물건 고르기")).andExpect(jsonPath("$.profiles[3].verifiedReference").value(true));
         mvc.perform(get("/api/generation/hybrid/options").with(user("other"))).andExpect(jsonPath("$.profiles.length()").value(3));

@@ -1,7 +1,12 @@
 package dev.gamjaoj;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.infrastructure.ai.AiProvider;
+import dev.gamjaoj.service.ai.AiTasks;
+import dev.gamjaoj.infrastructure.worker.AiWorker;
+import dev.gamjaoj.support.JudgeJson;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import dev.gamjaoj.ai.OpenAiResponses;
+import dev.gamjaoj.infrastructure.ai.OpenAiResponses;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;

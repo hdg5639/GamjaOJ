@@ -1,7 +1,16 @@
 package dev.gamjaoj;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.service.ai.AiTasks;
+import dev.gamjaoj.infrastructure.ai.HybridApiProvider;
+import dev.gamjaoj.infrastructure.worker.HybridApiWorker;
+import dev.gamjaoj.service.generation.HybridArtifacts;
+import dev.gamjaoj.service.generation.HybridExecution;
+import dev.gamjaoj.service.generation.HybridGeneration;
+import dev.gamjaoj.service.generation.HybridModels;
+import dev.gamjaoj.support.JudgeJson;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import dev.gamjaoj.ai.OpenAiResponses;
+import dev.gamjaoj.infrastructure.ai.OpenAiResponses;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.*;
@@ -14,7 +23,7 @@ import org.springframework.core.env.MapPropertySource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import static dev.gamjaoj.HybridGeneration.Role.*;
+import static dev.gamjaoj.service.generation.HybridGeneration.Role.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;

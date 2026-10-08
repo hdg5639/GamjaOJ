@@ -1,0 +1,74 @@
+package dev.gamjaoj.service.account;
+
+import dev.gamjaoj.dto.AuthDtos;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.repository.account.AccountsRepository;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class Accounts implements UserDetailsService {
+  private final AccountsRepository repository;
+  private final PasswordEncoder passwords;
+
+  public Accounts(AccountsRepository repository, PasswordEncoder passwords) {
+    this.repository = repository;
+    this.passwords = passwords;
+  }
+
+  public record Profile(UUID id, String username, String nickname, String trainingGoal) {}
+
+  @Override
+  public org.springframework.security.core.userdetails.UserDetails loadUserByUsername(
+      String username) {
+    return repository
+        .loadUserByUsernameAppUser(
+            username,
+            (row, index) ->
+                User.withUsername(row.getString("username"))
+                    .password(row.getString("password_hash"))
+                    .roles("MEMBER")
+                    .build())
+        .orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
+  }
+
+  @Transactional
+  public void register(AuthDtos.Signup request) {
+    if (request.password().getBytes(StandardCharsets.UTF_8).length > 72)
+      throw new AccountException(400, "비밀번호는 UTF-8 기준 72바이트 이내로 입력해 주세요.");
+    try {
+      repository.registerAppUser(
+          UUID.randomUUID(),
+          request.username(),
+          passwords.encode(request.password()),
+          request.nickname().strip());
+    } catch (DuplicateKeyException exception) {
+      throw new AccountException(409, "이미 사용 중인 아이디예요.");
+    }
+  }
+
+  public Profile profile(String username) {
+    return repository
+        .profileAppUser(
+            username,
+            (row, index) ->
+                new Profile(
+                    row.getObject("id", UUID.class), row.getString("username"),
+                    row.getString("nickname"), row.getString("training_goal")))
+        .orElseThrow(() -> new AccountException(401, "다시 로그인해 주세요."));
+  }
+
+  @Transactional
+  public Profile update(String authenticatedUsername, AuthDtos.Preferences request) {
+    repository.updateAppUser(
+        request.nickname().strip(), request.trainingGoal().strip(), authenticatedUsername);
+    return profile(authenticatedUsername);
+  }
+}

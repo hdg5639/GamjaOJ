@@ -1,4 +1,16 @@
 package dev.gamjaoj;
+import dev.gamjaoj.repository.generation.HybridRunnerChecksRepository;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.config.AiSettings;
+import dev.gamjaoj.service.ai.AiTasks;
+import dev.gamjaoj.service.generation.HybridArtifacts;
+import dev.gamjaoj.service.generation.HybridFiniteProfile;
+import dev.gamjaoj.service.generation.HybridGeneration;
+import dev.gamjaoj.service.generation.HybridPackagePlan;
+import dev.gamjaoj.service.generation.HybridRunnerChecks;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.JudgeQueue;
+import dev.gamjaoj.service.judge.Submissions;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.*;
@@ -6,7 +18,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import static dev.gamjaoj.HybridGeneration.Role.*;
+import static dev.gamjaoj.service.generation.HybridGeneration.Role.*;
 import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:hybridrunner;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
@@ -106,7 +118,7 @@ class HybridRunnerIntegrationTest {
         finite();UUID id=joined();checks.advance();assertThat(jobs()).isEqualTo(2);
         drainFinite("");
         env.getPropertySources().remove("finite-profile-test"); // Global setting changes do not change in-flight policy.
-        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->new HybridRunnerChecks(jdbc,new AiSettings(env),ledger).advance());assertThat(jobs()).isEqualTo(4);
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->new HybridRunnerChecks(new HybridRunnerChecksRepository(jdbc),new AiSettings(env),ledger).advance());assertThat(jobs()).isEqualTo(4);
         var a=queue.claim(UUID.randomUUID()).orElseThrow();
         assertThat(a.problem().path("tests").size()).isEqualTo(16);
         assertThat(a.problem().path("tests").path(0).path("output").asText()).isEqualTo("1\n");
@@ -260,7 +272,7 @@ class HybridRunnerIntegrationTest {
         UUID id=packageToGenerator();var seed=jdbc.sql("SELECT generator_seed FROM hybrid_package_evidence").query(Long.class).single();
         checks.advance();assertThat(jobs()).isEqualTo(10);assertThat(jdbc.sql("SELECT generator_seed FROM hybrid_package_evidence").query(Long.class).single()).isEqualTo(seed);
         drainPackage();checks.advance();drainPackage();
-        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->new HybridRunnerChecks(jdbc,new AiSettings(env),ledger).advance());
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->new HybridRunnerChecks(new HybridRunnerChecksRepository(jdbc),new AiSettings(env),ledger).advance());
         assertThat(jobs()).isEqualTo(13);
         var oracle=JudgeJson.parse(jdbc.sql("SELECT s.run_package FROM submission s JOIN hybrid_execution_check e ON e.submission_id=s.id WHERE e.role='batch-oracle'").query(String.class).single());
         assertThat(oracle.path("tests")).allMatch(t->HybridPackagePlan.parse(t.path("input").asText()).tiny());

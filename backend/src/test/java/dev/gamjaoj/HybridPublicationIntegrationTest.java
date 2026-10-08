@@ -1,7 +1,24 @@
 package dev.gamjaoj;
+import dev.gamjaoj.service.problem.ThinkingAssessmentPublication;
+import dev.gamjaoj.repository.generation.HybridRuleRegistryRepository;
+import dev.gamjaoj.repository.generation.HybridPublicationRepository;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.config.AiSettings;
+import dev.gamjaoj.service.ai.AiTasks;
+import dev.gamjaoj.service.generation.GenerationResources;
+import dev.gamjaoj.service.generation.GenerationType;
+import dev.gamjaoj.infrastructure.ai.HybridApiProvider;
+import dev.gamjaoj.service.generation.HybridExecution;
+import dev.gamjaoj.service.generation.HybridGeneration;
+import dev.gamjaoj.service.generation.HybridPublication;
+import dev.gamjaoj.service.generation.HybridRuleRegistry;
+import dev.gamjaoj.service.generation.HybridRunnerChecks;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.JudgeQueue;
+import dev.gamjaoj.service.problem.ThinkingDifficulty;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import dev.gamjaoj.ai.OpenAiResponses;
+import dev.gamjaoj.infrastructure.ai.OpenAiResponses;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
@@ -13,7 +30,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import static dev.gamjaoj.HybridGeneration.Role.*;
+import static dev.gamjaoj.service.generation.HybridGeneration.Role.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -33,6 +50,9 @@ import static org.mockito.Mockito.*;
         "AI_HYBRID_READER_INPUT_USD_PER_M=1","AI_HYBRID_READER_CACHED_USD_PER_M=0.1",
         "AI_HYBRID_READER_OUTPUT_USD_PER_M=2","AI_HYBRID_READER_MAX_OUTPUT_TOKENS=4096","AI_HYBRID_READER_PRICING_VERSION=fixture"})
 class HybridPublicationIntegrationTest {
+ @Autowired ThinkingAssessmentPublication thinkingAssessmentPublication;
+ @org.springframework.beans.factory.annotation.Autowired GenerationResources generationResources;
+
     @Autowired HybridExecution execution;@Autowired HybridGeneration jobs;@Autowired HybridPublication publication;
     @Autowired HybridRunnerChecks checks;@Autowired JudgeQueue queue;@Autowired JdbcClient jdbc;
     @Autowired AiTasks ledger;@Autowired ConfigurableEnvironment env;
@@ -118,9 +138,9 @@ class HybridPublicationIntegrationTest {
     }
     UUID ruleResourceReady(){
         UUID id=checked(false);jdbc.sql("UPDATE hybrid_generation SET resource_validation=true WHERE id=?").param(id).update();var work=review();execution.finish(work.attemptId(),result(accepted(work)),null);publication.advance();
-        var resource=GenerationResources.claim(jdbc,resourceSettings);assertThat(resource).isNotNull();var sources=JudgeJson.JSON.createObjectNode().put("cpp","int main(){}").put("python","print(1)").put("ordinaryJava","public class Main { /* ordinary */ }").put("maximumGenerator","public class Main { /* maximum */ }");
+        var resource=generationResources.claim(resourceSettings);assertThat(resource).isNotNull();var sources=JudgeJson.JSON.createObjectNode().put("cpp","int main(){}").put("python","print(1)").put("ordinaryJava","public class Main { /* ordinary */ }").put("maximumGenerator","public class Main { /* maximum */ }");
         var coverage=sources.putArray("coverage");var policy=resource.spec().path("validationPolicy");for(int i=0;i<4;i++){var item=coverage.addObject().put("seed",i).put("reason","Fixture queue contract, not semantic evidence");var list=item.putArray("checks");for(var check:policy.path("commonChecks"))list.add(check);for(var profile:policy.path("profiles"))for(var check:profile.path("checks"))list.add(check);}
-        var accepted=JudgeJson.JSON.createObjectNode().put("accepted",true);accepted.putArray("issues");GenerationResources.complete(jdbc,resource.id(),resource.token(),sources,accepted,null,null);return id;
+        var accepted=JudgeJson.JSON.createObjectNode().put("accepted",true);accepted.putArray("issues");generationResources.complete(resource.id(),resource.token(),sources,accepted,null,null);return id;
     }
     @Test void successfulRuleValidationCanRunThreeLanguageResourceQueueAndOnlyThenPublish(){
         UUID id=ruleResourceReady();assertThat(jobs.view("owner",id).status()).isEqualTo("REVIEWING");assertThat(published()).isZero();
@@ -130,7 +150,7 @@ class HybridPublicationIntegrationTest {
                 var a=next.get();assertThat(a.runnerPolicy()).isEqualTo(a.executionProfile().path("policy").asText());assertThat(a.runtimeImage()).isEqualTo(a.executionProfile().path("image").asText());seen.add(a.language());count++;
                 var report=new GenerationIntegrationTest().report(a,"AC");for(var test:report.path("tests"))((com.fasterxml.jackson.databind.node.ObjectNode)test).put("memory_peak_bytes",32*1048576L).put("memory_measurement","cgroup-peak-observed");queue.complete(a.submissionId(),a.token(),report);
             }
-            GenerationResources.advance(jdbc);publication.advance();
+            generationResources.advance();publication.advance();
         }
         assertThat(count).isEqualTo(13);assertThat(seen).containsExactlyInAnyOrder("JAVA","CPP","PYTHON");assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");
     }
@@ -140,7 +160,7 @@ class HybridPublicationIntegrationTest {
             var a=next.get();String role=jdbc.sql("SELECT role FROM generation_resource_execution WHERE submission_id=?").param(a.submissionId()).query(String.class).single();var report=new GenerationIntegrationTest().report(a,"AC");if(role.equals("validator")){report.put("verdict","RE");var tests=(com.fasterxml.jackson.databind.node.ArrayNode)report.path("tests");int failed=a.problem().path("tests").size();while(tests.size()>failed+1)tests.remove(tests.size()-1);((com.fasterxml.jackson.databind.node.ObjectNode)tests.get(failed)).put("verdict","RE").put("stderr","StackOverflowError in whole-input regex");}
             for(var test:report.path("tests"))((com.fasterxml.jackson.databind.node.ObjectNode)test).put("memory_peak_bytes",32*1048576L).put("memory_measurement","cgroup-peak-observed");queue.complete(a.submissionId(),a.token(),report);
         }
-        GenerationResources.advance(jdbc);publication.advance();assertThat(jobs.view("owner",id).error()).isEqualTo("RESOURCE_REFERENCE_VALIDATOR_RE");
+        generationResources.advance();publication.advance();assertThat(jobs.view("owner",id).error()).isEqualTo("RESOURCE_REFERENCE_VALIDATOR_RE");
         var repaired=execution.claimCodex();assertThat(repaired).isNotNull();assertThat(repaired.spec().path("role").asText()).isEqualTo("CORE");
         assertThat(jobs.view("owner",id).contractHash()).isEqualTo(contract);assertThat(jdbc.sql("SELECT count(*) FROM generation_recovery_attempt WHERE job_id=? AND scope='CORE'").param(id).query(Integer.class).single()).isEqualTo(1);
     }
@@ -328,7 +348,7 @@ class HybridPublicationIntegrationTest {
     @Test void restartAfterReviewQueuedUsesStoredInputAndOneReservedCall() {
         UUID id=checked(false);publication.advance();
         String before=jdbc.sql("SELECT input_sha256 FROM hybrid_branch WHERE role='CONTENT_REVIEW'").query(String.class).single();
-        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(tx->new HybridPublication(jdbc,checks,event->{},new HybridRuleRegistry(jdbc)).advance());
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(tx->new HybridPublication(new HybridPublicationRepository(jdbc),checks,event->{},new HybridRuleRegistry(new HybridRuleRegistryRepository(jdbc)),generationResources,thinkingAssessmentPublication).advance());
         var work=execution.claimApi();assertThat(work.request().assignment().inputHash()).isEqualTo(before);
         execution.finish(work.attemptId(),result(accepted(work)),null);publication.advance();
         assertThat(jobs.view("owner",id).status()).isEqualTo("PUBLISHED");assertThat(runner.jobs()).isEqualTo(15);

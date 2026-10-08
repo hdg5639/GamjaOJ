@@ -1,4 +1,9 @@
 package dev.gamjaoj;
+import dev.gamjaoj.domain.ArtifactValidation;
+import dev.gamjaoj.service.generation.GenerationRequirements;
+import dev.gamjaoj.service.generation.HybridModels;
+import dev.gamjaoj.service.generation.HybridRuleOnboarding;
+import dev.gamjaoj.support.JudgeJson;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
@@ -32,7 +37,7 @@ class GenerationRequirementsTest {
         GenerationRequirements.validate(accepted(),true); // Honest estimates are allowed before Runner evidence exists.
     }
     @Test void missingContradictoryAndRejectedAssessmentsCannotPass() {
-        assertThatThrownBy(()->GenerationRequirements.validate(JudgeJson.parse("{}"),true)).isInstanceOf(HybridArtifacts.Invalid.class);
+        assertThatThrownBy(()->GenerationRequirements.validate(JudgeJson.parse("{}"),true)).isInstanceOf(ArtifactValidation.Invalid.class);
         var r=accepted();r.put("satisfied",false);r.withArray("issues").add("방문 장치를 2개로 축소했습니다.");
         GenerationRequirements.validate(r,false);
         assertThatThrownBy(()->GenerationRequirements.validate(r,true)).hasMessage("REQUIREMENTS_NOT_MET");
