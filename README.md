@@ -70,36 +70,63 @@ flowchart TD
 
 사용자 코드는 웹 서버에서 직접 실행하지 않는다. Runner의 Docker 컨테이너에 네트워크·CPU·메모리·프로세스 수·실행 시간 제한을 적용하고, 실행할 언어 이미지와 명령은 서버가 관리한다.
 
-### 백엔드 패키지와 계층
+### 백엔드 기능 패키지와 계층
 
-REST API는 **Controller → Service → Repository** 순서로 처리한다. 화면은 Next.js/React가 맡고, 서버는 DTO로 요청과 응답 계약을 정의한다. 루트 패키지에는 Spring Boot 진입점만 두고, 서비스와 저장소는 계층 안에서 기능별로 나눴다.
+백엔드는 **단일 Spring Boot 애플리케이션 안에서 기능을 먼저 나누는 구조**다. Maven 모듈이나 별도 서버로 분리하지 않고, 기능마다 API·DTO·서비스·도메인·저장소·인프라를 함께 배치한다. 계정 기능을 수정하면 `account` 안에서 요청부터 DB 접근까지 따라갈 수 있다.
 
 ```text
 backend/src/main/java/dev/gamjaoj/
 ├── GamjaApplication.java
-├── controller/      HTTP 요청·응답, 전역 예외 처리
-├── dto/             요청·응답 데이터와 입력 검증
-├── service/         업무 규칙과 트랜잭션
-│   ├── account/     계정·초안·삭제
-│   ├── judge/       제출·실행·채점 큐
-│   ├── diagnostic/ 진단·평가·연습 계획
-│   ├── learning/    훈련·학습 현황·문제 준비
-│   ├── generation/ 문제 생성·검수·복구·규칙 등록
-│   ├── problem/    문제 설정·해설·이미지·난도
-│   ├── ai/         풀이 분석 작업·예산
-│   ├── export/     GitHub·Notion 저장 흐름
-│   └── editor/     자동완성 처리
-├── repository/      기능별 SQL 조회·저장·잠금
-├── domain/          난이도·성장·실행 프로필의 값과 규칙
-├── infrastructure/  외부 AI·저장 클라이언트·암호화·Worker
-├── config/          Spring 설정·인증·Worker 보안
-├── exception/       공통 오류 계약
-└── support/         JSON 등 공통 유틸리티
+├── admin/         AdminConsole 호스트 진입·권한·운영 통합 조회
+├── account/       계정·인증·초안·삭제
+├── judge/         제출·실행·채점 큐·Runner 연동
+├── problem/       문제 목록·해설·이미지·난도
+├── diagnostic/    진단평가·진단 계획
+├── learning/      훈련 코스·맞춤 학습·성장 기록
+├── generation/    문제 생성·검수·복구·규칙 등록
+├── ai/            풀이 분석·AI 예산·공용 Responses 클라이언트
+├── export/        GitHub·Notion 풀이 저장
+├── editor/        에디터 자동완성
+└── shared/        공통 오류 처리·검증·겹 이름·JSON·SQL 조회 조각
 ```
 
-컨트롤러는 DB에 직접 접근하지 않는다. 서비스가 권한·상태·중복 요청을 판단하고, Repository가 `JdbcClient`로 SQL을 실행한다. 기존 트랜잭션·행 잠금·담당 토큰 검증은 서비스의 동일한 작업 경계 안에서 유지한다. 주기적 Worker는 서비스 호출을 시작하며 업무 규칙을 별도로 구현하지 않는다.
+예를 들어 `export`는 다음처럼 구성한다. 각 기능에는 실제로 필요한 계층만 둔다.
 
-서비스가 컨트롤러를 참조하거나, Domain·DTO·Repository가 상위 서비스 구현을 참조하는 구조는 허용하지 않는다. [계층 구조 검사](backend/src/test/java/dev/gamjaoj/architecture/BackendArchitectureTest.java)가 패키지·역방향 의존성·컨트롤러의 DB 접근·SQL 위치를 전체 백엔드 테스트와 함께 확인한다.
+```text
+export/
+├── api/             ExportController — HTTP 진입점
+├── dto/             ExportDtos — 요청·응답 계약
+├── service/         SolutionExports — 업무 규칙·트랜잭션
+├── repository/      저장 설정·작업 SQL과 잠금
+├── infrastructure/  GitHub·Notion HTTP, 토큰 암호화, ExportWorker
+└── config/          ExportSettings
+```
+
+기능 내부의 요청 흐름은 **API Controller → Service → Repository**다. 컨트롤러는 DB에 직접 접근하지 않는다. 서비스가 권한·상태·중복 요청을 판단하고, Repository가 `JdbcClient`로 SQL을 실행한다. 기존 트랜잭션·행 잠금·담당 토큰 검증은 같은 작업 경계에서 유지한다. 주기적 Worker와 외부 클라이언트는 해당 기능의 `infrastructure`에 둔다.
+
+기능 간 협력은 다른 기능의 서비스나 데이터 계약을 통해 이루어지고, **다른 기능의 Repository에 직접 접근하지 않는다**. `shared`는 기능 구현에 의존하지 않는다. 여러 조회에서 쓰는 난도 SQL projection은 `shared/repository/ProblemSql`로 공유하며, DB 접근과 저장소 Bean은 각 기능이 소유한다. 서비스가 HTTP 컨트롤러를 참조하거나, Domain·DTO·Repository가 상위 서비스 구현을 참조하는 역방향 의존성도 금지한다. [구조 검사](backend/src/test/java/dev/gamjaoj/architecture/BackendArchitectureTest.java)가 기능 패키지·계층 방향·저장소 소유권·SQL 위치를 전체 백엔드 테스트와 함께 확인한다.
+
+현재 기능들은 하나의 프로세스와 DB, 기존 트랜잭션을 공유한다. 패키지로 책임과 접근 경계를 정리한 구조이며, 기능 간 완전한 의존성 분리나 독립 배포를 구현한 것은 아니다.
+
+## AdminConsole와 프런트 서빙
+
+프런트는 Next.js/React의 **정적 export**다. `next build` 결과인 `frontend/out`을 Spring Boot JAR의 `static`에 포함하므로 운영에서 별도 Node/Vite 컨테이너나 프런트 포트를 열지 않는다. HTML·JS·CSS와 API 모두 같은 application 포트에서 제공한다.
+
+AdminConsole는 같은 빌드에 포함된 별도 운영 화면이다. Spring이 요청의 **Host**를 보고 `/`에서 GamjaOJ 또는 AdminConsole HTML을 선택한다. CNAME은 DNS 연결만 담당하며, 실제 화면 분기는 HTTP Host로 결정한다. AdminConsole 초기 화면은 관리자 로그인과 회원·공개 문제 수, 채점·문제 생성·AI 작업 상태 조회를 제공한다.
+
+```dotenv
+# 서버의 기존 .env에 추가. 호스트만 입력하고 스킴·포트·경로는 제외한다.
+CONTROL_OJ_HOST=admin.example.com
+CONTROL_OJ_ADMIN_USERS=operator-example
+```
+
+`CONTROL_OJ_HOST`를 비우면 관리 라우트는 비활성화된다. 관리자 목록은 쉼표로 구분한 **정확한 기존 계정 아이디**이며, 비어 있으면 어떤 회원도 관리 API에 접근할 수 없다. AI 운영자 설정과 별개다. 관리자 목록 검사는 매 요청에 적용하며, 공개 회원가입으로 관리 권한을 얻을 수 없다.
+
+비공개 프록시 라우트에서 AdminConsole 호스트를 **GamjaOJ와 동일한 upstream 포트**로 연결하고 원래 `Host` 헤더를 보존한다. 외부 TLS·비공개 접근 정책은 프록시에서 적용한다. 이 서버는 `X-Forwarded-Host`로 관리 화면을 선택하지 않는다. 두 호스트의 API 요청은 각자 동일 출처에서 이루어지므로 추가 CORS 설정은 필요 없다. 로그인 쿠키는 호스트별로 유지되어 AdminConsole에서 따로 로그인한다.
+
+일반 호스트에서는 `/admin-console`, `/admin-console.html`, 관련 페이지 payload 및 `/api/admin/**`가 404다. AdminConsole 호스트에서도 관리 API는 로그인하지 않으면 401, 지정된 관리자가 아니면 403이다. 비공개 라우트와 별도로 서버 권한 검사를 유지하고, 기존 CSRF 보호를 그대로 사용한다. Host 분기는 관리 권한을 대신하지 않는다.
+
+로컬에서는 `CONTROL_OJ_HOST=admin-console.localhost`로 설정하고 같은 포트의 `localhost`와 `admin-console.localhost`에 접속해 두 화면을 비교할 수 있다. 환경변수를 변경하면 application 컨테이너를 다시 생성해야 한다.
 
 ## 러너는 어떻게 채점하나
 
@@ -133,7 +160,7 @@ sequenceDiagram
 
 시간은 Runner가 관측한 실행 구간의 **벽시계 시간**으로, 런타임 시작과 실행 환경의 영향이 포함된다. 컴파일 시간은 실행 시간과 구분한다. 메모리는 코드가 출력한 값이 아니라 호스트에서 관측한 **컨테이너 cgroup 최고 사용량**이며, JVM·인터프리터·파일 캐시 등이 포함될 수 있다. 메모리 관측에 실패하면 0으로 채우지 않는다.
 
-관련 코드: [작업 큐](backend/src/main/java/dev/gamjaoj/service/judge/JudgeQueue.java) · [Runner Worker](runner/worker.py) · [컴파일·실행](runner/judge.py) · [슬롯 제어](runner/scheduling.py) · [메모리 관측](runner/memory_peak.py)
+관련 코드: [작업 큐](backend/src/main/java/dev/gamjaoj/judge/service/JudgeQueue.java) · [Runner Worker](runner/worker.py) · [컴파일·실행](runner/judge.py) · [슬롯 제어](runner/scheduling.py) · [메모리 관측](runner/memory_peak.py)
 
 ## 문제 생성과 검수 파이프라인
 
@@ -187,7 +214,7 @@ flowchart TD
 
 이 정책은 새 생성 작업에 적용한다. 기존 제출·진단의 저장된 실행 기준과 과거 검증 기록은 유지한다. 네 가지 최대 입력과 독립 검토는 제한된 검증 증거이며, 모든 최악 입력이나 가능한 정답 구현을 증명하는 것은 아니다.
 
-관련 코드: [유형별 검수 기준](generation/resource-profiles-v1.json) · [예비 실행 검사](backend/src/main/java/dev/gamjaoj/service/generation/ExperimentalChecks.java) · [공통 자원 검수](backend/src/main/java/dev/gamjaoj/service/generation/GenerationResources.java) · [검수·복구 계약](generation/VALIDATION.md)
+관련 코드: [유형별 검수 기준](generation/resource-profiles-v1.json) · [예비 실행 검사](backend/src/main/java/dev/gamjaoj/generation/service/ExperimentalChecks.java) · [공통 자원 검수](backend/src/main/java/dev/gamjaoj/generation/service/GenerationResources.java) · [검수·복구 계약](generation/VALIDATION.md)
 
 ## 실패 복구와 안전장치
 
@@ -214,7 +241,7 @@ flowchart TD
 
 Docker 격리는 호스트 커널을 공유하므로 보안 경계에 한계가 있다. 별도 Runner 서버와 제한된 권한을 함께 사용하며, 격리 설정만으로 모든 위험이 사라진다고 보지는 않는다.
 
-관련 코드: [실행 정책](runner/execution-profile.json) · [직접 생성 복구](backend/src/main/java/dev/gamjaoj/service/generation/GenerationDraftRecovery.java) · [규칙 기반 복구](backend/src/main/java/dev/gamjaoj/service/generation/HybridStageRecovery.java)
+관련 코드: [실행 정책](runner/execution-profile.json) · [직접 생성 복구](backend/src/main/java/dev/gamjaoj/generation/service/GenerationDraftRecovery.java) · [규칙 기반 복구](backend/src/main/java/dev/gamjaoj/generation/service/HybridStageRecovery.java)
 
 ## 기술 스택
 
@@ -269,7 +296,7 @@ AI 분석은 학습 제안으로 취급하고 채점 결과를 바꾸지 않는�
 - **해결:** 업로드 경로와 페이지 ID를 중간 상태로 저장하고, 자동 관리 표시와 기록 ID로 기존 결과를 확인한 뒤 이어서 처리한다. 저장 여부를 확인할 수 없으면 무작정 재생성하지 않는다. Notion의 개인 회고는 갱신 대상에서 제외한다.
 - **확인:** 응답 유실·부분 저장 후 재시작·같은 요청 재전송을 테스트하여 저장 위치 재사용과 중복 생성 방지 동작을 확인했다. 이 회귀 테스트의 외부 API는 mock이며 실제 provider 장애를 재현한 결과와는 구분한다.
 
-관련 코드: [풀이 저장](backend/src/main/java/dev/gamjaoj/service/export/SolutionExports.java) · [GitHub 경로 테스트](backend/src/test/java/dev/gamjaoj/GitHubSolutionLayoutTest.java) · [Notion 저장 테스트](backend/src/test/java/dev/gamjaoj/NotionTablesTest.java)
+관련 코드: [풀이 저장](backend/src/main/java/dev/gamjaoj/export/service/SolutionExports.java) · [GitHub 경로 테스트](backend/src/test/java/dev/gamjaoj/GitHubSolutionLayoutTest.java) · [Notion 저장 테스트](backend/src/test/java/dev/gamjaoj/NotionTablesTest.java)
 
 ### 3. 로컬 테스트는 통과했지만 운영 DB 마이그레이션이 실패
 
@@ -306,7 +333,7 @@ AI 분석은 학습 제안으로 취급하고 채점 결과를 바꾸지 않는�
 
 핵심은 연결 수를 늘리기 전에 **한 요청이 연결을 보유한 채 또 다른 연결을 기다리는지 확인하는 것**이었다. 과거 장애 순간의 thread dump가 없어 당시 모든 timeout의 단일 원인을 확정한 것은 아니지만, 이 고갈 패턴 자체는 재현하고 수정했다.
 
-관련 코드: [생성 작업 조회](backend/src/main/java/dev/gamjaoj/service/generation/GenerationJobs.java) · [규칙 등록 조회](backend/src/main/java/dev/gamjaoj/service/generation/HybridRuleOnboarding.java) · [커넥션풀 동시 조회 테스트](backend/src/test/java/dev/gamjaoj/ConnectionPoolReadIntegrationTest.java) · [운영 조회 점검](scripts/smoke-pool-reads.py)
+관련 코드: [생성 작업 조회](backend/src/main/java/dev/gamjaoj/generation/service/GenerationJobs.java) · [규칙 등록 조회](backend/src/main/java/dev/gamjaoj/generation/service/HybridRuleOnboarding.java) · [커넥션풀 동시 조회 테스트](backend/src/test/java/dev/gamjaoj/ConnectionPoolReadIntegrationTest.java) · [운영 조회 점검](scripts/smoke-pool-reads.py)
 
 ## 검증 방식
 
