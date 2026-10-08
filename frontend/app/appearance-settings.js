@@ -47,7 +47,7 @@ export default function AppearanceSettings() {
     return ()=>{live=false;};
   },[prefs?.font,prefs?.customFont]);
   useEffect(()=>{
-    const update=()=>{setPrefs(window.GamjaAppearance.get());setMode(document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light');};
+    const update=()=>{if(!window.GamjaAppearance)return;setPrefs(window.GamjaAppearance.get());setMode(document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light');};
     update();window.addEventListener('gamjaoj-appearance',update);
     return ()=>window.removeEventListener('gamjaoj-appearance',update);
   },[]);

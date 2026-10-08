@@ -13,9 +13,12 @@ import {
   Feedback,
 } from "./sections";
 import "./control.css";
+import "../support-center.css";
+import { Support } from "./support";
 const menus = [
   ["overview", "운영 현황"],
   ["notices", "공지·업데이트"],
+  ["support", "문의·오류 제보"],
   ["members", "회원·권한"],
   ["problems", "문제은행"],
   ["availability", "진단·코스 제공"],
@@ -196,6 +199,8 @@ export default function AdminConsole() {
               <Overview />
             ) : section === "notices" ? (
               <Notices />
+            ) : section === "support" ? (
+              <Support />
             ) : section === "availability" ? (
               <Availability />
             ) : section === "settings" ? (
@@ -274,7 +279,9 @@ export default function AdminConsole() {
       <Modal
         open={reauth}
         title="관리자 재인증"
-        onClose={() => { if (!busy) setReauth(false); }}
+        onClose={() => {
+          if (!busy) setReauth(false);
+        }}
         description="인증하면 작성 중인 작업을 이어갈 수 있어요."
       >
         {verification()}
