@@ -69,6 +69,7 @@ class BackendArchitectureTest {
     List<? extends com.sun.source.tree.Tree> types = unit.getTypeDecls();
     if (!pkg.equals("dev.gamjaoj")) {
       if (!Set.of(
+              "admin",
               "account",
               "judge",
               "problem",

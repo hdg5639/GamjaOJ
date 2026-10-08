@@ -77,6 +77,7 @@ flowchart TD
 ```text
 backend/src/main/java/dev/gamjaoj/
 ├── GamjaApplication.java
+├── admin/         AdminConsole 호스트 진입·권한·운영 통합 조회
 ├── account/       계정·인증·초안·삭제
 ├── judge/         제출·실행·채점 큐·Runner 연동
 ├── problem/       문제 목록·해설·이미지·난도
@@ -106,6 +107,26 @@ export/
 기능 간 협력은 다른 기능의 서비스나 데이터 계약을 통해 이루어지고, **다른 기능의 Repository에 직접 접근하지 않는다**. `shared`는 기능 구현에 의존하지 않는다. 여러 조회에서 쓰는 난도 SQL projection은 `shared/repository/ProblemSql`로 공유하며, DB 접근과 저장소 Bean은 각 기능이 소유한다. 서비스가 HTTP 컨트롤러를 참조하거나, Domain·DTO·Repository가 상위 서비스 구현을 참조하는 역방향 의존성도 금지한다. [구조 검사](backend/src/test/java/dev/gamjaoj/architecture/BackendArchitectureTest.java)가 기능 패키지·계층 방향·저장소 소유권·SQL 위치를 전체 백엔드 테스트와 함께 확인한다.
 
 현재 기능들은 하나의 프로세스와 DB, 기존 트랜잭션을 공유한다. 패키지로 책임과 접근 경계를 정리한 구조이며, 기능 간 완전한 의존성 분리나 독립 배포를 구현한 것은 아니다.
+
+## AdminConsole와 프런트 서빙
+
+프런트는 Next.js/React의 **정적 export**다. `next build` 결과인 `frontend/out`을 Spring Boot JAR의 `static`에 포함하므로 운영에서 별도 Node/Vite 컨테이너나 프런트 포트를 열지 않는다. HTML·JS·CSS와 API 모두 같은 application 포트에서 제공한다.
+
+AdminConsole는 같은 빌드에 포함된 별도 운영 화면이다. Spring이 요청의 **Host**를 보고 `/`에서 GamjaOJ 또는 AdminConsole HTML을 선택한다. CNAME은 DNS 연결만 담당하며, 실제 화면 분기는 HTTP Host로 결정한다. AdminConsole 초기 화면은 관리자 로그인과 회원·공개 문제 수, 채점·문제 생성·AI 작업 상태 조회를 제공한다.
+
+```dotenv
+# 서버의 기존 .env에 추가. 호스트만 입력하고 스킴·포트·경로는 제외한다.
+CONTROL_OJ_HOST=admin.example.com
+CONTROL_OJ_ADMIN_USERS=operator-example
+```
+
+`CONTROL_OJ_HOST`를 비우면 관리 라우트는 비활성화된다. 관리자 목록은 쉼표로 구분한 **정확한 기존 계정 아이디**이며, 비어 있으면 어떤 회원도 관리 API에 접근할 수 없다. AI 운영자 설정과 별개다. 관리자 목록 검사는 매 요청에 적용하며, 공개 회원가입으로 관리 권한을 얻을 수 없다.
+
+비공개 프록시 라우트에서 AdminConsole 호스트를 **GamjaOJ와 동일한 upstream 포트**로 연결하고 원래 `Host` 헤더를 보존한다. 외부 TLS·비공개 접근 정책은 프록시에서 적용한다. 이 서버는 `X-Forwarded-Host`로 관리 화면을 선택하지 않는다. 두 호스트의 API 요청은 각자 동일 출처에서 이루어지므로 추가 CORS 설정은 필요 없다. 로그인 쿠키는 호스트별로 유지되어 AdminConsole에서 따로 로그인한다.
+
+일반 호스트에서는 `/admin-console`, `/admin-console.html`, 관련 페이지 payload 및 `/api/admin/**`가 404다. AdminConsole 호스트에서도 관리 API는 로그인하지 않으면 401, 지정된 관리자가 아니면 403이다. 비공개 라우트와 별도로 서버 권한 검사를 유지하고, 기존 CSRF 보호를 그대로 사용한다. Host 분기는 관리 권한을 대신하지 않는다.
+
+로컬에서는 `CONTROL_OJ_HOST=admin-console.localhost`로 설정하고 같은 포트의 `localhost`와 `admin-console.localhost`에 접속해 두 화면을 비교할 수 있다. 환경변수를 변경하면 application 컨테이너를 다시 생성해야 한다.
 
 ## 러너는 어떻게 채점하나
 
