@@ -589,4 +589,90 @@ class AdminConsoleSecurityIntegrationTest {
                 .single())
         .isEqualTo(1);
   }
+
+  @Test
+  void supportIsPrivateIdempotentAndAdministratorRepliesRequireVerification() throws Exception {
+    Browser owner = new Browser(), other = new Browser(), admin = new Browser();
+    assertThat(owner.get("/api/support").statusCode()).isEqualTo(401);
+    owner.login(member());
+    other.login(member());
+    admin.login("operator");
+    String body =
+        "{\"kind\":\"오류 제보\",\"title\":\"제출 화면 문의\",\"body\":\"회원에게만 보일 내용"
+            + " <script>secret</script>\"}";
+    UUID id = UUID.randomUUID();
+    Map<String, String> headers = Map.of("Idempotency-Key", id.toString());
+    assertThat(
+            owner
+                .call(
+                    "/api/support",
+                    "POST",
+                    body,
+                    Map.of("Content-Type", "application/json", "Idempotency-Key", id.toString()))
+                .statusCode())
+        .isEqualTo(403);
+    assertThat(owner.write("/api/support", "POST", body, headers).statusCode()).isEqualTo(200);
+    assertThat(owner.write("/api/support", "POST", body, headers).statusCode()).isEqualTo(200);
+    assertThat(
+            jdbc.sql("SELECT count(*) FROM support_request WHERE id=?")
+                .param(id)
+                .query(Integer.class)
+                .single())
+        .isEqualTo(1);
+    assertThat(other.write("/api/support", "POST", body, headers).statusCode()).isEqualTo(409);
+    assertThat(JudgeJson.JSON.readTree(other.get("/api/support").body()).path("items").size())
+        .isZero();
+    assertThat(owner.get("/api/admin/support").statusCode()).isEqualTo(403);
+    assertThat(admin.get("/api/admin/support").statusCode()).isEqualTo(403);
+    admin.verify();
+    assertThat(admin.get("/api/admin/support?status=OPEN").statusCode()).isEqualTo(200);
+    String reply = "{\"status\":\"RESOLVED\",\"reply\":\"확인해서 수정했어요.\",\"revision\":0}";
+    assertThat(admin.write("/api/admin/support/" + id, "PUT", reply, Map.of()).statusCode())
+        .isEqualTo(200);
+    assertThat(admin.write("/api/admin/support/" + id, "PUT", reply, Map.of()).statusCode())
+        .isEqualTo(409);
+    var item = JudgeJson.JSON.readTree(owner.get("/api/support").body()).path("items").get(0);
+    assertThat(item.path("status").asText()).isEqualTo("RESOLVED");
+    assertThat(item.path("reply").asText()).isEqualTo("확인해서 수정했어요.");
+    assertThat(
+            jdbc.sql(
+                    "SELECT after_json FROM admin_audit WHERE action='SUPPORT_UPDATE' AND target=?")
+                .param(id.toString())
+                .query(String.class)
+                .single())
+        .doesNotContain("확인해서", "script", "secret");
+  }
+
+  @Test
+  void supportLimitRejectsNewRequestsButAllowsExactReplay() throws Exception {
+    Browser owner = new Browser();
+    owner.login(member());
+    String body = "{\"kind\":\"이용 문의\",\"title\":\"문의\",\"body\":\"문의 내용\"}";
+    UUID first = UUID.randomUUID();
+    for (int i = 0; i < 10; i++)
+      assertThat(
+              owner
+                  .write(
+                      "/api/support",
+                      "POST",
+                      body,
+                      Map.of("Idempotency-Key", (i == 0 ? first : UUID.randomUUID()).toString()))
+                  .statusCode())
+          .isEqualTo(200);
+    assertThat(
+            owner
+                .write(
+                    "/api/support",
+                    "POST",
+                    body,
+                    Map.of("Idempotency-Key", UUID.randomUUID().toString()))
+                .statusCode())
+        .isEqualTo(429);
+    assertThat(
+            owner
+                .write("/api/support", "POST", body, Map.of("Idempotency-Key", first.toString()))
+                .statusCode())
+        .isEqualTo(200);
+    assertThat(owner.get("/api/support?page=-1").statusCode()).isEqualTo(400);
+  }
 }
