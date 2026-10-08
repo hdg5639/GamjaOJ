@@ -116,8 +116,9 @@ export/
 AdminConsole는 같은 빌드에 포함된 별도 운영 화면이다. Nginx가 요청의 **Host**를 보고 `/`에서 GamjaOJ 또는 AdminConsole HTML을 선택한다. CNAME은 DNS 연결만 담당하며, 실제 화면 분기는 HTTP Host로 결정한다. AdminConsole는 공지, 회원·권한, 문제은행, 진단·코스, 회원 훈련·맞춤 계획, 작업, 점검 설정, 감사 이력을 관리한다.
 
 ```dotenv
-# 서버의 기존 .env에 추가. 호스트만 입력하고 스킴·포트·경로는 제외한다.
-CONTROL_OJ_HOST=admin.example.com
+# 예시 값이다. 실제 운영 호스트와 관리자 계정은 비공개 환경 설정에서 관리한다.
+# 호스트만 입력하고 스킴·포트·경로는 제외한다.
+CONTROL_OJ_HOST=control.example.com
 CONTROL_OJ_ADMIN_USERS=operator-example
 FRONTEND_HTTP_PORT=18082
 ```
@@ -128,7 +129,7 @@ FRONTEND_HTTP_PORT=18082
 
 일반 호스트에서는 `/admin-console`, `/admin-console.html`, 관련 페이지 payload 및 `/api/admin/**`가 404다. AdminConsole 호스트에서도 관리 API는 로그인하지 않으면 401, 지정된 관리자가 아니면 403이다. 비공개 라우트와 별도로 서버 권한 검사를 유지하고, 기존 CSRF 보호를 그대로 사용한다. Host 분기는 관리 권한을 대신하지 않는다.
 
-운영 웹 라우트는 GamjaOJ·AdminConsole 모두 `192.0.2.10:18082`로 연결한다. API 직통 라우트 `api.example.com`는 기존 `192.0.2.10:18081`로 연결한다. 백엔드 포트는 API·Worker 호환을 위해 유지하며, 직접 접속해도 화면 파일은 제공하지 않는다. `FRONTEND_HTTP_PORT` 기본값은 `18082`이고 바인딩 주소는 기존 `BIND_ADDRESS`를 사용한다. 브라우저는 웹 호스트의 상대 경로 `/api`를 사용하므로 API 도메인으로 교차 출처 요청을 보내지 않는다.
+웹 라우트는 프런트 Nginx로 연결하고, API 직통 라우트는 백엔드로 연결한다. 배포 환경의 연결 대상은 환경 설정에서 관리한다. 백엔드 포트는 API·Worker 호환을 위해 유지하며, 직접 접속해도 화면 파일은 제공하지 않는다. `FRONTEND_HTTP_PORT` 기본값은 `18082`이고 바인딩 주소는 기존 `BIND_ADDRESS`를 사용한다. 브라우저는 웹 호스트의 상대 경로 `/api`를 사용하므로 API 도메인으로 교차 출처 요청을 보내지 않는다.
 
 프런트 자체 상태는 `/web-healthz`, 백엔드 상태는 프록시된 `/healthz`로 구분한다. `/_next/static/`의 빌드 해시 자산만 장기 캐시하고, 첫 HTML·관리 화면·API를 공유 캐시하지 않는다. API·Worker POST 요청은 자동 재시도하지 않으며, 쿠키·CSRF·Host를 보존한다. Docker DNS를 주기적으로 갱신해 application 컨테이너 재생성 후에도 API 연결을 복구한다.
 
