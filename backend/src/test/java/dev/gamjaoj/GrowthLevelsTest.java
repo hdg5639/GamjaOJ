@@ -1,4 +1,5 @@
 package dev.gamjaoj;
+import dev.gamjaoj.domain.GrowthLevels;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;

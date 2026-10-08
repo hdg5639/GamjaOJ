@@ -1,4 +1,9 @@
 package dev.gamjaoj;
+import dev.gamjaoj.domain.ArtifactValidation;
+import dev.gamjaoj.service.generation.HybridRulePackage;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.domain.LanguageProfiles;
+import dev.gamjaoj.domain.ProblemTimeLimits;
 
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
@@ -46,7 +51,7 @@ class ProblemTimeLimitsTest {
         var restored=proposed.deepCopy();((com.fasterxml.jackson.databind.node.ObjectNode)restored).set("testWallSeconds",base.path("testWallSeconds"));
         assertThat(restored).isEqualTo(base);
         for(String raw:java.util.List.of(limits(0,1,2),limits(2,181,3),"{\"JAVA\":2}",limits(2,1,3).replace("\"CPP\":1","\"CPP\":0.0001")))
-            assertThatThrownBy(()->ProblemTimeLimits.parse(raw)).isInstanceOf(HybridArtifacts.Invalid.class);
+            assertThatThrownBy(()->ProblemTimeLimits.parse(raw)).isInstanceOf(ArtifactValidation.Invalid.class);
         var review=GenerationRequirementsTest.accepted();review.set("timeLimits",JudgeJson.parse(limits(2,1,3)));
         var friendly=JudgeJson.parse(ProblemTimeLimits.reviewed(review,1000));
         assertThat(friendly.path("JAVA").asInt()).isEqualTo(5);

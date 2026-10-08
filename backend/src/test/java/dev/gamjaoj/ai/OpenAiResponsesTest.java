@@ -1,4 +1,5 @@
 package dev.gamjaoj.ai;
+import dev.gamjaoj.infrastructure.ai.OpenAiResponses;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

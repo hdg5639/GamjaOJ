@@ -1,4 +1,10 @@
 package dev.gamjaoj;
+import dev.gamjaoj.service.generation.GenerationJobs;
+import dev.gamjaoj.service.generation.GenerationTemplate;
+import dev.gamjaoj.service.generation.HybridRuleOnboarding;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.judge.JudgeQueue;
+import dev.gamjaoj.service.learning.PracticeFollowups;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -6,7 +12,6 @@ import java.lang.reflect.*;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
-import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

@@ -1,4 +1,6 @@
 package dev.gamjaoj;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.domain.JudgeScheduling;
 
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;

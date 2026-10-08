@@ -1,4 +1,6 @@
 package dev.gamjaoj;
+import dev.gamjaoj.service.generation.CallablePrograms;
+import dev.gamjaoj.support.JudgeJson;
 
 import org.junit.jupiter.api.Test;
 import java.nio.file.*;

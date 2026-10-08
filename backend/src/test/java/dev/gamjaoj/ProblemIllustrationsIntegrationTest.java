@@ -1,4 +1,7 @@
 package dev.gamjaoj;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.support.JudgeJson;
+import dev.gamjaoj.service.problem.ProblemIllustrations;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;

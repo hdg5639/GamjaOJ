@@ -1,4 +1,6 @@
 package dev.gamjaoj;
+import dev.gamjaoj.domain.ArtifactValidation;
+import dev.gamjaoj.domain.LanguageProfiles;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -13,6 +15,6 @@ class CpuTimeProfilesTest {
  }
  @Test void invalidCpuBudgetsAndUnexpectedKeysAreRejected() {
   for(String cpu:new String[]{"{\"JAVA\":0}","{\"JAVA\":181}","{\"JAVA\":0.1234}","{\"RUBY\":1}","{}"})
-   assertThrows(HybridArtifacts.Invalid.class,()->LanguageProfiles.profile("JAVA","{\"JAVA\":5,\"CPP\":3,\"PYTHON\":8,\"cpu\":"+cpu+",\"analysis\":\"test\"}"));
+   assertThrows(ArtifactValidation.Invalid.class,()->LanguageProfiles.profile("JAVA","{\"JAVA\":5,\"CPP\":3,\"PYTHON\":8,\"cpu\":"+cpu+",\"analysis\":\"test\"}"));
  }
 }

@@ -1,4 +1,9 @@
 package dev.gamjaoj;
+import dev.gamjaoj.domain.ArtifactValidation;
+import dev.gamjaoj.service.generation.HybridArtifacts;
+import dev.gamjaoj.service.generation.HybridFiniteProfile;
+import dev.gamjaoj.service.generation.HybridPresentationRules;
+import dev.gamjaoj.support.JudgeJson;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
@@ -24,9 +29,9 @@ class HybridPresentationRulesTest {
         assertThat(joined.path("ruleExplanations").toString()).contains("장비").doesNotContain("물건");
         assertThat(HybridArtifacts.publicSnapshot(joined).toString()).doesNotContain("RETHEME_V1");
         ((ObjectNode)p.path("ruleExplanations").get(0)).put("id","warp");
-        assertThatThrownBy(()->HybridPresentationRules.assemble(input,p,f.contract())).isInstanceOf(HybridArtifacts.Invalid.class);
+        assertThatThrownBy(()->HybridPresentationRules.assemble(input,p,f.contract())).isInstanceOf(ArtifactValidation.Invalid.class);
         p.set("semantics",input.path("semantics"));
-        assertThatThrownBy(()->HybridPresentationRules.assemble(input,p,f.contract())).isInstanceOf(HybridArtifacts.Invalid.class);
+        assertThatThrownBy(()->HybridPresentationRules.assemble(input,p,f.contract())).isInstanceOf(ArtifactValidation.Invalid.class);
     }
     @Test void fixedRulesReachPublicSnapshotWithoutHidingConflictingContextOrTeaching() {
         var input=input();var p=prose().put("context","비용이 남은 용량 이상인 물건만 선택한다.");

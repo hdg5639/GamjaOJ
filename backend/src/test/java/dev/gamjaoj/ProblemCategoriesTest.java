@@ -1,4 +1,6 @@
 package dev.gamjaoj;
+import dev.gamjaoj.exception.AccountException;
+import dev.gamjaoj.domain.ProblemCategories;
 
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
