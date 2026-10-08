@@ -1,8 +1,6 @@
 package dev.gamjaoj;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -37,18 +35,6 @@ class ControlOJIntegrationTest {
               r.setServletPath(path);
               return r;
             });
-  }
-
-  @Test
-  void onePortServesSeparateRootDocuments() throws Exception {
-    mvc.perform(request("/", "gamjaoj.localhost"))
-        .andExpect(status().isOk())
-        .andExpect(content().string(not(containsString("ControlOJ"))))
-        .andExpect(header().string("Vary", "Host"));
-    mvc.perform(request("/", "controloj.localhost"))
-        .andExpect(status().isOk())
-        .andExpect(content().string(containsString("ControlOJ")))
-        .andExpect(header().string("Cache-Control", "no-store"));
   }
 
   @Test

@@ -7,8 +7,8 @@ cd "$(dirname "$0")/.."
 release="$(date -u +%Y%m%dT%H%M%SZ)"
 archive="$(mktemp)"
 trap 'rm -f "$archive"' EXIT
-COPYFILE_DISABLE=1 tar --format=ustar --exclude='__pycache__' --exclude='*.pyc' -czf "$archive" \
-  backend/target/gamjaoj.jar deploy completion runner problems examples tests scripts/smoke-auth.py scripts/smoke-submissions.py
+COPYFILE_DISABLE=1 tar --format=ustar --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' -czf "$archive" \
+  backend/target/gamjaoj.jar frontend/out deploy completion runner problems examples tests scripts/smoke-auth.py scripts/smoke-submissions.py scripts/smoke-frontend.py
 ssh -o BatchMode=yes "$app_target" 'mkdir -p "$HOME/gamjaoj/web/releases"'
 scp -q "$archive" "$app_target:gamjaoj/web/releases/$release.tar.gz"
 ssh -o BatchMode=yes "$app_target" bash -s -- "$release" <<'REMOTE'
@@ -48,10 +48,13 @@ docker ps --format '{{.ID}} {{.Label "com.docker.compose.project"}}' \
   | awk '$2 != "gamjaoj" {print $1}' | sort > "releases/$release/existing-containers.txt"
 export GAMJAOJ_IMAGE="gamjaoj-web:$release"
 docker build --network none -f "releases/$release/deploy/Dockerfile" -t "$GAMJAOJ_IMAGE" "releases/$release"
+export GAMJAOJ_FRONTEND_IMAGE="gamjaoj-frontend:$release"
+docker build --network none -f "releases/$release/deploy/frontend/Dockerfile" -t "$GAMJAOJ_FRONTEND_IMAGE" "releases/$release"
 export GAMJAOJ_COMPLETION_IMAGE="gamjaoj-completion:$release"
 docker build -f "releases/$release/completion/Dockerfile" -t "$GAMJAOJ_COMPLETION_IMAGE" "releases/$release"
 docker compose --env-file .env -f "releases/$release/deploy/compose.yaml" up -d --wait --wait-timeout 180
 python3 "releases/$release/scripts/smoke-auth.py" --ipv4 --env-file .env --compose "releases/$release/deploy/compose.yaml" </dev/null
+python3 "releases/$release/scripts/smoke-frontend.py" --env-file .env --static-dir "releases/$release/frontend/out"
 if python3 - <<'PY'
 from pathlib import Path
 config = dict(line.split('=',1) for line in Path('.env').read_text().splitlines() if line and not line.startswith('#'))
@@ -66,7 +69,18 @@ while IFS= read -r container; do
   [ "$(docker inspect --format '{{.State.Running}}' "$container")" = true ]
 done < "releases/$release/existing-containers.txt"
 printf '%s\n' "$GAMJAOJ_IMAGE" > "releases/$release/image.txt"
+printf '%s\n' "$GAMJAOJ_FRONTEND_IMAGE" > "releases/$release/frontend-image.txt"
 printf '%s\n' "$GAMJAOJ_COMPLETION_IMAGE" > "releases/$release/completion-image.txt"
+python3 - <<'PY'
+import os
+from pathlib import Path
+path = Path('.env')
+lines = [line for line in path.read_text().splitlines()
+         if not line.startswith('GAMJAOJ_FRONTEND_IMAGE=')]
+lines.append('GAMJAOJ_FRONTEND_IMAGE=' + os.environ['GAMJAOJ_FRONTEND_IMAGE'])
+path.write_text('\n'.join(lines) + '\n')
+path.chmod(0o600)
+PY
 ln -s "releases/$release" "current-$release"
 mv -Tf "current-$release" current
 echo "GamjaOJ web verification passed (release $release)."

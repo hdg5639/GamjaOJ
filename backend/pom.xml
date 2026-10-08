@@ -22,7 +22,6 @@
     <resources>
       <resource><directory>../generation</directory><targetPath>generation</targetPath><includes><include>requirements-*.txt</include><include>requirements-schema.json</include><include>thinking-*.txt</include><include>thinking-schema.json</include><include>resource-profiles-v1.json</include></includes></resource>
       <resource><directory>src/main/resources</directory></resource>
-      <resource><directory>../frontend/out</directory><targetPath>static</targetPath></resource>
     </resources>
     <plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins>
   </build>
